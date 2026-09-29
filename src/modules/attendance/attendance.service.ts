@@ -86,9 +86,10 @@ export class AttendanceService {
 
     // Staff authorization boundary
     const staffUser = await this.db.user.findUnique({ where: { id: input.createdByUserId } });
-    if (staffUser) {
-      assertUserCanOperateInHostel(staffUser, input.organizationId, input.hostelId);
+    if (!staffUser) {
+      throw new NotFoundError('User', input.createdByUserId);
     }
+    assertUserCanOperateInHostel(staffUser, input.organizationId, input.hostelId);
 
     return this.db.$transaction(async (tx) => {
       const session = await tx.attendanceSession.create({
@@ -148,9 +149,10 @@ export class AttendanceService {
     }
 
     const staffUser = await this.db.user.findUnique({ where: { id: startedByUserId } });
-    if (staffUser) {
-      assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
+    if (!staffUser) {
+      throw new NotFoundError('User', startedByUserId);
     }
+    assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
 
     return this.db.$transaction(async (tx) => {
       const updated = await tx.attendanceSession.update({
@@ -202,9 +204,10 @@ export class AttendanceService {
     }
 
     const staffUser = await this.db.user.findUnique({ where: { id: closedByUserId } });
-    if (staffUser) {
-      assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
+    if (!staffUser) {
+      throw new NotFoundError('User', closedByUserId);
     }
+    assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
 
     return this.db.$transaction(async (tx) => {
       const updated = await tx.attendanceSession.update({
@@ -279,6 +282,15 @@ export class AttendanceService {
         throw new DomainIntegrityError(
           `Resident '${resident.residentCode}' belongs to organization '${resident.organizationId}', cannot be marked in session for organization '${session.organizationId}'`
         );
+      }
+
+      // Staff authorization boundary
+      if (input.markedByUserId) {
+        const staffUser = await tx.user.findUnique({ where: { id: input.markedByUserId } });
+        if (!staffUser) {
+          throw new NotFoundError('User', input.markedByUserId);
+        }
+        assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
       }
 
       // Check duplicate record

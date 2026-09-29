@@ -94,9 +94,10 @@ export class NightAttendanceService {
 
     // Staff authorization boundary
     const staffUser = await this.db.user.findUnique({ where: { id: input.markedByUserId } });
-    if (staffUser) {
-      assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
+    if (!staffUser) {
+      throw new NotFoundError('User', input.markedByUserId);
     }
+    assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
 
     // CRITICAL ENFORCEMENT: Resident recorded as OUT cannot automatically be marked PRESENT
     if (presence.currentState === PresenceState.OUT) {
@@ -186,9 +187,10 @@ export class NightAttendanceService {
 
       // Staff authorization boundary
       const warden = await tx.user.findUnique({ where: { id: input.wardenUserId } });
-      if (warden) {
-        assertUserCanOperateInHostel(warden, session.organizationId, session.hostelId);
+      if (!warden) {
+        throw new NotFoundError('User', input.wardenUserId);
       }
+      assertUserCanOperateInHostel(warden, session.organizationId, session.hostelId);
 
       // 3. Pre-check: Duplicate Attendance Check BEFORE mutating state
       const existingRecord = await tx.attendanceRecord.findUnique({

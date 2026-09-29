@@ -1,19 +1,33 @@
 export class AppError extends Error {
   public readonly statusCode: number;
   public readonly code: string;
+  public readonly details: Record<string, any>;
 
-  constructor(message: string, statusCode = 500, code = 'INTERNAL_ERROR') {
+  constructor(message: string, statusCode = 500, code = 'INTERNAL_ERROR', details: Record<string, any> = {}) {
     super(message);
     this.name = this.constructor.name;
     this.statusCode = statusCode;
     this.code = code;
+    this.details = details;
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
 export class ValidationError extends AppError {
-  constructor(message: string) {
-    super(message, 400, 'VALIDATION_ERROR');
+  constructor(message: string, details: Record<string, any> = {}) {
+    super(message, 400, 'VALIDATION_ERROR', details);
+  }
+}
+
+export class AuthenticationError extends AppError {
+  constructor(message = 'Authentication required') {
+    super(message, 401, 'UNAUTHORIZED');
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message = 'Access forbidden') {
+    super(message, 403, 'FORBIDDEN');
   }
 }
 
@@ -59,4 +73,5 @@ export class DomainIntegrityError extends AppError {
     super(message, 422, 'DOMAIN_INTEGRITY_ERROR');
   }
 }
+
 

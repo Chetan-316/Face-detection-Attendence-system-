@@ -126,10 +126,11 @@ export class MovementService {
       // 5. Staff Boundary Check
       if (input.performedByUserId) {
         const staffUser = await tx.user.findUnique({ where: { id: input.performedByUserId } });
-        if (staffUser) {
-          const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
-          assertUserCanOperateInHostel(staffUser, hostel.organizationId, input.hostelId);
+        if (!staffUser) {
+          throw new NotFoundError('User', input.performedByUserId);
         }
+        const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
+        assertUserCanOperateInHostel(staffUser, hostel.organizationId, input.hostelId);
       }
 
       // 6. Validate normal alternating state rules
@@ -301,10 +302,11 @@ export class MovementService {
 
       // 5. Staff Hostel Boundary Validation
       const authorizer = await tx.user.findUnique({ where: { id: input.authorizedByUserId } });
-      if (authorizer) {
-        const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
-        assertUserCanOperateInHostel(authorizer, hostel.organizationId, input.hostelId);
+      if (!authorizer) {
+        throw new NotFoundError('User', input.authorizedByUserId);
       }
+      const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
+      assertUserCanOperateInHostel(authorizer, hostel.organizationId, input.hostelId);
 
       // 6. Create MovementCorrection record
       const correction = await tx.movementCorrection.create({
@@ -349,7 +351,6 @@ export class MovementService {
       });
 
       // 9. Record Audit Log
-      const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
       await this.auditService.record(
         {
           organizationId: hostel.organizationId,
