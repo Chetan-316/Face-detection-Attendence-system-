@@ -16,6 +16,7 @@ import {
   UpdateResidentInput,
   ListResidentsParams,
   PaginatedResult,
+  ResidentSummary,
 } from './resident.types';
 
 export interface CreateResidentInput {
@@ -500,6 +501,59 @@ export class ResidentService {
         total,
         totalPages,
       },
+    };
+  }
+
+  public async getSummary(params: { organizationId: string; hostelId?: string }): Promise<ResidentSummary> {
+    const baseWhere: Prisma.ResidentWhereInput = {
+      organizationId: params.organizationId,
+      ...(params.hostelId ? { hostelId: params.hostelId } : {}),
+    };
+
+    const [
+      total,
+      active,
+      inactive,
+      currentlyIn,
+      currentlyOut,
+      faceEnrolled,
+      notEnrolled,
+      needsReEnrollment,
+      revoked,
+    ] = await Promise.all([
+      this.db.resident.count({ where: baseWhere }),
+      this.db.resident.count({ where: { ...baseWhere, status: ResidentStatus.ACTIVE } }),
+      this.db.resident.count({ where: { ...baseWhere, status: ResidentStatus.INACTIVE } }),
+      this.db.resident.count({
+        where: { ...baseWhere, presence: { currentState: PresenceState.IN } },
+      }),
+      this.db.resident.count({
+        where: { ...baseWhere, presence: { currentState: PresenceState.OUT } },
+      }),
+      this.db.resident.count({
+        where: { ...baseWhere, faceEnrollmentStatus: FaceEnrollmentStatus.ENROLLED },
+      }),
+      this.db.resident.count({
+        where: { ...baseWhere, faceEnrollmentStatus: FaceEnrollmentStatus.NOT_ENROLLED },
+      }),
+      this.db.resident.count({
+        where: { ...baseWhere, faceEnrollmentStatus: FaceEnrollmentStatus.NEEDS_REENROLLMENT },
+      }),
+      this.db.resident.count({
+        where: { ...baseWhere, faceEnrollmentStatus: FaceEnrollmentStatus.REVOKED },
+      }),
+    ]);
+
+    return {
+      total,
+      active,
+      inactive,
+      currentlyIn,
+      currentlyOut,
+      faceEnrolled,
+      notEnrolled,
+      needsReEnrollment,
+      revoked,
     };
   }
 

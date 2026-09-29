@@ -7,10 +7,12 @@ import { loginSchema } from '../../modules/auth/auth.schemas';
 import { AuthenticationError } from '../../common/errors';
 import { config } from '../../config';
 import { prisma as defaultPrisma } from '../../database/client';
+import { createAuthMiddleware } from '../middleware/auth.middleware';
 
 export function createAuthRouter(db = defaultPrisma) {
   const router = Router();
   const authService = new AuthService(db);
+  const { requireAuth } = createAuthMiddleware(db);
 
   // Rate limiter: 10 attempts per minute per IP
   const loginLimiter = rateLimit({
@@ -69,6 +71,20 @@ export function createAuthRouter(db = defaultPrisma) {
       }
     }
   );
+
+  /**
+   * GET /api/v1/auth/me
+   * Return authenticated user profile from token
+   */
+  router.get('/me', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.status(200).json({
+        user: req.user!,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
 
   return router;
 }

@@ -1,0 +1,44 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './auth/AuthContext';
+import { ToastProvider } from './components/ToastContext';
+import { ProtectedRoute } from './auth/ProtectedRoute';
+import { AppLayout } from './layouts/AppLayout';
+import { LoginPage } from './pages/LoginPage';
+import { OverviewPage } from './pages/OverviewPage';
+import { ResidentsPage } from './pages/ResidentsPage';
+import { ResidentDetailPage } from './pages/ResidentDetailPage';
+
+export const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <ToastProvider>
+        <AuthProvider>
+          <Routes>
+            {/* Public Auth Route */}
+            <Route path="/login" element={<LoginPage />} />
+
+            {/* Authenticated Protected Shell */}
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <AppLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<OverviewPage />} />
+              <Route path="residents" element={<ResidentsPage />} />
+              <Route path="residents/:id" element={<ResidentDetailPage />} />
+            </Route>
+
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AuthProvider>
+      </ToastProvider>
+    </BrowserRouter>
+  );
+};
+
+export default App;

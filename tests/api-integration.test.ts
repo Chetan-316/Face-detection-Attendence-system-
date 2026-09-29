@@ -217,6 +217,18 @@ describe('Step 02 API Integration Test Suite', () => {
       expect(res.body.user.role).toBe(StaffRole.GUARD);
     });
 
+    it('GET /api/v1/auth/me returns current authenticated user context', async () => {
+      const res = await request(app)
+        .get('/api/v1/auth/me')
+        .set('Authorization', `Bearer ${warden1AToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.user).toBeDefined();
+      expect(res.body.user.username).toBe('warden1a');
+      expect(res.body.user.role).toBe(StaffRole.WARDEN);
+      expect(res.body.user.hostelId).toBe(hostel1AId);
+    });
+
     it('incorrect password is rejected with generic 401', async () => {
       const res = await request(app).post('/api/v1/auth/login').send({
         username: 'admin1',
@@ -566,6 +578,36 @@ describe('Step 02 API Integration Test Suite', () => {
         .set('Authorization', `Bearer ${admin1Token}`);
 
       expect(res.status).toBe(404);
+    });
+
+    it('GET /api/v1/residents/summary returns accurate scoped counts for Warden', async () => {
+      const res = await request(app)
+        .get('/api/v1/residents/summary')
+        .set('Authorization', `Bearer ${warden1AToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        total: 5,
+        active: 4,
+        inactive: 1,
+        currentlyIn: 2,
+        currentlyOut: 3,
+        faceEnrolled: 0,
+        notEnrolled: 5,
+        needsReEnrollment: 0,
+        revoked: 0,
+      });
+    });
+
+    it('GET /api/v1/residents/summary returns accurate scoped counts for Admin', async () => {
+      const res = await request(app)
+        .get('/api/v1/residents/summary')
+        .set('Authorization', `Bearer ${admin1Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(7);
+      expect(res.body.active).toBe(6);
+      expect(res.body.inactive).toBe(1);
     });
   });
 

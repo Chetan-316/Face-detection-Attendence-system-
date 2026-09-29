@@ -1,6 +1,8 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
+import fs from 'fs';
 import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../database/client';
 import { AppError } from '../common/errors';
@@ -49,6 +51,21 @@ export function createApp(db: PrismaClient = defaultPrisma) {
   // Versioned API Routes (/api/v1)
   app.use('/api/v1/auth', createAuthRouter(db));
   app.use('/api/v1/residents', createResidentRouter(db));
+
+  // Static frontend serving if client/dist exists (production / single-server mode)
+  const clientDistPath = path.resolve(__dirname, '../../../client/dist');
+  const altClientDistPath = path.resolve(process.cwd(), 'client/dist');
+  const targetDistPath = fs.existsSync(altClientDistPath) ? altClientDistPath : clientDistPath;
+
+  if (fs.existsSync(targetDistPath)) {
+    app.use(express.static(targetDistPath));
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith('/api') || req.path === '/health') {
+        return next();
+      }
+      res.sendFile(path.join(targetDistPath, 'index.html'));
+    });
+  }
 
   // Global error handler
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

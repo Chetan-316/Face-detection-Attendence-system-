@@ -127,6 +127,44 @@ export function createResidentRouter(db = defaultPrisma) {
   );
 
   /**
+   * GET /api/v1/residents/summary
+   * Scoped aggregate summary metrics for resident overview
+   */
+  router.get('/summary', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const query = req.query as any;
+
+      let effectiveHostelId: string | undefined;
+
+      if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
+        effectiveHostelId = user.hostelId || undefined;
+      } else if (user.role === StaffRole.ADMIN && user.hostelId) {
+        effectiveHostelId = user.hostelId;
+      } else if (user.role === StaffRole.ADMIN) {
+        if (query.hostelId) {
+          const hostel = await db.hostel.findUnique({
+            where: { id: query.hostelId },
+          });
+          if (!hostel || hostel.organizationId !== user.organizationId) {
+            throw new NotFoundError('Hostel', query.hostelId);
+          }
+          effectiveHostelId = query.hostelId;
+        }
+      }
+
+      const summary = await residentService.getSummary({
+        organizationId: user.organizationId,
+        hostelId: effectiveHostelId,
+      });
+
+      res.status(200).json(summary);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
    * GET /api/v1/residents/by-code/:residentCode
    * Lookup resident by unique resident code
    */

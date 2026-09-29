@@ -4,11 +4,17 @@
   "description": "PRAVAHAx Face Recognition Hostel Attendance & Resident Movement System - Foundation Prototype",
   "main": "dist/src/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run build --prefix client",
+    "build:server": "tsc",
+    "build:client": "npm run build --prefix client",
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
+    "dev:client": "npm run dev --prefix client",
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
+    "test:server": "vitest run",
+    "test:client": "npm run test --prefix client",
+    "test:all": "vitest run && npm run test --prefix client",
     "test:coverage": "vitest run --coverage"
   },
   "prisma": {

@@ -55,3 +55,15 @@ export interface PaginatedResult<T> {
     totalPages: number;
   };
 }
+
+export interface ResidentSummary {
+  total: number;
+  active: number;
+  inactive: number;
+  currentlyIn: number;
+  currentlyOut: number;
+  faceEnrolled: number;
+  notEnrolled: number;
+  needsReEnrollment: number;
+  revoked: number;
+}
