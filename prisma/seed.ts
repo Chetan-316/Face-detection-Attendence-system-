@@ -16,7 +16,20 @@ import bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 export async function runSeed() {
-  console.log('Seeding PRAVAHAx database...');
+  const env = process.env.APP_ENV || 'development';
+
+  // Seed safety guards against accidental production destruction
+  if (env === 'production') {
+    throw new Error('SAFETY ERROR: Destructive database seed is prohibited in production environment.');
+  }
+
+  if (env !== 'development' && env !== 'test' && process.env.ALLOW_DESTRUCTIVE_SEED !== 'true') {
+    throw new Error(
+      `SAFETY ERROR: Destructive seed in '${env}' requires explicit ALLOW_DESTRUCTIVE_SEED=true.`
+    );
+  }
+
+  console.log(`[PRAVAHAx] Seeding database in '${env}' mode...`);
 
   // Clean existing data for deterministic seed
   await prisma.auditLog.deleteMany();
@@ -85,7 +98,8 @@ export async function runSeed() {
   console.log(`Created Camera: ${camera.name} (${camera.sourceType})`);
 
   // 5. Staff Users (Admin, Warden, Guard)
-  const defaultPassword = 'Password123!';
+  // [LOCAL DEVELOPMENT / DEMO ONLY] credentials
+  const defaultPassword = process.env.SEED_DEFAULT_PASSWORD || 'Password123!';
   const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
   const admin = await prisma.user.create({
@@ -126,7 +140,7 @@ export async function runSeed() {
       status: UserStatus.ACTIVE,
     },
   });
-  console.log('Created Staff Users: admin, warden, guard (password: Password123!)');
+  console.log('Created Staff Users: admin, warden, guard [LOCAL DEVELOPMENT / DEMO ONLY]');
 
   // 6. Residents (R001 to R005) with predefined presence
   const residentsConfig = [

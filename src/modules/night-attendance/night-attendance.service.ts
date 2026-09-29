@@ -10,16 +10,17 @@ import {
 import { prisma as defaultPrisma } from '../../database/client';
 import {
   AttendanceRuleViolationError,
+  ConflictError,
+  DomainIntegrityError,
   InvalidStateTransitionError,
   NotFoundError,
   PermissionDeniedError,
   ValidationError,
 } from '../../common/errors';
-import { assertPermission } from '../auth/permissions';
+import { assertPermission, assertUserCanOperateInHostel } from '../auth/permissions';
 import { MovementService } from '../movements/movement.service';
 import { AttendanceService } from '../attendance/attendance.service';
 import { AuditService } from '../audit/audit.service';
-import { nowUtc } from '../../common/utils/timezone';
 
 export interface MarkNightAttendanceInput {
   sessionId: string;
@@ -54,9 +55,9 @@ export class NightAttendanceService {
 
   /**
    * Attempts to mark a resident as PRESENT in Night Attendance.
-   * CRITICAL RULE: If the resident's Current Presence State is OUT:
-   * Automatic PRESENT is BLOCKED with an AttendanceRuleViolationError!
-   * Guard cannot override this. Only Warden can perform Missed IN correction.
+   * CRITICAL RULES:
+   * 1. Resident must belong to the same hostel as the session.
+   * 2. If Current Presence State is OUT: automatic PRESENT is BLOCKED with AttendanceRuleViolationError.
    */
   public async markNightAttendancePresent(input: MarkNightAttendanceInput) {
     const session = await this.db.attendanceSession.findUnique({
@@ -84,6 +85,19 @@ export class NightAttendanceService {
       throw new NotFoundError('ResidentPresence', input.residentId);
     }
 
+    // Cross-Hostel Safety Check
+    if (presence.hostelId !== session.hostelId || presence.resident.hostelId !== session.hostelId) {
+      throw new DomainIntegrityError(
+        `Resident '${presence.resident.residentCode}' belongs to hostel '${presence.hostelId}', cannot be marked in night session for hostel '${session.hostelId}'`
+      );
+    }
+
+    // Staff authorization boundary
+    const staffUser = await this.db.user.findUnique({ where: { id: input.markedByUserId } });
+    if (staffUser) {
+      assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
+    }
+
     // CRITICAL ENFORCEMENT: Resident recorded as OUT cannot automatically be marked PRESENT
     if (presence.currentState === PresenceState.OUT) {
       throw new AttendanceRuleViolationError(
@@ -107,13 +121,16 @@ export class NightAttendanceService {
 
   /**
    * Warden Resolution Workflow:
-   * 1. Warden verifies resident physically present despite OUT state.
-   * 2. Warden provides mandatory return time and reason.
-   * 3. Executes Warden Missed IN correction -> updates Presence to IN, preserves old history.
-   * 4. Marks resident as CORRECTED_PRESENT in the active Night Attendance session.
+   * ATOMIC TRANSACTION:
+   * 1. Validates session, resident, and cross-hostel consistency.
+   * 2. Checks duplicate attendance BEFORE performing any state changes.
+   * 3. Validates effective return time.
+   * 4. Executes Warden Missed IN correction (inside tx).
+   * 5. Marks resident as CORRECTED_PRESENT (inside tx).
+   * 6. Audits both correction and attendance mark (inside tx).
+   * If any step fails, the entire workflow rolls back!
    */
   public async resolveMissedInAndMarkPresent(input: ResolveMissedInAndMarkPresentInput) {
-    // Only Warden or Admin authorized
     if (input.wardenRole === StaffRole.GUARD) {
       throw new PermissionDeniedError('NIGHT_ATTENDANCE_CORRECTION', StaffRole.GUARD);
     }
@@ -123,35 +140,88 @@ export class NightAttendanceService {
       throw new ValidationError('Correction reason is mandatory to resolve missed IN night attendance');
     }
 
-    const session = await this.db.attendanceSession.findUnique({
-      where: { id: input.sessionId },
-    });
-    if (!session) {
-      throw new NotFoundError('AttendanceSession', input.sessionId);
+    // Effective return time validation
+    if (!(input.effectiveReturnTime instanceof Date) || isNaN(input.effectiveReturnTime.getTime())) {
+      throw new ValidationError('A valid Date must be provided for effectiveReturnTime');
     }
-    if (session.status !== AttendanceSessionStatus.ACTIVE) {
-      throw new InvalidStateTransitionError(
-        session.status,
-        'MARK_NIGHT_ATTENDANCE',
-        'Night attendance session must be ACTIVE'
+    const maxFutureToleranceMs = 5 * 60 * 1000;
+    if (input.effectiveReturnTime.getTime() > Date.now() + maxFutureToleranceMs) {
+      throw new ValidationError('Effective return time cannot be in the future beyond allowed tolerance');
+    }
+
+    return this.db.$transaction(async (tx) => {
+      // 1. Session verification
+      const session = await tx.attendanceSession.findUnique({
+        where: { id: input.sessionId },
+      });
+      if (!session) {
+        throw new NotFoundError('AttendanceSession', input.sessionId);
+      }
+      if (session.status !== AttendanceSessionStatus.ACTIVE) {
+        throw new InvalidStateTransitionError(
+          session.status,
+          'MARK_NIGHT_ATTENDANCE',
+          'Night attendance session must be ACTIVE'
+        );
+      }
+
+      // 2. Resident & Presence verification
+      const resident = await tx.resident.findUnique({
+        where: { id: input.residentId },
+        include: { presence: true },
+      });
+      if (!resident) {
+        throw new NotFoundError('Resident', input.residentId);
+      }
+      if (!resident.presence) {
+        throw new NotFoundError('ResidentPresence', input.residentId);
+      }
+
+      // Cross-hostel safety
+      if (resident.hostelId !== session.hostelId || resident.presence.hostelId !== session.hostelId) {
+        throw new DomainIntegrityError(
+          `Resident '${resident.residentCode}' belongs to hostel '${resident.hostelId}', cannot be resolved in session for hostel '${session.hostelId}'`
+        );
+      }
+
+      // Staff authorization boundary
+      const warden = await tx.user.findUnique({ where: { id: input.wardenUserId } });
+      if (warden) {
+        assertUserCanOperateInHostel(warden, session.organizationId, session.hostelId);
+      }
+
+      // 3. Pre-check: Duplicate Attendance Check BEFORE mutating state
+      const existingRecord = await tx.attendanceRecord.findUnique({
+        where: {
+          attendanceSessionId_residentId: {
+            attendanceSessionId: input.sessionId,
+            residentId: input.residentId,
+          },
+        },
+      });
+      if (existingRecord) {
+        throw new ConflictError(
+          `Resident '${resident.residentCode}' already has an attendance record in session '${session.title}'`
+        );
+      }
+
+      // 4. Execute Warden Missed IN correction INSIDE this atomic transaction
+      const movementEvent = await this.movementService.executeWardenCorrection(
+        {
+          residentId: input.residentId,
+          targetState: PresenceState.IN,
+          hostelId: session.hostelId,
+          effectiveTimestamp: input.effectiveReturnTime,
+          reason: input.correctionReason.trim(),
+          authorizedByUserId: input.wardenUserId,
+          authorizedByRole: input.wardenRole,
+          notes: `Resolved during Night Attendance session: ${session.title}`,
+        },
+        tx
       );
-    }
 
-    // 1. Execute Warden Missed IN correction (sets presence to IN, stores immutable event)
-    const movementEvent = await this.movementService.executeWardenCorrection({
-      residentId: input.residentId,
-      targetState: PresenceState.IN,
-      hostelId: session.hostelId,
-      effectiveTimestamp: input.effectiveReturnTime,
-      reason: input.correctionReason.trim(),
-      authorizedByUserId: input.wardenUserId,
-      authorizedByRole: input.wardenRole,
-      notes: `Resolved during Night Attendance session: ${session.title}`,
-    });
-
-    // 2. Mark attendance record as CORRECTED_PRESENT
-    const attendanceRecord = await this.db.$transaction(async (tx) => {
-      const record = await tx.attendanceRecord.create({
+      // 5. Mark attendance record as CORRECTED_PRESENT INSIDE this atomic transaction
+      const attendanceRecord = await tx.attendanceRecord.create({
         data: {
           attendanceSessionId: input.sessionId,
           residentId: input.residentId,
@@ -164,12 +234,13 @@ export class NightAttendanceService {
         },
       });
 
+      // 6. Record Audit Log for attendance override
       await this.auditService.record(
         {
           organizationId: session.organizationId,
           hostelId: session.hostelId,
           entityType: 'ATTENDANCE_RECORD',
-          entityId: record.id,
+          entityId: attendanceRecord.id,
           action: 'ATTENDANCE_OVERRIDE',
           performedByUserId: input.wardenUserId,
           performedByRole: input.wardenRole,
@@ -177,19 +248,17 @@ export class NightAttendanceService {
           newValues: {
             sessionId: input.sessionId,
             residentId: input.residentId,
-            status: record.status,
+            status: attendanceRecord.status,
             movementEventId: movementEvent.id,
           },
         },
         tx
       );
 
-      return record;
+      return {
+        movementEvent,
+        attendanceRecord,
+      };
     });
-
-    return {
-      movementEvent,
-      attendanceRecord,
-    };
   }
 }

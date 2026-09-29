@@ -1,4 +1,5 @@
 import {
+  Prisma,
   PrismaClient,
   MovementType,
   MovementSource,
@@ -8,12 +9,13 @@ import {
 } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import {
+  DomainIntegrityError,
   InvalidStateTransitionError,
   NotFoundError,
   PermissionDeniedError,
   ValidationError,
 } from '../../common/errors';
-import { assertPermission } from '../auth/permissions';
+import { assertPermission, assertUserCanOperateInHostel } from '../auth/permissions';
 import { AuditService } from '../audit/audit.service';
 import { nowUtc } from '../../common/utils/timezone';
 
@@ -52,19 +54,21 @@ export class MovementService {
 
   /**
    * Records a normal movement (IN -> OUT or OUT -> IN).
-   * Atomically executes with row-level locking (SELECT ... FOR UPDATE) to prevent race conditions.
-   * Rejects invalid normal transitions (IN -> IN, OUT -> OUT).
+   * Enforces cross-hostel, location, camera, and staff boundaries.
+   * Atomically executes with row-level locking (SELECT ... FOR UPDATE).
    */
-  public async recordNormalMovement(input: RecordMovementInput): Promise<MovementEvent> {
-    // Role check if staff user is performing action
+  public async recordNormalMovement(
+    input: RecordMovementInput,
+    externalTx?: Prisma.TransactionClient
+  ): Promise<MovementEvent> {
     if (input.performedByRole) {
       assertPermission(input.performedByRole, 'MOVEMENT_NORMAL_RECORD');
     }
 
     const effectiveTime = input.effectiveTimestamp || nowUtc();
 
-    return this.db.$transaction(async (tx) => {
-      // 1. Lock resident presence row with FOR UPDATE to prevent concurrent conflicting operations
+    const executeOperation = async (tx: Prisma.TransactionClient) => {
+      // 1. Lock resident presence row with FOR UPDATE
       const lockedPresence = await tx.$queryRaw<Array<{ currentState: PresenceState; hostelId: string }>>`
         SELECT "currentState", "hostelId" 
         FROM "resident_presences" 
@@ -76,9 +80,60 @@ export class MovementService {
         throw new NotFoundError('ResidentPresence', input.residentId);
       }
 
-      const currentState = lockedPresence[0].currentState;
+      const currentPresence = lockedPresence[0];
 
-      // 2. Validate normal alternating state rules
+      // 2. Cross-Hostel Movement Integrity
+      if (currentPresence.hostelId !== input.hostelId) {
+        throw new DomainIntegrityError(
+          `Resident belongs to hostel '${currentPresence.hostelId}', but movement was requested for hostel '${input.hostelId}'`
+        );
+      }
+
+      // 3. Location Integrity (if provided)
+      if (input.locationId) {
+        const location = await tx.location.findUnique({ where: { id: input.locationId } });
+        if (!location) {
+          throw new NotFoundError('Location', input.locationId);
+        }
+        if (location.hostelId !== input.hostelId) {
+          throw new DomainIntegrityError(
+            `Location '${location.id}' belongs to hostel '${location.hostelId}', not movement hostel '${input.hostelId}'`
+          );
+        }
+      }
+
+      // 4. Camera Integrity (if provided)
+      if (input.cameraId) {
+        const camera = await tx.camera.findUnique({ where: { id: input.cameraId } });
+        if (!camera) {
+          throw new NotFoundError('Camera', input.cameraId);
+        }
+        if (!camera.isEnabled) {
+          throw new ValidationError(`Camera '${camera.name}' (${camera.id}) is disabled`);
+        }
+        if (camera.hostelId !== input.hostelId) {
+          throw new DomainIntegrityError(
+            `Camera '${camera.id}' belongs to hostel '${camera.hostelId}', not movement hostel '${input.hostelId}'`
+          );
+        }
+        if (camera.locationId && input.locationId && camera.locationId !== input.locationId) {
+          throw new DomainIntegrityError(
+            `Camera location '${camera.locationId}' conflicts with supplied movement location '${input.locationId}'`
+          );
+        }
+      }
+
+      // 5. Staff Boundary Check
+      if (input.performedByUserId) {
+        const staffUser = await tx.user.findUnique({ where: { id: input.performedByUserId } });
+        if (staffUser) {
+          const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
+          assertUserCanOperateInHostel(staffUser, hostel.organizationId, input.hostelId);
+        }
+      }
+
+      // 6. Validate normal alternating state rules
+      const currentState = currentPresence.currentState;
       if (currentState === PresenceState.IN && input.movementType === MovementType.IN) {
         throw new InvalidStateTransitionError(
           'IN',
@@ -98,7 +153,7 @@ export class MovementService {
       const newPresenceState =
         input.movementType === MovementType.IN ? PresenceState.IN : PresenceState.OUT;
 
-      // 3. Create immutable MovementEvent
+      // 7. Create immutable MovementEvent
       const movementEvent = await tx.movementEvent.create({
         data: {
           residentId: input.residentId,
@@ -116,7 +171,7 @@ export class MovementService {
         },
       });
 
-      // 4. Update Current Presence State
+      // 8. Update Current Presence State
       await tx.residentPresence.update({
         where: { residentId: input.residentId },
         data: {
@@ -128,12 +183,11 @@ export class MovementService {
         },
       });
 
-      // 5. Create Audit Trail
+      // 9. Create Audit Trail
+      const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
       await this.auditService.record(
         {
-          organizationId: (
-            await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } })
-          ).organizationId,
+          organizationId: hostel.organizationId,
           hostelId: input.hostelId,
           entityType: 'MOVEMENT',
           entityId: movementEvent.id,
@@ -151,18 +205,28 @@ export class MovementService {
       );
 
       return movementEvent;
-    });
+    };
+
+    if (externalTx) {
+      return executeOperation(externalTx);
+    }
+    return this.db.$transaction(executeOperation);
   }
 
   /**
    * Performs a Warden or Admin correction for missed IN or missed OUT.
-   * Guard is strictly forbidden from executing this.
-   * Reason is mandatory and non-empty.
-   * All past historical events remain untouched.
-   * Creates a new MovementEvent, links to MovementCorrection, updates Presence, and logs audit.
+   * Enforces:
+   * - Mandatory reason
+   * - Valid and non-future effective timestamp
+   * - Rejection of same-state correction (IN -> IN, OUT -> OUT)
+   * - Cross-hostel resident/hostel match
+   * - Location/hostel match
+   * - Staff authorization boundary
    */
-  public async executeWardenCorrection(input: WardenCorrectionInput): Promise<MovementEvent> {
-    // 1. Role permission enforcement
+  public async executeWardenCorrection(
+    input: WardenCorrectionInput,
+    externalTx?: Prisma.TransactionClient
+  ): Promise<MovementEvent> {
     if (input.authorizedByRole === StaffRole.GUARD) {
       throw new PermissionDeniedError('MOVEMENT_CORRECTION', StaffRole.GUARD);
     }
@@ -174,16 +238,24 @@ export class MovementService {
 
     assertPermission(input.authorizedByRole, actionKey);
 
-    // 2. Mandatory reason validation
     if (!input.reason || input.reason.trim().length === 0) {
       throw new ValidationError('Correction reason is mandatory for Warden corrections');
+    }
+
+    // Effective timestamp validation
+    if (!(input.effectiveTimestamp instanceof Date) || isNaN(input.effectiveTimestamp.getTime())) {
+      throw new ValidationError('A valid Date must be provided for effectiveTimestamp');
+    }
+    const maxFutureToleranceMs = 5 * 60 * 1000; // 5 min clock skew tolerance
+    if (input.effectiveTimestamp.getTime() > Date.now() + maxFutureToleranceMs) {
+      throw new ValidationError('Effective timestamp cannot be later than current system time beyond clock tolerance');
     }
 
     const movementType =
       input.targetState === PresenceState.IN ? MovementType.IN : MovementType.OUT;
 
-    return this.db.$transaction(async (tx) => {
-      // Lock current presence row
+    const executeOperation = async (tx: Prisma.TransactionClient) => {
+      // 1. Lock current presence row
       const lockedPresence = await tx.$queryRaw<Array<{ currentState: PresenceState; hostelId: string }>>`
         SELECT "currentState", "hostelId" 
         FROM "resident_presences" 
@@ -195,9 +267,46 @@ export class MovementService {
         throw new NotFoundError('ResidentPresence', input.residentId);
       }
 
-      const oldState = lockedPresence[0].currentState;
+      const currentPresence = lockedPresence[0];
+      const oldState = currentPresence.currentState;
 
-      // 3. Create MovementCorrection record
+      // 2. Cross-hostel validation
+      if (currentPresence.hostelId !== input.hostelId) {
+        throw new DomainIntegrityError(
+          `Resident belongs to hostel '${currentPresence.hostelId}', but correction requested for hostel '${input.hostelId}'`
+        );
+      }
+
+      // 3. Same-state correction rule: A correction must actually change state
+      if (oldState === input.targetState) {
+        throw new InvalidStateTransitionError(
+          oldState,
+          input.targetState,
+          `Cannot execute correction to the same state (already ${oldState})`
+        );
+      }
+
+      // 4. Location validation (if provided)
+      if (input.locationId) {
+        const location = await tx.location.findUnique({ where: { id: input.locationId } });
+        if (!location) {
+          throw new NotFoundError('Location', input.locationId);
+        }
+        if (location.hostelId !== input.hostelId) {
+          throw new DomainIntegrityError(
+            `Location '${location.id}' belongs to hostel '${location.hostelId}', not correction hostel '${input.hostelId}'`
+          );
+        }
+      }
+
+      // 5. Staff Hostel Boundary Validation
+      const authorizer = await tx.user.findUnique({ where: { id: input.authorizedByUserId } });
+      if (authorizer) {
+        const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
+        assertUserCanOperateInHostel(authorizer, hostel.organizationId, input.hostelId);
+      }
+
+      // 6. Create MovementCorrection record
       const correction = await tx.movementCorrection.create({
         data: {
           residentId: input.residentId,
@@ -210,7 +319,7 @@ export class MovementService {
         },
       });
 
-      // 4. Create new MovementEvent preserving history
+      // 7. Create new MovementEvent preserving history
       const movementEvent = await tx.movementEvent.create({
         data: {
           residentId: input.residentId,
@@ -227,7 +336,7 @@ export class MovementService {
         },
       });
 
-      // 5. Update Current Presence
+      // 8. Update Current Presence
       await tx.residentPresence.update({
         where: { residentId: input.residentId },
         data: {
@@ -239,7 +348,7 @@ export class MovementService {
         },
       });
 
-      // 6. Record Audit Log
+      // 9. Record Audit Log
       const hostel = await tx.hostel.findUniqueOrThrow({ where: { id: input.hostelId } });
       await this.auditService.record(
         {
@@ -262,7 +371,12 @@ export class MovementService {
       );
 
       return movementEvent;
-    });
+    };
+
+    if (externalTx) {
+      return executeOperation(externalTx);
+    }
+    return this.db.$transaction(executeOperation);
   }
 
   /**

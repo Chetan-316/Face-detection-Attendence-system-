@@ -1,4 +1,5 @@
 import {
+  Prisma,
   PrismaClient,
   AttendanceSession,
   AttendanceRecord,
@@ -11,11 +12,12 @@ import {
 import { prisma as defaultPrisma } from '../../database/client';
 import {
   ConflictError,
+  DomainIntegrityError,
   InvalidStateTransitionError,
   NotFoundError,
   ValidationError,
 } from '../../common/errors';
-import { assertPermission } from '../auth/permissions';
+import { assertPermission, assertUserCanOperateInHostel } from '../auth/permissions';
 import { AuditService } from '../audit/audit.service';
 import { nowUtc } from '../../common/utils/timezone';
 
@@ -60,6 +62,32 @@ export class AttendanceService {
     });
     if (!hostel) {
       throw new NotFoundError('Hostel', input.hostelId);
+    }
+
+    // Organization / Hostel consistency
+    if (hostel.organizationId !== input.organizationId) {
+      throw new DomainIntegrityError(
+        `Hostel '${hostel.id}' belongs to organization '${hostel.organizationId}', not '${input.organizationId}'`
+      );
+    }
+
+    // Location / Hostel consistency (if location provided)
+    if (input.locationId) {
+      const location = await this.db.location.findUnique({ where: { id: input.locationId } });
+      if (!location) {
+        throw new NotFoundError('Location', input.locationId);
+      }
+      if (location.hostelId !== input.hostelId) {
+        throw new DomainIntegrityError(
+          `Location '${location.id}' belongs to hostel '${location.hostelId}', not session hostel '${input.hostelId}'`
+        );
+      }
+    }
+
+    // Staff authorization boundary
+    const staffUser = await this.db.user.findUnique({ where: { id: input.createdByUserId } });
+    if (staffUser) {
+      assertUserCanOperateInHostel(staffUser, input.organizationId, input.hostelId);
     }
 
     return this.db.$transaction(async (tx) => {
@@ -119,6 +147,11 @@ export class AttendanceService {
       );
     }
 
+    const staffUser = await this.db.user.findUnique({ where: { id: startedByUserId } });
+    if (staffUser) {
+      assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
+    }
+
     return this.db.$transaction(async (tx) => {
       const updated = await tx.attendanceSession.update({
         where: { id: sessionId },
@@ -168,6 +201,11 @@ export class AttendanceService {
       );
     }
 
+    const staffUser = await this.db.user.findUnique({ where: { id: closedByUserId } });
+    if (staffUser) {
+      assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
+    }
+
     return this.db.$transaction(async (tx) => {
       const updated = await tx.attendanceSession.update({
         where: { id: sessionId },
@@ -200,46 +238,64 @@ export class AttendanceService {
   /**
    * Marks a resident's attendance in a session.
    * Enforces that session is ACTIVE.
+   * Enforces cross-hostel & cross-org consistency between resident and session.
    * Enforces UNIQUE attendance record per resident per session (duplicate rejected).
    */
-  public async markAttendance(input: MarkAttendanceInput): Promise<AttendanceRecord> {
-    const session = await this.db.attendanceSession.findUnique({
-      where: { id: input.sessionId },
-    });
-    if (!session) {
-      throw new NotFoundError('AttendanceSession', input.sessionId);
-    }
-    if (session.status !== AttendanceSessionStatus.ACTIVE) {
-      throw new InvalidStateTransitionError(
-        session.status,
-        'RECORD_ATTENDANCE',
-        'Cannot mark attendance in a non-active session'
-      );
-    }
+  public async markAttendance(
+    input: MarkAttendanceInput,
+    externalTx?: Prisma.TransactionClient
+  ): Promise<AttendanceRecord> {
+    const executeOperation = async (tx: Prisma.TransactionClient) => {
+      const session = await tx.attendanceSession.findUnique({
+        where: { id: input.sessionId },
+      });
+      if (!session) {
+        throw new NotFoundError('AttendanceSession', input.sessionId);
+      }
+      if (session.status !== AttendanceSessionStatus.ACTIVE) {
+        throw new InvalidStateTransitionError(
+          session.status,
+          'RECORD_ATTENDANCE',
+          'Cannot mark attendance in a non-active session'
+        );
+      }
 
-    const resident = await this.db.resident.findUnique({
-      where: { id: input.residentId },
-    });
-    if (!resident) {
-      throw new NotFoundError('Resident', input.residentId);
-    }
+      const resident = await tx.resident.findUnique({
+        where: { id: input.residentId },
+      });
+      if (!resident) {
+        throw new NotFoundError('Resident', input.residentId);
+      }
 
-    // Check duplicate record
-    const existing = await this.db.attendanceRecord.findUnique({
-      where: {
-        attendanceSessionId_residentId: {
-          attendanceSessionId: input.sessionId,
-          residentId: input.residentId,
+      // Cross-hostel integrity: resident must belong to the session hostel
+      if (resident.hostelId !== session.hostelId) {
+        throw new DomainIntegrityError(
+          `Resident '${resident.residentCode}' belongs to hostel '${resident.hostelId}', cannot be marked in session for hostel '${session.hostelId}'`
+        );
+      }
+
+      // Cross-organization integrity: resident must belong to the session organization
+      if (resident.organizationId !== session.organizationId) {
+        throw new DomainIntegrityError(
+          `Resident '${resident.residentCode}' belongs to organization '${resident.organizationId}', cannot be marked in session for organization '${session.organizationId}'`
+        );
+      }
+
+      // Check duplicate record
+      const existing = await tx.attendanceRecord.findUnique({
+        where: {
+          attendanceSessionId_residentId: {
+            attendanceSessionId: input.sessionId,
+            residentId: input.residentId,
+          },
         },
-      },
-    });
-    if (existing) {
-      throw new ConflictError(
-        `Attendance record already exists for resident '${resident.residentCode}' in session '${session.title}'`
-      );
-    }
+      });
+      if (existing) {
+        throw new ConflictError(
+          `Attendance record already exists for resident '${resident.residentCode}' in session '${session.title}'`
+        );
+      }
 
-    return this.db.$transaction(async (tx) => {
       const record = await tx.attendanceRecord.create({
         data: {
           attendanceSessionId: input.sessionId,
@@ -272,7 +328,12 @@ export class AttendanceService {
       );
 
       return record;
-    });
+    };
+
+    if (externalTx) {
+      return executeOperation(externalTx);
+    }
+    return this.db.$transaction(executeOperation);
   }
 
   public async getSessionWithRecords(sessionId: string) {

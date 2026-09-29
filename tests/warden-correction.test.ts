@@ -55,22 +55,25 @@ describe('Warden Correction Workflow Tests', () => {
       initialPresence: PresenceState.IN,
     });
 
+    const originalOutTime = new Date(Date.now() - 2 * 3600 * 1000);
+    const missedInTime = new Date(Date.now() - 1 * 3600 * 1000);
+
     const originalOutEvent = await movementService.recordNormalMovement({
       residentId: resident.id,
       hostelId: hostelId,
       movementType: MovementType.OUT,
       source: MovementSource.GUARD_CONFIRMATION,
-      effectiveTimestamp: new Date('2026-09-29T18:00:00Z'),
+      effectiveTimestamp: originalOutTime,
     });
 
-    // Resident physically returned at 20:15 but gate missed recording it.
-    // At 21:30 Warden notices resident inside and records Missed IN correction:
+    // Resident physically returned at missedInTime but gate missed recording it.
+    // Warden notices resident inside and records Missed IN correction:
     const correctionEvent = await movementService.executeWardenCorrection({
       residentId: resident.id,
       targetState: PresenceState.IN,
       hostelId: hostelId,
-      effectiveTimestamp: new Date('2026-09-29T20:15:00Z'),
-      reason: 'Resident returned at 20:15 but gate scanner was temporarily offline',
+      effectiveTimestamp: missedInTime,
+      reason: 'Resident returned at missedInTime but gate scanner was temporarily offline',
       authorizedByUserId: wardenUserId,
       authorizedByRole: StaffRole.WARDEN,
     });
@@ -98,7 +101,7 @@ describe('Warden Correction Workflow Tests', () => {
       where: { entityType: 'CORRECTION', performedByUserId: wardenUserId },
     });
     expect(audit).toBeDefined();
-    expect(audit?.reason).toBe('Resident returned at 20:15 but gate scanner was temporarily offline');
+    expect(audit?.reason).toBe('Resident returned at missedInTime but gate scanner was temporarily offline');
   });
 
   it('allows Warden to create a Missed OUT correction with mandatory reason', async () => {
@@ -112,12 +115,14 @@ describe('Warden Correction Workflow Tests', () => {
       initialPresence: PresenceState.IN,
     });
 
+    const missedOutTime = new Date(Date.now() - 30 * 60 * 1000); // 30 min ago
+
     const correctionEvent = await movementService.executeWardenCorrection({
       residentId: resident.id,
       targetState: PresenceState.OUT,
       hostelId: hostelId,
-      effectiveTimestamp: new Date('2026-09-29T14:30:00Z'),
-      reason: 'Resident left for home with approved weekend leave at 14:30',
+      effectiveTimestamp: missedOutTime,
+      reason: 'Resident left for home with approved weekend leave at earlier time',
       authorizedByUserId: wardenUserId,
       authorizedByRole: StaffRole.WARDEN,
     });

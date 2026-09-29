@@ -1,6 +1,6 @@
 # PRAVAHAx Face Recognition Hostel Attendance & Resident Movement System
 
-## Step 01: Core Architecture, PostgreSQL Foundation & Domain Business Engine
+## Step 01 & Step 01.1: Core Architecture, PostgreSQL Foundation & Domain Business Engine
 
 A robust, enterprise-grade foundation for residential hostel attendance and resident movement tracking, built as a modular monolith in TypeScript, Node.js, and PostgreSQL.
 
@@ -37,36 +37,37 @@ A clean **Modular Monolith** structure where business logic is strictly decouple
 │   │   └── 20260929101840_init/
 │   │       └── migration.sql
 │   ├── schema.prisma           # Prisma domain schema with models, relations & indexes
-│   └── seed.ts                 # Deterministic seed data script
+│   └── seed.ts                 # Seed script with production safety guards
 ├── src/
 │   ├── api/
 │   │   └── app.ts              # Express application factory & health check routes
 │   ├── common/
-│   │   ├── errors/             # Domain errors (Conflict, PermissionDenied, etc.)
+│   │   ├── errors/             # Domain errors (DomainIntegrityError, Conflict, etc.)
 │   │   └── utils/              # Timezone handling (UTC <-> Asia/Kolkata)
 │   ├── config/
 │   │   └── index.ts            # Validated environment configuration
 │   ├── database/
 │   │   └── client.ts           # PrismaClient singleton with test URL support
 │   ├── modules/
-│   │   ├── audit/              # Sensitive-data-redacted audit trail service
-│   │   ├── auth/               # Staff user authentication & RBAC permission guards
+│   │   ├── audit/              # Append-oriented audit trail service (sensitive data redacted)
+│   │   ├── auth/               # Staff authentication & hostel-scoped permission guards
 │   │   ├── attendance/         # General attendance sessions & duplicate-safe records
 │   │   ├── biometrics/         # FaceProfile entity (logical separation from resident)
 │   │   ├── cameras/            # Camera registry & ICameraAdapter contracts
 │   │   ├── movements/          # Atomic IN/OUT movement engine with row locking
-│   │   ├── night-attendance/   # Hostel Night Attendance & Warden resolution engine
+│   │   ├── night-attendance/   # Hostel Night Attendance & atomic Warden resolution engine
 │   │   ├── organizations/      # Organization, Hostel, and Location hierarchy
 │   │   ├── presence/           # Ultra-fast indexed IN/OUT count and presence query
 │   │   └── residents/          # Resident domain (safe deactivation preserving history)
 │   └── index.ts                # HTTP application entry point
 ├── tests/
 │   ├── helpers/
-│   │   └── test-db.ts          # Test database connection and reset utility
+│   │   └── test-db.ts          # Test database connection and fail-fast safety check
 │   ├── attendance.test.ts      # Session lifecycle & duplicate attendance tests
 │   ├── database.test.ts        # PostgreSQL database-level constraints & FK tests
+│   ├── integrity.test.ts       # Cross-hostel, camera, location & same-state regression tests
 │   ├── movement.test.ts        # IN/OUT alternating rules & history storage tests
-│   ├── night-attendance.test.ts# OUT-blocking & Warden Missed-IN resolution tests
+│   ├── night-attendance.test.ts# OUT-blocking & atomic Warden Missed-IN resolution tests
 │   ├── permissions.test.ts     # Guard vs Warden permission boundary tests
 │   ├── resident.test.ts        # Registration & historical preservation tests
 │   ├── transactions.test.ts    # Concurrency locking & rollback tests
@@ -87,22 +88,26 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-Configuration variables:
+Configuration variables (use your actual local PostgreSQL credentials):
 
 ```ini
-# Main PostgreSQL connection string
-DATABASE_URL="postgresql://postgres:123456@localhost:5433/pravahax_db?schema=public"
+# Database URLs (Placeholders - replace with your local database credentials)
+DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5433/pravahax_db?schema=public"
 
 # Isolated test database connection string
-TEST_DATABASE_URL="postgresql://postgres:123456@localhost:5433/pravahax_test_db?schema=public"
+TEST_DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5433/pravahax_test_db?schema=public"
 
 # Application settings
 APP_ENV="development"
 PORT=3000
 TIMEZONE="Asia/Kolkata"
 
-# JWT secret
-JWT_SECRET="dev_secret_pravahax_attendance_movement_2026_key"
+# Security (JWT secret for staff auth tokens)
+JWT_SECRET="replace_with_a_secure_random_secret_in_production"
+
+# Seed configuration (LOCAL DEVELOPMENT / DEMO ONLY)
+SEED_DEFAULT_PASSWORD="replace_with_demo_password_for_local_seed"
+ALLOW_DESTRUCTIVE_SEED="false"
 ```
 
 ---
@@ -122,10 +127,10 @@ JWT_SECRET="dev_secret_pravahax_attendance_movement_2026_key"
 
 3. **Deploy Migrations to Test Database**:
    ```bash
-   $env:DATABASE_URL="postgresql://postgres:123456@localhost:5433/pravahax_test_db?schema=public"; npx prisma migrate deploy
+   $env:DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5433/pravahax_test_db?schema=public"; npx prisma migrate deploy
    ```
 
-4. **Seed Database with Prototype Data**:
+4. **Seed Database with Prototype Data** (Protected against accidental production execution):
    ```bash
    npm run seed
    ```
@@ -134,7 +139,7 @@ JWT_SECRET="dev_secret_pravahax_attendance_movement_2026_key"
 
 ## 6. Running Automated Tests
 
-Run the full automated test suite (26 passing tests across 8 test suites):
+Run the full automated test suite against the isolated test database:
 
 ```bash
 npm test
@@ -143,12 +148,14 @@ npm test
 Test coverage includes:
 - **Resident Domain**: Creation, uniqueness constraint rejection, safe deactivation preserving history.
 - **Movement Transitions**: Alternating IN <-> OUT enforcement, strict rejection of IN -> IN and OUT -> OUT, complete event preservation, presence decoupled from attendance.
+- **Cross-Hostel Integrity**: Rejection of cross-hostel movements, cross-hostel warden corrections, and cross-hostel attendance markings.
+- **Device & Location Integrity**: Rejection of disabled cameras, cross-hostel cameras, and location/hostel mismatches.
 - **Transaction Safety**: Atomic rollback upon error (no orphaned rows), row-level locking (`SELECT ... FOR UPDATE`) preventing race conditions under concurrent operations.
-- **Guard Permissions**: Normal gate operations allowed; corrections, invalid transition bypass, and manual overrides strictly blocked.
-- **Warden Corrections**: Missed IN and Missed OUT corrections, mandatory reason validation, old event immutability, current presence synchronization, and audit trail creation.
-- **Attendance Sessions**: Session lifecycle (DRAFT -> ACTIVE -> CLOSED), record creation, and duplicate attendance prevention.
-- **Night Attendance**: OUT resident blocked from automatic Present, Guard override blocked, Warden Missed-IN resolution with return time and mandatory reason, and audit logging.
+- **Guard Permissions & Scope**: Normal gate operations allowed; corrections, invalid transition bypass, and manual overrides strictly blocked. Guard and Warden actions strictly bounded to their assigned hostel.
+- **Warden Corrections**: Missed IN and Missed OUT corrections, rejection of same-state corrections (IN -> IN, OUT -> OUT), mandatory reason validation, old event immutability, current presence synchronization, and audit trail creation.
+- **Night Attendance (Fully Atomic)**: OUT resident blocked from automatic Present, Guard override blocked, Warden Missed-IN resolution with return time and mandatory reason executed inside a single atomic PostgreSQL transaction boundary.
 - **Database Constraints**: Composite unique constraint `(attendanceSessionId, residentId)`, unique resident code, and foreign key cascading protections verified directly at the database level.
+- **Safety Guards**: Destructive seed refused in production environments; test runner refuses execution if `TEST_DATABASE_URL` is unsafe.
 
 ---
 
@@ -194,8 +201,18 @@ Expected response:
 2. **Movement History**: Immutable audit log of every gate pass (07:30 OUT, 08:20 IN, etc.). Never overwritten or deleted.
 3. **Current Presence State**: The resident's current real-time physical state (`IN` or `OUT`), derived from validated movement transactions and indexed on `(hostelId, currentState)`.
 
-### Night Attendance Rule (Critical)
-A resident currently recorded as `OUT` is **never** automatically marked `PRESENT` during Night Attendance, even if their face is observed. The system flags this inconsistency. Guard cannot override it. A Warden must review the resident in person and perform a **Correct Missed IN** action with a specified return time and mandatory reason. Once committed, the presence updates to `IN` and the Night Attendance record is marked `CORRECTED_PRESENT`.
+### Night Attendance Rule & Atomic Resolution
+A resident currently recorded as `OUT` is **never** automatically marked `PRESENT` during Night Attendance, even if their face is observed. The system flags this inconsistency. Guard cannot override it. A Warden reviews the resident in person and executes an atomic **Resolve Missed IN and Mark Night Attendance Present** workflow:
+1. Validates that the resident has not already been marked in the session (prevents partial mutation before failure).
+2. Validates the return time (cannot be in the future beyond clock skew tolerance).
+3. Creates a `MovementCorrection` record and a new `MovementEvent` with `source: WARDEN_CORRECTION`.
+4. Updates `ResidentPresence` to `IN`.
+5. Inserts the `AttendanceRecord` marked as `CORRECTED_PRESENT`.
+6. Appends audit log entries.
+All 6 operations are committed in a **single atomic PostgreSQL transaction**. If any step fails, the entire workflow rolls back completely.
+
+### Append-Oriented Application Audit Log
+The system maintains an append-oriented historical audit trail with application-level write controls. All critical mutations (movements, corrections, session lifecycle, attendance overrides) record who performed the action, which role, what changed, and mandatory justification reasons where applicable. Sensitive data (passwords, tokens, biometric templates) is automatically redacted before persistence.
 
 ### Camera Abstraction Principle
 The business logic does not depend on webcam indices or video libraries. The `ICameraAdapter` contract decouples devices (`WEBCAM`, `RTSP`, `SMART_CAMERA`) so camera sources can be swapped without modifying movement, presence, attendance, or resident management services.

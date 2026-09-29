@@ -53,3 +53,10 @@ export class ConcurrencyConflictError extends AppError {
     super(message, 409, 'CONCURRENCY_CONFLICT');
   }
 }
+
+export class DomainIntegrityError extends AppError {
+  constructor(message: string) {
+    super(message, 422, 'DOMAIN_INTEGRITY_ERROR');
+  }
+}
+

@@ -179,12 +179,14 @@ describe('General Hostel Night Attendance Workflow Tests', () => {
       })
     ).rejects.toThrow(AttendanceRuleViolationError);
 
+    const returnTime = new Date(Date.now() - 15 * 60 * 1000); // 15 min ago
+
     // 3. Warden verifies resident in person and resolves missed IN with return time and reason
     const result = await nightAttendanceService.resolveMissedInAndMarkPresent({
       sessionId: nightSessionId,
       residentId: resident.id,
-      effectiveReturnTime: new Date('2026-09-29T20:15:00Z'),
-      correctionReason: 'Resident physically entered with library group at 20:15; gate entry scan was missed',
+      effectiveReturnTime: returnTime,
+      correctionReason: 'Resident physically entered with library group; gate entry scan was missed',
       wardenUserId: wardenUserId,
       wardenRole: StaffRole.WARDEN,
     });

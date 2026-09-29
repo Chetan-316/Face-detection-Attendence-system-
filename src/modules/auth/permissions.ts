@@ -61,3 +61,45 @@ export function assertPermission(role: StaffRole, action: ActionName): void {
     throw new PermissionDeniedError(action, role);
   }
 }
+
+export interface StaffActor {
+  id: string;
+  organizationId: string;
+  hostelId?: string | null;
+  role: StaffRole;
+}
+
+export function assertUserCanOperateInOrganization(
+  actor: StaffActor,
+  targetOrganizationId: string
+): void {
+  if (actor.organizationId !== targetOrganizationId) {
+    throw new PermissionDeniedError(
+      `Operate in organization '${targetOrganizationId}' (actor belongs to '${actor.organizationId}')`,
+      actor.role
+    );
+  }
+}
+
+export function assertUserCanOperateInHostel(
+  actor: StaffActor,
+  targetOrganizationId: string,
+  targetHostelId: string
+): void {
+  assertUserCanOperateInOrganization(actor, targetOrganizationId);
+
+  if (actor.role === StaffRole.GUARD || actor.role === StaffRole.WARDEN) {
+    if (!actor.hostelId || actor.hostelId !== targetHostelId) {
+      throw new PermissionDeniedError(
+        `Operate in hostel '${targetHostelId}' (actor assigned to '${actor.hostelId || 'unassigned'}')`,
+        actor.role
+      );
+    }
+  } else if (actor.role === StaffRole.ADMIN && actor.hostelId && actor.hostelId !== targetHostelId) {
+    throw new PermissionDeniedError(
+      `Operate in hostel '${targetHostelId}' (admin assigned specifically to '${actor.hostelId}')`,
+      actor.role
+    );
+  }
+}
+

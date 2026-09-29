@@ -1,7 +1,32 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from '../../src/config';
 
-// Always use test database URL for tests
+export function verifyTestDatabaseSafety(testUrl: string, devUrl?: string): void {
+  if (!testUrl) {
+    throw new Error('SAFETY ERROR: TEST_DATABASE_URL is not set.');
+  }
+
+  const normalized = testUrl.toLowerCase();
+  const isSafe = normalized.includes('test') || normalized.includes('pravahax_test_db');
+
+  if (!isSafe) {
+    throw new Error(
+      `SAFETY ERROR: Refusing to connect tests to unsafe database URL '${testUrl}'. ` +
+      `URL must explicitly contain 'test' or 'pravahax_test_db'.`
+    );
+  }
+
+  if (devUrl && testUrl === devUrl) {
+    throw new Error(
+      'SAFETY ERROR: TEST_DATABASE_URL cannot be identical to DATABASE_URL. Tests would wipe application data.'
+    );
+  }
+}
+
+// Enforce safety immediately at import
+verifyTestDatabaseSafety(config.testDatabaseUrl, config.databaseUrl);
+
+// Always use verified test database URL for tests
 export const testPrisma = new PrismaClient({
   datasources: {
     db: {
@@ -12,6 +37,9 @@ export const testPrisma = new PrismaClient({
 });
 
 export async function resetTestDatabase(): Promise<void> {
+  // Second safety check before any deletion
+  verifyTestDatabaseSafety(config.testDatabaseUrl, config.databaseUrl);
+
   // Truncate/delete all tables in test database in reverse dependency order
   await testPrisma.auditLog.deleteMany();
   await testPrisma.attendanceRecord.deleteMany();
