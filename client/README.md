@@ -15,7 +15,7 @@ The PRAVAHAx Frontend is the dedicated staff web interface for residential hoste
 - **Language**: TypeScript (Strict typing)
 - **Bundler & Tooling**: Vite
 - **Routing**: React Router v7
-- **Testing**: Vitest + React Testing Library + happy-dom
+- **Testing**: Vitest + React Testing Library + jsdom
 - **Icons**: Lucide React
 
 ---
@@ -68,7 +68,7 @@ npm test
 ---
 
 ## Current Platform Capabilities
-- **Staff Authentication**: Secure username/password login, JWT storage in secure cookies/memory, and automatic session verification.
+- **Staff Authentication**: Secure username/password login, JWT access-token persistence in localStorage for the current prototype, and automatic server-side session verification.
 - **Protected Routing**: Role-aware layout and route-level redirection protecting unauthorized views.
 - **Hostel Overview**: Live metrics for total, active, IN/OUT occupancy, and face enrollment counts with security scope cards.
 - **Resident Directory**: Paginated resident list with search (by name, code, room) and faceted filtering (status, presence, enrollment).
