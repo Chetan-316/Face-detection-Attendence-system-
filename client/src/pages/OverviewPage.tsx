@@ -163,7 +163,7 @@ export const OverviewPage: React.FC = () => {
             {isLoading ? <span className="skeleton-line" /> : summary?.notEnrolled ?? 0}
           </div>
           <div className="metric-footer">
-            <span>Pending enrollment in Phase 04</span>
+            <span>Pending biometric enrollment setup</span>
           </div>
         </Card>
       </div>
@@ -207,7 +207,7 @@ export const OverviewPage: React.FC = () => {
           </div>
         </Card>
 
-        <Card title="Step 03 System Status" subtitle="Verified platform foundation">
+        <Card title="System Status" subtitle="Current platform capabilities">
           <div className="system-status-body">
             <div className="status-row">
               <span className="status-label">Authentication Layer</span>
@@ -222,11 +222,11 @@ export const OverviewPage: React.FC = () => {
               <span className="status-pill status-pill-success">SYNCHRONIZED</span>
             </div>
             <div className="status-row">
-              <span className="status-label">Biometric Recognition Hardware</span>
-              <span className="status-pill status-pill-neutral">DEFERRED TO PHASE 04</span>
+              <span className="status-label">Camera & Biometric Pipeline</span>
+              <span className="status-pill status-pill-neutral">PLANNED FOR UPCOMING PHASES</span>
             </div>
             <p className="status-note mt-4 text-xs text-muted">
-              Face Recognition camera streaming and feature vector extraction are intentionally deferred to Step 04. No simulated or mock recognition pipelines are active.
+              Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.
             </p>
           </div>
         </Card>

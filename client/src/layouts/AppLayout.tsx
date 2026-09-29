@@ -121,7 +121,7 @@ export const AppLayout: React.FC = () => {
               <span className="scope-value">{user?.role}</span>
             </div>
             <div className="phase-indicator">
-              <span>Phase: Step 03 UI Verified</span>
+              <span>System Operational</span>
             </div>
           </div>
         </aside>

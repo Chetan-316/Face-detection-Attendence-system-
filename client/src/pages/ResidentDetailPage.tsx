@@ -198,7 +198,7 @@ export const ResidentDetailPage: React.FC = () => {
               <Badge type="enrollment" value={resident.faceEnrollmentStatus} />
             </div>
             <p className="biometric-deferral-notice mt-3">
-              Face enrollment will be configured in the next system phase (Step 04). Hardware camera capture and embedding extraction pipelines are currently deferred.
+              Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.
             </p>
           </div>
 

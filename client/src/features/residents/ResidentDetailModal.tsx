@@ -136,7 +136,7 @@ export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
           </div>
         </div>
 
-        {/* Biometric Face Status Banner (Phase 03 Strict Deferred Message) */}
+        {/* Biometric Face Status Banner */}
         <div className="biometric-status-card mt-4">
           <div className="biometric-status-header">
             <div className="flex items-center gap-2">
@@ -146,7 +146,7 @@ export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
             <Badge type="enrollment" value={resident.faceEnrollmentStatus} />
           </div>
           <p className="biometric-deferral-notice mt-2">
-            Face enrollment will be configured in the next system phase (Step 04). Hardware camera capture and embedding extraction pipelines are currently deferred.
+            Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.
           </p>
         </div>
 
