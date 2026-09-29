@@ -63,6 +63,27 @@ export const Badge: React.FC<BadgeProps> = ({ type = 'neutral', value, size = 's
     label = 'GUARD';
   }
 
+  // Camera Health & Source Badges
+  else if (value === 'ONLINE') {
+    badgeClass = 'badge-status-active';
+    label = 'ONLINE';
+  } else if (value === 'OFFLINE') {
+    badgeClass = 'badge-status-inactive';
+    label = 'OFFLINE';
+  } else if (value === 'DEGRADED') {
+    badgeClass = 'badge-enroll-needs';
+    label = 'DEGRADED';
+  } else if (value === 'WEBCAM') {
+    badgeClass = 'badge-role-guard';
+    label = 'WEBCAM';
+  } else if (value === 'RTSP') {
+    badgeClass = 'badge-role-warden';
+    label = 'RTSP';
+  } else if (value === 'SMART_CAMERA') {
+    badgeClass = 'badge-role-admin';
+    label = 'SMART CAM';
+  }
+
   return (
     <span className={`badge badge-${size} ${badgeClass}`}>
       <span className="badge-dot" aria-hidden="true" />

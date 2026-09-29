@@ -7,6 +7,7 @@ import { ToastContainer } from '../components/Toast';
 import {
   LayoutDashboard,
   Users,
+  Video,
   LogOut,
   Menu,
   X,
@@ -104,6 +105,15 @@ export const AppLayout: React.FC = () => {
             >
               <Users size={18} />
               <span>Residents</span>
+            </NavLink>
+
+            <NavLink
+              to="/cameras"
+              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <Video size={18} />
+              <span>Cameras</span>
             </NavLink>
           </nav>
 

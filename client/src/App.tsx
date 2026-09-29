@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { ResidentsPage } from './pages/ResidentsPage';
 import { ResidentDetailPage } from './pages/ResidentDetailPage';
+import { CamerasPage } from './pages/CamerasPage';
 
 export const App: React.FC = () => {
   return (
@@ -30,6 +31,7 @@ export const App: React.FC = () => {
               <Route index element={<OverviewPage />} />
               <Route path="residents" element={<ResidentsPage />} />
               <Route path="residents/:id" element={<ResidentDetailPage />} />
+              <Route path="cameras" element={<CamerasPage />} />
             </Route>
 
             {/* Fallback */}

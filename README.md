@@ -214,5 +214,33 @@ All 6 operations are committed in a **single atomic PostgreSQL transaction**. If
 ### Append-Oriented Application Audit Log
 The system maintains an append-oriented historical audit trail with application-level write controls. All critical mutations (movements, corrections, session lifecycle, attendance overrides) record who performed the action, which role, what changed, and mandatory justification reasons where applicable. Sensitive data (passwords, tokens, biometric templates) is automatically redacted before persistence.
 
-### Camera Abstraction Principle
+### Camera Abstraction Principle & Step 04 Implementation
 The business logic does not depend on webcam indices or video libraries. The `ICameraAdapter` contract decouples devices (`WEBCAM`, `RTSP`, `SMART_CAMERA`) so camera sources can be swapped without modifying movement, presence, attendance, or resident management services.
+
+```
+Camera Database Configuration
+             ↓
+       CameraService
+             ↓
+       ICameraAdapter
+             ↓
+  ┌───────────────────────┐
+  │ Webcam Adapter        │ ← Step 04 Implementation (Laptop & USB)
+  ├───────────────────────┤
+  │ RTSP Adapter          │ ← Future IP Camera Streams
+  ├───────────────────────┤
+  │ Smart Camera Adapter  │ ← Future Edge AI Node Streams
+  └───────────────────────┘
+             ↓
+        Frame Source (OpenCV Worker / Synthetic Engine)
+             ↓
+    Live Preview Stream (MJPEG via /api/v1/cameras/:id/preview)
+```
+
+#### Step 04 Deliverables Verified:
+- **Laptop Hardware Capture**: Proven on Windows laptop built-in webcam via DirectShow / OpenCV (`webcam_worker.py`).
+- **Encapsulated Configuration**: Business logic calls `CameraService` by `cameraId` only; device indices remain strictly inside `Camera.configMetadata`.
+- **Live Preview Stream**: High-performance HTTP multipart MJPEG stream served directly to client `<img>` elements without heavy plugins.
+- **Hardware Telemetry**: Real-time FPS, total frames captured, resolution, error status, and clean resource release.
+- **Biometric Isolation**: Biometric face enrollment and recognition remain strictly decoupled for Step 05.
+

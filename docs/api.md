@@ -269,6 +269,108 @@ Reactivates an inactive resident. Restricted to `ADMIN` and `WARDEN`.
 
 ---
 
+### 4. Camera Abstraction & Live Preview (Step 04)
+
+The camera subsystem provides hardware abstraction for laptop webcams, RTSP IP cameras, and smart edge devices without coupling business logic to hardware device indices.
+
+#### `GET /api/v1/cameras`
+Lists cameras accessible within the user's role and hostel scope.
+
+**Headers:**
+`Authorization: Bearer <TOKEN>`
+
+**Query Parameters:**
+- `hostelId` (optional, Admin only): Filter cameras by specific hostel.
+- `role` (optional): Filter cameras by operational role (`GENERAL`, `IN`, `OUT`, `ATTENDANCE`).
+
+**Response `200 OK`:**
+```json
+{
+  "data": [
+    {
+      "id": "c76a9fb0-9943-4dc6-8c0c-88229b47e221",
+      "name": "Laptop Webcam",
+      "sourceType": "WEBCAM",
+      "role": "GENERAL",
+      "isEnabled": true,
+      "healthStatus": "ONLINE",
+      "isStreaming": true,
+      "fps": 15,
+      "lastSeenAt": "2026-09-29T17:30:00.000Z"
+    }
+  ],
+  "count": 1
+}
+```
+
+---
+
+#### `POST /api/v1/cameras`
+Registers a new camera. Allowed for `ADMIN` and `WARDEN` (wardens restricted to assigned hostel).
+
+**Request Body:**
+```json
+{
+  "name": "Gate 1 Ingress Camera",
+  "sourceType": "WEBCAM",
+  "role": "IN",
+  "locationId": "a1b2c3d4-...",
+  "configMetadata": {
+    "deviceIndex": 0,
+    "fps": 15
+  }
+}
+```
+
+---
+
+#### `GET /api/v1/cameras/:id`
+Retrieves camera details and live telemetry diagnostics.
+
+---
+
+#### `POST /api/v1/cameras/:id/start`
+Opens the camera hardware device and starts frame acquisition.
+
+**Response `200 OK`:**
+```json
+{
+  "message": "Camera stream started successfully",
+  "data": {
+    "cameraId": "c76a9fb0-...",
+    "isActive": true,
+    "healthStatus": "ONLINE",
+    "fps": 15,
+    "totalFramesCaptured": 45
+  }
+}
+```
+
+---
+
+#### `POST /api/v1/cameras/:id/stop`
+Stops frame acquisition and releases camera hardware cleanly.
+
+---
+
+#### `GET /api/v1/cameras/:id/health`
+Returns detailed health diagnostics, current FPS, error state, and adapter capabilities.
+
+---
+
+#### `GET /api/v1/cameras/:id/snapshot`
+Captures a single still frame.
+- If `format=json` query or `Accept: application/json` is sent, returns JSON with Base64 JPEG data.
+- By default or with `Accept: image/jpeg`, returns binary `image/jpeg` payload directly.
+
+---
+
+#### `GET /api/v1/cameras/:id/preview`
+Streams a real-time live MJPEG feed (`multipart/x-mixed-replace; boundary=--pravahax-frame`).
+Supports both `Authorization: Bearer <TOKEN>` header and `?token=<JWT>` query parameter for standard HTML `<img>` tag embedding.
+
+---
+
 ## Standard Error Response Format
 
 All error responses adhere to a consistent schema:
