@@ -1,0 +1,447 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
+enum LocationType {
+  GATE
+  ENTRANCE
+  ATTENDANCE_POINT
+  COMMON_AREA
+}
+
+enum StaffRole {
+  ADMIN
+  WARDEN
+  GUARD
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ResidentStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum FaceEnrollmentStatus {
+  NOT_ENROLLED
+  ENROLLED
+  NEEDS_REENROLLMENT
+  REVOKED
+}
+
+enum CameraSourceType {
+  WEBCAM
+  RTSP
+  SMART_CAMERA
+}
+
+enum CameraRole {
+  GENERAL
+  IN
+  OUT
+  ATTENDANCE
+}
+
+enum CameraHealthStatus {
+  ONLINE
+  OFFLINE
+  DEGRADED
+  UNKNOWN
+}
+
+enum MovementType {
+  IN
+  OUT
+}
+
+enum MovementSource {
+  FACE_RECOGNITION
+  GUARD_CONFIRMATION
+  WARDEN_CORRECTION
+  MANUAL
+  SYSTEM
+  SMART_CAMERA
+}
+
+enum PresenceState {
+  IN
+  OUT
+}
+
+enum AttendanceSessionType {
+  GENERAL
+  NIGHT
+}
+
+enum AttendanceSessionStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum AttendanceRecordStatus {
+  PRESENT
+  NOT_IN_HOSTEL
+  NOT_RECORDED
+  CORRECTED_PRESENT
+  EXCUSED
+}
+
+enum AttendanceMarkMethod {
+  FACE_RECOGNITION
+  MANUAL_STAFF
+  WARDEN_OVERRIDE
+  SYSTEM
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  DEACTIVATE
+  NORMAL_MOVEMENT
+  CORRECTION
+  SESSION_START
+  SESSION_CLOSE
+  ATTENDANCE_MARK
+  ATTENDANCE_OVERRIDE
+  PERMISSION_CHANGE
+}
+
+// ----------------------------------------------------
+// MODELS
+// ----------------------------------------------------
+
+model Organization {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hostels            Hostel[]
+  users              User[]
+  residents          Resident[]
+  cameras            Camera[]
+  attendanceSessions AttendanceSession[]
+  auditLogs          AuditLog[]
+
+  @@map("organizations")
+}
+
+model Hostel {
+  id             String   @id @default(uuid())
+  organizationId String
+  code           String
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  locations           Location[]
+  users               User[]
+  residents           Resident[]
+  cameras             Camera[]
+  movementEvents      MovementEvent[]
+  residentPresences   ResidentPresence[]
+  attendanceSessions  AttendanceSession[]
+  movementCorrections MovementCorrection[]
+  auditLogs           AuditLog[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, isActive])
+  @@map("hostels")
+}
+
+model Location {
+  id           String       @id @default(uuid())
+  hostelId     String
+  code         String
+  name         String
+  locationType LocationType @default(GATE)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  hostel             Hostel              @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  cameras            Camera[]
+  movementEvents     MovementEvent[]
+  attendanceSessions AttendanceSession[]
+
+  @@unique([hostelId, code])
+  @@map("locations")
+}
+
+model User {
+  id             String     @id @default(uuid())
+  organizationId String
+  hostelId       String?
+  username       String     @unique
+  email          String?    @unique
+  fullName       String
+  passwordHash   String
+  role           StaffRole
+  status         UserStatus @default(ACTIVE)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization               Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  hostel                     Hostel?              @relation(fields: [hostelId], references: [id], onDelete: SetNull)
+  faceProfilesEnrolled       FaceProfile[]
+  movementsConfirmed         MovementEvent[]
+  presencesUpdated           ResidentPresence[]
+  correctionsAuthorized      MovementCorrection[]
+  attendanceSessionsCreated  AttendanceSession[]  @relation("SessionCreatedBy")
+  attendanceSessionsStarted  AttendanceSession[]  @relation("SessionStartedBy")
+  attendanceSessionsClosed   AttendanceSession[]  @relation("SessionClosedBy")
+  attendanceRecordsMarked    AttendanceRecord[]   @relation("RecordMarkedBy")
+  attendanceRecordsCorrected AttendanceRecord[]   @relation("RecordCorrectedBy")
+  auditLogs                  AuditLog[]
+
+  @@map("users")
+}
+
+model Resident {
+  id                   String               @id @default(uuid())
+  organizationId       String
+  hostelId             String
+  residentCode         String
+  fullName             String
+  roomGroup            String
+  contactPhone         String?
+  contactEmail         String?
+  status               ResidentStatus       @default(ACTIVE)
+  faceEnrollmentStatus FaceEnrollmentStatus @default(NOT_ENROLLED)
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  hostel              Hostel               @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  faceProfiles        FaceProfile[]
+  movementEvents      MovementEvent[]
+  presence            ResidentPresence?
+  attendanceRecords   AttendanceRecord[]
+  movementCorrections MovementCorrection[]
+
+  @@unique([organizationId, residentCode])
+  @@index([hostelId, status])
+  @@index([residentCode])
+  @@map("residents")
+}
+
+model FaceProfile {
+  id                String               @id @default(uuid())
+  residentId        String
+  enrollmentStatus  FaceEnrollmentStatus
+  modelName         String
+  modelVersion      String
+  templateReference String
+  metadata          Json?
+  enrolledAt        DateTime             @default(now())
+  revokedAt         DateTime?
+  enrolledByUserId  String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  resident   Resident @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  enrolledBy User?    @relation(fields: [enrolledByUserId], references: [id], onDelete: SetNull)
+
+  @@index([residentId, enrollmentStatus])
+  @@map("face_profiles")
+}
+
+model Camera {
+  id             String             @id @default(uuid())
+  organizationId String
+  hostelId       String
+  locationId     String?
+  name           String
+  sourceType     CameraSourceType
+  role           CameraRole         @default(GENERAL)
+  isEnabled      Boolean            @default(true)
+  healthStatus   CameraHealthStatus @default(UNKNOWN)
+  lastSeenAt     DateTime?
+  configMetadata Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  hostel         Hostel          @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  location       Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  movementEvents MovementEvent[]
+
+  @@index([hostelId, isEnabled])
+  @@index([role])
+  @@map("cameras")
+}
+
+model MovementEvent {
+  id                   String         @id @default(uuid())
+  residentId           String
+  hostelId             String
+  locationId           String?
+  cameraId             String?
+  movementType         MovementType
+  source               MovementSource
+  effectiveTimestamp   DateTime
+  recordedTimestamp    DateTime       @default(now())
+  confirmedByUserId    String?
+  notes                String?
+  isCorrection         Boolean        @default(false)
+  correctionId         String?
+  recognitionReference String?
+  createdAt            DateTime       @default(now())
+
+  resident           Resident            @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  hostel             Hostel              @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  location           Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  camera             Camera?             @relation(fields: [cameraId], references: [id], onDelete: SetNull)
+  confirmedBy        User?               @relation(fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+  correction         MovementCorrection? @relation(fields: [correctionId], references: [id], onDelete: SetNull)
+  presencesLastEvent ResidentPresence[]  @relation("LastMovementEvent")
+
+  @@index([residentId, effectiveTimestamp(sort: Desc)])
+  @@index([hostelId, effectiveTimestamp(sort: Desc)])
+  @@index([movementType, effectiveTimestamp(sort: Desc)])
+  @@index([effectiveTimestamp(sort: Desc)])
+  @@map("movement_events")
+}
+
+model ResidentPresence {
+  residentId          String        @id
+  hostelId            String
+  currentState        PresenceState
+  lastMovementEventId String?
+  lastMovementType    MovementType?
+  lastMovementTime    DateTime?
+  lastUpdatedByUserId String?
+  updatedAt           DateTime      @updatedAt
+
+  resident          Resident       @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  hostel            Hostel         @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  lastMovementEvent MovementEvent? @relation("LastMovementEvent", fields: [lastMovementEventId], references: [id], onDelete: SetNull)
+  lastUpdatedBy     User?          @relation(fields: [lastUpdatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([hostelId, currentState])
+  @@index([currentState])
+  @@map("resident_presences")
+}
+
+model MovementCorrection {
+  id                 String        @id @default(uuid())
+  residentId         String
+  hostelId           String
+  oldState           PresenceState
+  newState           PresenceState
+  effectiveTimestamp DateTime
+  authorizedByUserId String
+  reason             String
+  createdAt          DateTime      @default(now())
+
+  resident       Resident        @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  hostel         Hostel          @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  authorizedBy   User            @relation(fields: [authorizedByUserId], references: [id], onDelete: Restrict)
+  movementEvents MovementEvent[]
+
+  @@index([residentId, createdAt(sort: Desc)])
+  @@index([hostelId, createdAt(sort: Desc)])
+  @@map("movement_corrections")
+}
+
+model AttendanceSession {
+  id              String                  @id @default(uuid())
+  organizationId  String
+  hostelId        String
+  locationId      String?
+  sessionType     AttendanceSessionType
+  title           String
+  status          AttendanceSessionStatus @default(DRAFT)
+  startTime       DateTime
+  endTime         DateTime?
+  createdByUserId String
+  startedByUserId String?
+  closedByUserId  String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  hostel       Hostel             @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  location     Location?          @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  createdBy    User               @relation("SessionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  startedBy    User?              @relation("SessionStartedBy", fields: [startedByUserId], references: [id], onDelete: SetNull)
+  closedBy     User?              @relation("SessionClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  records      AttendanceRecord[]
+
+  @@index([hostelId, sessionType, status])
+  @@index([startTime(sort: Desc)])
+  @@map("attendance_sessions")
+}
+
+model AttendanceRecord {
+  id                   String                 @id @default(uuid())
+  attendanceSessionId  String
+  residentId           String
+  status               AttendanceRecordStatus
+  markedAt             DateTime               @default(now())
+  markMethod           AttendanceMarkMethod
+  markedByUserId       String?
+  recognitionReference String?
+  notes                String?
+  correctionReason     String?
+  correctedByUserId    String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  session     AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Restrict)
+  resident    Resident          @relation(fields: [residentId], references: [id], onDelete: Restrict)
+  markedBy    User?             @relation("RecordMarkedBy", fields: [markedByUserId], references: [id], onDelete: SetNull)
+  correctedBy User?             @relation("RecordCorrectedBy", fields: [correctedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([attendanceSessionId, residentId])
+  @@index([residentId, status])
+  @@index([status])
+  @@map("attendance_records")
+}
+
+model AuditLog {
+  id                String      @id @default(uuid())
+  organizationId    String
+  hostelId          String?
+  entityType        String
+  entityId          String
+  action            AuditAction
+  performedByUserId String?
+  performedByRole   StaffRole?
+  reason            String?
+  oldValues         Json?
+  newValues         Json?
+  ipAddress         String?
+  timestamp         DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  hostel       Hostel?      @relation(fields: [hostelId], references: [id], onDelete: SetNull)
+  performedBy  User?        @relation(fields: [performedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([performedByUserId, timestamp(sort: Desc)])
+  @@index([timestamp(sort: Desc)])
+  @@map("audit_logs")
+}
