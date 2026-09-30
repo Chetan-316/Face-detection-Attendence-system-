@@ -38,7 +38,8 @@ vi.mock('../api/recognition.api', () => ({
     stopRecognition: vi.fn(),
     getStatus: vi.fn(),
     getResults: vi.fn(),
-    getEventsStreamUrl: vi.fn((id: string) => `http://mock-api/cameras/${id}/recognition/events`),
+    getStreamToken: vi.fn().mockResolvedValue({ streamToken: 'mock_stream_token_123', expiresIn: 60 }),
+    getEventsStreamUrl: vi.fn((id: string, st?: string) => `http://mock-api/cameras/${id}/recognition/events?streamToken=${st || ''}`),
   },
 }));
 
@@ -230,6 +231,66 @@ describe('Step 06: Continuous Face Recognition Monitor Interface', () => {
 
     expect(screen.queryByTestId('start-recognition-btn')).not.toBeInTheDocument();
     expect(screen.queryByTestId('stop-recognition-btn')).not.toBeInTheDocument();
+  });
+
+  it('displays QUALITY INSUFFICIENT for low-quality faces instead of UNKNOWN', async () => {
+    (recognitionApi.getResults as any).mockResolvedValue({
+      results: [
+        {
+          id: 'obs-poor-1',
+          faceId: 'trk-poor',
+          cameraId: 'cam-001',
+          classification: 'QUALITY_INSUFFICIENT',
+          resident: null,
+          similarity: null,
+          secondBestSimilarity: null,
+          bbox: { x: 50, y: 50, width: 40, height: 40 },
+          qualityUsable: false,
+          qualityReason: 'TOO_BLURRY',
+          detectedAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    renderComponent();
+
+    await screen.findAllByText(/Main Gate Webcam/i);
+
+    await waitFor(() => {
+      // Must display QUALITY INSUFFICIENT badge
+      expect(screen.getByText('QUALITY INSUFFICIENT')).toBeInTheDocument();
+      expect(screen.getByText(/Face detected — quality insufficient \(TOO_BLURRY\)/i)).toBeInTheDocument();
+    });
+
+    // Must NOT state UNKNOWN for this card
+    const card = screen.getByTestId('observation-quality_insufficient');
+    expect(card.textContent).not.toContain('No enrolled hostel resident matched confidently');
+  });
+
+  it('requests dedicated stream token and does NOT put primary JWT into SSE stream URL', async () => {
+    class MockEventSource {
+      addEventListener = vi.fn();
+      removeEventListener = vi.fn();
+      close = vi.fn();
+    }
+    const origEventSource = (global as any).EventSource;
+    (global as any).EventSource = MockEventSource;
+
+    try {
+      renderComponent();
+
+      await screen.findAllByText(/Main Gate Webcam/i);
+
+      await waitFor(() => {
+        expect(recognitionApi.getStreamToken).toHaveBeenCalledWith('cam-001');
+      });
+
+      expect(recognitionApi.getEventsStreamUrl).toHaveBeenCalledWith('cam-001', 'mock_stream_token_123');
+      // Primary JWT token should never be in the stream URL call
+      expect(recognitionApi.getEventsStreamUrl).not.toHaveBeenCalledWith('cam-001', 'mock_jwt_token');
+    } finally {
+      (global as any).EventSource = origEventSource;
+    }
   });
 
   it('proves that biometric vectors / embeddings are NEVER rendered in the DOM', async () => {

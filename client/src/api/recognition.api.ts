@@ -22,9 +22,14 @@ export const recognitionApi = {
     return apiClient<{ results: RecognitionObservation[] }>(`/cameras/${cameraId}/recognition/results?limit=${limit}`);
   },
 
-  getEventsStreamUrl(cameraId: string): string {
-    const token = getStoredToken();
-    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+  async getStreamToken(cameraId: string): Promise<{ streamToken: string; expiresIn: number }> {
+    return apiClient<{ streamToken: string; expiresIn: number }>(`/cameras/${cameraId}/recognition/stream-token`, {
+      method: 'POST',
+    });
+  },
+
+  getEventsStreamUrl(cameraId: string, streamToken?: string): string {
+    const tokenParam = streamToken ? `?streamToken=${encodeURIComponent(streamToken)}` : '';
     return `${API_BASE_URL}/cameras/${cameraId}/recognition/events${tokenParam}`;
   },
 };

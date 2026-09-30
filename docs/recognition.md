@@ -71,23 +71,35 @@ To maintain high throughput without querying PostgreSQL per video frame, `Templa
 
 ---
 
-## 5. Matching Algorithm & 3-State Classification
+## 5. Classification Model & Matching Policy
 
-### Vector Similarity
-Since SFace templates $\mathbf{u}$ and query embeddings $\mathbf{v}$ are both L2-normalized ($||\mathbf{u}||_2 = 1, ||\mathbf{v}||_2 = 1$), cosine similarity simplifies to vector dot product:
-$$\text{similarity} = \mathbf{u} \cdot \mathbf{v} = \sum_{i=1}^{128} u_i v_i$$
+### Classification States
+PRAVAHAx strictly distinguishes biometric quality failure from identity non-match:
 
-### Three-State Classification Logic
-1. **`MATCH`**:
-   - `bestSimilarity >= RECOGNITION_MATCH_THRESHOLD` (default: `0.60`)
-   - `bestSimilarity - secondBestSimilarity >= RECOGNITION_MIN_MARGIN` (default: `0.08`)
+1. **`QUALITY_INSUFFICIENT`**:
+   - The detected face cannot be reliably analyzed due to blur, extreme lighting, tiny face size ($< 50$ px), low detector confidence, or missing embedding.
+   - **Quality Rule**: No template matching is executed. `unknowns` counter is **not** incremented. No false identity conclusion is drawn.
+2. **`MATCH`**:
+   - A usable face is compared against eligible templates.
+   - `bestSimilarity >= RECOGNITION_MATCH_THRESHOLD` (default: `0.60`).
+   - `bestSimilarity - secondBestSimilarity >= RECOGNITION_MIN_MARGIN` (default: `0.08`).
    - Identity is confirmed and resident details are attached.
-2. **`UNCERTAIN`**:
+3. **`UNCERTAIN`**:
+   - A usable face is compared against eligible templates.
    - `bestSimilarity >= RECOGNITION_UNCERTAIN_THRESHOLD` (default: `0.40`), BUT fails either the match threshold or the candidate separation margin.
-   - **Strict Privacy Rule**: The nearest candidate resident identity is **never** revealed to client applications. Resident is set to `null` / `undefined`.
-3. **`UNKNOWN`**:
-   - `bestSimilarity < RECOGNITION_UNCERTAIN_THRESHOLD` or no eligible templates exist.
+   - **Strict Privacy Rule**: The nearest candidate resident identity is **never** revealed to client applications. Resident is set to `null`.
+4. **`UNKNOWN`**:
+   - A usable biometric face was extracted and compared against eligible enrolled templates, but no enrolled resident matched confidently (`bestSimilarity < 0.40`).
    - Resident is strictly `null`.
+
+### SSE Stream Token Authentication (Step 06.1 Hardening)
+- **Zero Global Query Tokens**: Global `requireAuth` strictly requires `Authorization: Bearer <JWT>` headers. Arbitrary query-string JWT authentication is rejected.
+- **Short-Lived Stream Token**:
+  - Client sends: `POST /api/v1/cameras/:cameraId/recognition/stream-token` with standard Bearer JWT.
+  - Server validates actor scope on that specific camera and issues a 60-second token: `{ streamToken: "...", expiresIn: 60 }`.
+  - Token payload: `{ sub, cameraId, organizationId, hostelId, role, type: 'RECOGNITION_STREAM' }`.
+  - Client connects: `GET /api/v1/cameras/:cameraId/recognition/events?streamToken=...`.
+  - **Security Barrier**: Recognition stream tokens are strictly camera-scoped and are **rejected** by all standard REST APIs (`/residents`, `/cameras`, `/recognition/start`, etc.).
 
 ### Provisional Prototype Thresholds
 | Parameter | Value | Description |

@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient, StaffRole } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
+import { tokenService } from '../auth/token.service';
 import { RecognitionService, defaultRecognitionService } from '../../modules/recognition/recognition.service';
 import { AuthenticationError, ForbiddenError } from '../../common/errors';
 
@@ -10,7 +11,7 @@ export function createRecognitionRouter(
   recognitionService: RecognitionService = defaultRecognitionService
 ): Router {
   const router = Router({ mergeParams: true });
-  const { requireAuth } = createAuthMiddleware(db);
+  const { requireAuth, requireStreamAuth } = createAuthMiddleware(db);
 
   /**
    * Helper to extract authenticated actor from req.user
@@ -93,11 +94,42 @@ export function createRecognitionRouter(
   });
 
   /**
-   * GET /api/v1/cameras/:cameraId/recognition/events
-   * Server-Sent Events (SSE) live stream of recognition observations.
+   * POST /api/v1/cameras/:cameraId/recognition/stream-token
+   * Issue a short-lived (60s), camera-scoped stream token for SSE connections.
    * Allowed: ADMIN, WARDEN, GUARD.
    */
-  router.get('/:cameraId/recognition/events', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/:cameraId/recognition/stream-token', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = getActor(req);
+      const cameraId = req.params.cameraId as string;
+
+      // Verify scope first (VIEW permission)
+      const camera = await recognitionService.verifyActorScope(cameraId, actor, 'VIEW');
+
+      // Generate short-lived camera-scoped token (cannot be used for general REST APIs)
+      const tokenData = tokenService.generateStreamToken(
+        {
+          sub: actor.id,
+          cameraId: camera.id,
+          organizationId: camera.organizationId,
+          hostelId: camera.hostelId,
+          role: actor.role,
+        },
+        60
+      );
+
+      res.status(200).json(tokenData);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/v1/cameras/:cameraId/recognition/events
+   * Server-Sent Events (SSE) live stream of recognition observations.
+   * Allowed: ADMIN, WARDEN, GUARD via dedicated ?streamToken=<token> (or Bearer header).
+   */
+  router.get('/:cameraId/recognition/events', requireStreamAuth, async (req: Request, res: Response, next: NextFunction) => {
     try {
       const actor = getActor(req);
       const cameraId = req.params.cameraId as string;

@@ -1,4 +1,4 @@
-export type RecognitionClassification = 'MATCH' | 'UNCERTAIN' | 'UNKNOWN';
+export type RecognitionClassification = 'MATCH' | 'UNCERTAIN' | 'UNKNOWN' | 'QUALITY_INSUFFICIENT';
 
 export interface RecognitionBoundingBox {
   x: number;
@@ -40,9 +40,15 @@ export interface RecognitionSessionStatus {
   matches: number;
   uncertains: number;
   unknowns: number;
+  qualityInsufficients: number;
   lastProcessedAt: string | null;
   lastError: string | null;
   eligibleTemplates: number;
   processingFps: number;
   configuredMaxFps: number;
+}
+
+export interface StreamTokenResponse {
+  streamToken: string;
+  expiresIn: number;
 }

@@ -31,8 +31,6 @@ export function createAuthMiddleware(db = defaultPrisma) {
       const authHeader = req.headers.authorization;
       if (authHeader && authHeader.startsWith('Bearer ')) {
         token = authHeader.substring(7).trim();
-      } else if (typeof req.query.token === 'string') {
-        token = req.query.token.trim();
       }
 
       if (!token) {
@@ -44,6 +42,73 @@ export function createAuthMiddleware(db = defaultPrisma) {
       // Verify user in database
       const user = await db.user.findUnique({
         where: { id: payload.sub },
+      });
+
+      if (!user) {
+        throw new AuthenticationError('Authenticated user no longer exists');
+      }
+
+      if (user.status !== UserStatus.ACTIVE) {
+        throw new AuthenticationError('User account is inactive or suspended');
+      }
+
+      req.user = {
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        organizationId: user.organizationId,
+        hostelId: user.hostelId,
+        status: user.status,
+      };
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Dedicated middleware for Server-Sent Events (SSE) recognition event streams.
+   * Accepts camera-scoped, short-lived stream token via ?streamToken= query param
+   * or standard Bearer header.
+   */
+  const requireStreamAuth = async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const cameraId = (req.params.cameraId || req.query.cameraId) as string;
+      if (!cameraId) {
+        throw new AuthenticationError('Camera ID is required for stream authentication');
+      }
+
+      let token: string | undefined;
+      let isStreamToken = false;
+
+      if (typeof req.query.streamToken === 'string') {
+        token = req.query.streamToken.trim();
+        isStreamToken = true;
+      } else if (req.headers.authorization?.startsWith('Bearer ')) {
+        token = req.headers.authorization.substring(7).trim();
+      }
+
+      if (!token) {
+        throw new AuthenticationError('Stream authentication token is required');
+      }
+
+      let userId: string;
+
+      if (isStreamToken) {
+        // Must be a valid stream token issued specifically for this camera
+        const streamPayload = tokenService.verifyStreamToken(token, cameraId);
+        userId = streamPayload.sub;
+      } else {
+        // Fallback: standard JWT Bearer header
+        const standardPayload = tokenService.verifyToken(token);
+        userId = standardPayload.sub;
+      }
+
+      const user = await db.user.findUnique({
+        where: { id: userId },
       });
 
       if (!user) {
@@ -98,9 +163,10 @@ export function createAuthMiddleware(db = defaultPrisma) {
 
   return {
     requireAuth,
+    requireStreamAuth,
     requireRole,
     requirePermission,
   };
 }
 
-export const { requireAuth, requireRole, requirePermission } = createAuthMiddleware();
+export const { requireAuth, requireStreamAuth, requireRole, requirePermission } = createAuthMiddleware();

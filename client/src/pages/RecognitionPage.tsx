@@ -93,9 +93,11 @@ export const RecognitionPage: React.FC = () => {
     }
   }, [selectedCameraId, fetchStatusAndResults]);
 
-  // 3. Connect to live SSE recognition stream
+  // 3. Connect to live SSE recognition stream using short-lived stream token
   useEffect(() => {
     if (!selectedCameraId) return;
+
+    let isMounted = true;
 
     // Close previous SSE connection if any
     if (eventSourceRef.current) {
@@ -103,9 +105,25 @@ export const RecognitionPage: React.FC = () => {
       eventSourceRef.current = null;
     }
 
-    if (typeof EventSource !== 'undefined') {
+    const connectSse = async () => {
+      if (typeof EventSource === 'undefined') {
+        // Fallback polling for environments without EventSource
+        if (!pollIntervalRef.current) {
+          pollIntervalRef.current = window.setInterval(() => {
+            if (selectedCameraId) {
+              fetchStatusAndResults(selectedCameraId);
+            }
+          }, 2000);
+        }
+        return;
+      }
+
       try {
-        const streamUrl = recognitionApi.getEventsStreamUrl(selectedCameraId);
+        // Request dedicated short-lived stream token (primary JWT is never sent via query param)
+        const { streamToken } = await recognitionApi.getStreamToken(selectedCameraId);
+        if (!isMounted) return;
+
+        const streamUrl = recognitionApi.getEventsStreamUrl(selectedCameraId, streamToken);
         const es = new EventSource(streamUrl);
         eventSourceRef.current = es;
 
@@ -139,6 +157,10 @@ export const RecognitionPage: React.FC = () => {
 
         es.onerror = () => {
           // SSE fallback: poll status and results every 2 seconds
+          if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+          }
           if (!pollIntervalRef.current) {
             pollIntervalRef.current = window.setInterval(() => {
               if (selectedCameraId) {
@@ -148,20 +170,21 @@ export const RecognitionPage: React.FC = () => {
           }
         };
       } catch (err) {
-        console.warn('SSE connection failed, falling back to polling:', err);
+        console.warn('Failed to obtain stream token or initialize SSE, falling back to polling:', err);
+        if (!pollIntervalRef.current) {
+          pollIntervalRef.current = window.setInterval(() => {
+            if (selectedCameraId) {
+              fetchStatusAndResults(selectedCameraId);
+            }
+          }, 2000);
+        }
       }
-    } else {
-      // Fallback polling for environments without EventSource (e.g. tests or older clients)
-      if (!pollIntervalRef.current) {
-        pollIntervalRef.current = window.setInterval(() => {
-          if (selectedCameraId) {
-            fetchStatusAndResults(selectedCameraId);
-          }
-        }, 2000);
-      }
-    }
+    };
+
+    connectSse();
 
     return () => {
+      isMounted = false;
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -201,10 +224,10 @@ export const RecognitionPage: React.FC = () => {
       let fillColor = 'rgba(148, 163, 184, 0.15)';
       let label = 'UNKNOWN';
 
-      if (!qualityUsable) {
-        strokeColor = '#f59e0b'; // amber
-        fillColor = 'rgba(245, 158, 11, 0.15)';
-        label = 'QUALITY LOW';
+      if (classification === 'QUALITY_INSUFFICIENT' || !qualityUsable) {
+        strokeColor = '#f43f5e'; // rose-500
+        fillColor = 'rgba(244, 63, 94, 0.15)';
+        label = 'FACE DETECTED — QUALITY INSUFFICIENT';
       } else if (classification === 'MATCH' && resident) {
         strokeColor = '#10b981'; // green
         fillColor = 'rgba(16, 185, 129, 0.2)';
@@ -445,7 +468,7 @@ export const RecognitionPage: React.FC = () => {
             </div>
 
             {/* Metrics Breakdown Bar */}
-            <div className="px-4 py-3 bg-slate-900 border-t border-slate-800 grid grid-cols-3 gap-2 text-center text-xs">
+            <div className="px-4 py-3 bg-slate-900 border-t border-slate-800 grid grid-cols-4 gap-2 text-center text-xs">
               <div className="bg-slate-800/60 p-2 rounded border border-slate-700/50">
                 <span className="text-emerald-400 font-semibold block text-base">
                   {sessionStatus?.matches || 0}
@@ -463,6 +486,12 @@ export const RecognitionPage: React.FC = () => {
                   {sessionStatus?.unknowns || 0}
                 </span>
                 <span className="text-slate-400">UNKNOWN</span>
+              </div>
+              <div className="bg-slate-800/60 p-2 rounded border border-slate-700/50">
+                <span className="text-rose-400 font-semibold block text-base">
+                  {sessionStatus?.qualityInsufficients || 0}
+                </span>
+                <span className="text-slate-400">Low Quality</span>
               </div>
             </div>
           </div>
@@ -503,11 +532,14 @@ export const RecognitionPage: React.FC = () => {
                   const isMatch = obs.classification === 'MATCH';
                   const isUncertain = obs.classification === 'UNCERTAIN';
                   const isUnknown = obs.classification === 'UNKNOWN';
+                  const isQualityInsufficient = obs.classification === 'QUALITY_INSUFFICIENT';
 
                   const badgeClass = isMatch
                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                     : isUncertain
                     ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                    : isQualityInsufficient
+                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                     : 'bg-purple-500/10 text-purple-400 border-purple-500/30';
 
                   const timeStr = new Date(obs.detectedAt).toLocaleTimeString();
@@ -522,12 +554,12 @@ export const RecognitionPage: React.FC = () => {
                         <span
                           className={`classification-badge text-[11px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${badgeClass}`}
                         >
-                          {obs.classification}
+                          {obs.classification === 'QUALITY_INSUFFICIENT' ? 'QUALITY INSUFFICIENT' : obs.classification}
                         </span>
                         <span className="text-[11px] text-slate-400 font-mono">{timeStr}</span>
                       </div>
 
-                      {/* Content based on 3-State Classification */}
+                      {/* Content based on Classification */}
                       {isMatch && obs.resident && (
                         <div className="resident-match-info mt-1">
                           <div className="font-semibold text-sm text-slate-200">
@@ -556,7 +588,13 @@ export const RecognitionPage: React.FC = () => {
                         </div>
                       )}
 
-                      {!obs.qualityUsable && obs.qualityReason && (
+                      {isQualityInsufficient && (
+                        <div className="quality-insufficient-info text-xs text-rose-300/90 mt-0.5">
+                          Face detected — quality insufficient ({obs.qualityReason || 'unusable frame'}). Biometric comparison omitted.
+                        </div>
+                      )}
+
+                      {!obs.qualityUsable && obs.qualityReason && !isQualityInsufficient && (
                         <div className="quality-warning text-[10px] text-rose-400 bg-rose-950/40 px-2 py-0.5 rounded border border-rose-900/50 mt-1">
                           Quality flag: {obs.qualityReason}
                         </div>

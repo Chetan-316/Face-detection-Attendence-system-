@@ -40,6 +40,7 @@ interface ActiveCameraSession {
   matches: number;
   uncertains: number;
   unknowns: number;
+  qualityInsufficients: number;
   lastProcessedAt: Date | null;
   lastError: string | null;
   lastFrameProcessedTimestamp: number;
@@ -156,6 +157,7 @@ export class RecognitionService {
       matches: 0,
       uncertains: 0,
       unknowns: 0,
+      qualityInsufficients: 0,
       lastProcessedAt: null,
       lastError: null,
       lastFrameProcessedTimestamp: 0,
@@ -209,6 +211,7 @@ export class RecognitionService {
         matches: 0,
         uncertains: 0,
         unknowns: 0,
+        qualityInsufficients: 0,
         lastProcessedAt: null,
         lastError: null,
         eligibleTemplates: 0,
@@ -256,6 +259,7 @@ export class RecognitionService {
         matches: 0,
         uncertains: 0,
         unknowns: 0,
+        qualityInsufficients: 0,
         lastProcessedAt: null,
         lastError: null,
         eligibleTemplates: eligibleCount,
@@ -360,12 +364,12 @@ export class RecognitionService {
         let obs: RecognitionObservation;
 
         if (!face.quality.usable || !face.embedding) {
-          // Reject unusable face before matching
+          // Reject unusable face before matching (Rule: quality unusable -> no template matching -> no UNKNOWN increment)
           obs = {
             id: `rec_${randomUUID().substring(0, 10)}`,
             faceId: `face_${face.faceIndex}`,
             cameraId,
-            classification: 'UNKNOWN',
+            classification: 'QUALITY_INSUFFICIENT',
             resident: null,
             similarity: null,
             secondBestSimilarity: null,
@@ -374,7 +378,7 @@ export class RecognitionService {
             qualityReason: face.quality.rejectionReason || 'QUALITY_INSUFFICIENT',
             detectedAt: new Date().toISOString(),
           };
-          session.unknowns++;
+          session.qualityInsufficients++;
         } else {
           // Match against eligible enrolled templates
           const matchResult = session.matcher.match(face.embedding, templates);
@@ -455,6 +459,7 @@ export class RecognitionService {
       matches: session.matches,
       uncertains: session.uncertains,
       unknowns: session.unknowns,
+      qualityInsufficients: session.qualityInsufficients,
       lastProcessedAt: session.lastProcessedAt ? session.lastProcessedAt.toISOString() : null,
       lastError: session.lastError,
       eligibleTemplates: eligibleCount,
