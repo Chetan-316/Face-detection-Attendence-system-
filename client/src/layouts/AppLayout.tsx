@@ -15,6 +15,7 @@ import {
   Building2,
   Eye,
   CalendarCheck,
+  FileText,
 } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -116,6 +117,15 @@ export const AppLayout: React.FC = () => {
             >
               <CalendarCheck size={18} />
               <span>Attendance</span>
+            </NavLink>
+
+            <NavLink
+              to="/reports"
+              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <FileText size={18} />
+              <span>Reports</span>
             </NavLink>
 
             <NavLink

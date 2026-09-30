@@ -277,13 +277,19 @@ Camera Database Configuration
 - **Strict Decoupling from Gate Movement**: Attendance cameras **never** generate `MovementEvent` records and **never** modify `ResidentPresence`. Ingress/Egress cameras **never** create `AttendanceRecord` rows.
 - **Atomic Session Closure & Absence Generation**: Closing an attendance session automatically marks all active, unmarked residents as `ABSENT` in a single server-side batch operation. Un-enrolled active residents are fully accounted for in expected counts and marked `ABSENT` upon session closure.
 - **Audited Manual Corrections**: Wardens and Admins can override attendance records with mandatory written justification, recorded in the append-only `AuditLog` (`ATTENDANCE_OVERRIDE`).
-- **Enterprise Web UI**: Dedicated Hostel Attendance page with real-time session status, expected/present/remaining roll call counters, searchable roster with room groups and status badges, session creation, closing confirmation, and manual correction dialog. Guard accounts are strictly restricted to read-only access.
-- **Strict Terminology & Privacy Standards**: Professional ERP/SaaS aesthetic without biometric or computer vision jargon.
+### Operational Attendance & Movement Reporting (Step 09)
+- **Administrative Reporting Portal**: Clean, modern hostel ERP reporting module (`/reports`) providing operational visibility across attendance and resident movements.
+- **Operational Attendance Reports**: Session-by-session roll call summaries with verified rates (`Present / Expected × 100`), logical `attendanceDate` grouping across midnight, and detailed searchable rosters with correction indicators.
+- **Attendance Rate Trends**: Daily historical attendance rate trend visualization over time with accessible data table representation.
+- **Resident Attendance Summaries**: Individual resident roll call history, session attendance percentage, and chronological logs.
+- **Gate Movement History**: Server-side paginated, filterable movement audit trail (Direction `IN`/`OUT`, Gate, Source, Timestamp, and Search).
+- **Current Hostel Presence**: Authoritative real-time counts (`Currently Inside` vs `Currently Outside`) derived directly from `ResidentPresence`, with a dedicated "Currently Outside" operational roster.
+- **Spreadsheet-Safe CSV Export**: Server-side RFC 4180 CSV export for attendance and movement reports with UTF-8 BOM encoding and formula injection protection (automatic neutralization of `=`, `+`, `-`, `@` triggers).
+- **Role Security & Privacy**: Strict organization and hostel isolation; Guard accounts are restricted to real-time presence and movement oversight while blocked from historical trends, resident summaries, and data exports. Zero biometric templates, embeddings, similarity scores, or face crops are ever exposed in reports or exports.
 
 #### Explicitly Deferred (Future Steps):
-- Step 09: Attendance Analytics, Movement Logs & Reporting Dashboards
+- Step 10: Production multi-camera deployment & RTSP IP camera calibration
 - Liveness detection / anti-spoofing verification
 - Leave management automation & multi-day absence inference
-- Advanced anti-tailgating
-- Production multi-camera calibration and hardware gate relay control
+- Hardware gate relay control & physical turnstile integration
 

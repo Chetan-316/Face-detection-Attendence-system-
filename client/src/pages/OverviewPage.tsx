@@ -20,9 +20,15 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
+import { reportsApi } from '../api/reports.api';
+import { PresenceSummaryReport, AttendanceSessionReportItem, MovementReportItem } from '../types/reports.types';
+
 export const OverviewPage: React.FC = () => {
   const { user } = useAuth();
   const [summary, setSummary] = useState<ResidentSummary | null>(null);
+  const [presenceData, setPresenceData] = useState<PresenceSummaryReport | null>(null);
+  const [latestSession, setLatestSession] = useState<AttendanceSessionReportItem | null>(null);
+  const [recentMovements, setRecentMovements] = useState<MovementReportItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,8 +36,25 @@ export const OverviewPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await residentsApi.getSummary();
-      setSummary(data);
+      const [resSummary, presRes, attRes, movRes] = await Promise.allSettled([
+        residentsApi.getSummary(),
+        reportsApi.getPresence(),
+        reportsApi.getAttendanceSessions({ pageSize: 1 }),
+        reportsApi.getMovements({ pageSize: 2 }),
+      ]);
+
+      if (resSummary.status === 'fulfilled') {
+        setSummary(resSummary.value);
+      }
+      if (presRes.status === 'fulfilled') {
+        setPresenceData(presRes.value);
+      }
+      if (attRes.status === 'fulfilled' && attRes.value.data.length > 0) {
+        setLatestSession(attRes.value.data[0]);
+      }
+      if (movRes.status === 'fulfilled') {
+        setRecentMovements(movRes.value.data);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to retrieve resident overview metrics');
     } finally {
@@ -164,6 +187,83 @@ export const OverviewPage: React.FC = () => {
           </div>
           <div className="metric-footer">
             <span>Pending biometric enrollment setup</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* Operational Summary Grid (Requirement 19) */}
+      <div className="operational-summary-grid mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Today's Hostel Status */}
+        <Card title="Today's Hostel Status" subtitle="Authoritative presence count">
+          <div className="flex justify-around items-center py-2 text-center">
+            <div>
+              <span className="text-xs text-secondary block">Inside Hostel</span>
+              <span className="text-2xl font-bold text-emerald">
+                {presenceData ? presenceData.insideCount : summary?.currentlyIn ?? 0}
+              </span>
+            </div>
+            <div className="h-8 border-r border-border" />
+            <div>
+              <span className="text-xs text-secondary block">Outside Hostel</span>
+              <span className="text-2xl font-bold text-amber">
+                {presenceData ? presenceData.outsideCount : summary?.currentlyOut ?? 0}
+              </span>
+            </div>
+          </div>
+          <div className="mt-2 pt-2 border-t border-border flex justify-end">
+            <Link to="/reports" className="text-xs text-primary font-medium hover:underline flex items-center gap-1">
+              View Movement Reports <ArrowRight size={12} />
+            </Link>
+          </div>
+        </Card>
+
+        {/* Latest Attendance */}
+        <Card title="Latest Attendance" subtitle={latestSession ? latestSession.title : 'Night Attendance'}>
+          <div className="flex justify-around items-center py-2 text-center">
+            <div>
+              <span className="text-xs text-secondary block">Present</span>
+              <span className="text-2xl font-bold text-emerald">
+                {latestSession ? latestSession.presentCount : 0}
+              </span>
+            </div>
+            <div className="h-8 border-r border-border" />
+            <div>
+              <span className="text-xs text-secondary block">Absent</span>
+              <span className="text-2xl font-bold text-amber">
+                {latestSession ? latestSession.absentCount : 0}
+              </span>
+            </div>
+          </div>
+          <div className="mt-2 pt-2 border-t border-border flex justify-end">
+            <Link to="/reports" className="text-xs text-primary font-medium hover:underline flex items-center gap-1">
+              View Attendance Reports <ArrowRight size={12} />
+            </Link>
+          </div>
+        </Card>
+
+        {/* Recent Movement */}
+        <Card title="Recent Movement" subtitle="Latest gate transitions">
+          {recentMovements.length === 0 ? (
+            <p className="text-xs text-muted py-3 text-center">No recent gate movements logged.</p>
+          ) : (
+            <div className="space-y-2 py-1">
+              {recentMovements.map((m) => (
+                <div key={m.id} className="flex justify-between items-center text-xs">
+                  <span className="font-mono text-muted">
+                    {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span className="font-medium truncate max-w-[120px]">{m.fullName}</span>
+                  <span className={`badge badge-sm badge-${m.direction === 'IN' ? 'success' : 'amber'}`}>
+                    {m.direction}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="mt-2 pt-2 border-t border-border flex justify-end">
+            <Link to="/reports" className="text-xs text-primary font-medium hover:underline flex items-center gap-1">
+              All Movements <ArrowRight size={12} />
+            </Link>
           </div>
         </Card>
       </div>
