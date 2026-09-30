@@ -27,12 +27,14 @@ declare global {
 export function createAuthMiddleware(db = defaultPrisma) {
   const requireAuth = async (req: Request, _res: Response, next: NextFunction) => {
     try {
+      let token: string | undefined;
       const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw new AuthenticationError('Authentication token is required');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7).trim();
+      } else if (typeof req.query.token === 'string') {
+        token = req.query.token.trim();
       }
 
-      const token = authHeader.substring(7).trim();
       if (!token) {
         throw new AuthenticationError('Authentication token is required');
       }

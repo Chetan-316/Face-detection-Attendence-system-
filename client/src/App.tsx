@@ -9,6 +9,7 @@ import { OverviewPage } from './pages/OverviewPage';
 import { ResidentsPage } from './pages/ResidentsPage';
 import { ResidentDetailPage } from './pages/ResidentDetailPage';
 import { CamerasPage } from './pages/CamerasPage';
+import { RecognitionPage } from './pages/RecognitionPage';
 
 export const App: React.FC = () => {
   return (
@@ -32,6 +33,7 @@ export const App: React.FC = () => {
               <Route path="residents" element={<ResidentsPage />} />
               <Route path="residents/:id" element={<ResidentDetailPage />} />
               <Route path="cameras" element={<CamerasPage />} />
+              <Route path="recognition" element={<RecognitionPage />} />
             </Route>
 
             {/* Fallback */}

@@ -5,6 +5,7 @@ import {
   BiometricHealthStatus,
   FrameProcessingResult,
   AggregationResult,
+  ExtractFacesResult,
 } from './biometric.types';
 import { BiometricWorkerError } from './biometric.errors';
 
@@ -186,6 +187,22 @@ export class PythonWorkerClient {
 
     return this.sendCommand<FrameProcessingResult>('process_frame', {
       image_base64: b64,
+    });
+  }
+
+  public async extractFaces(
+    imageBufferOrBase64: Buffer | string,
+    options?: { minFaceSize?: number; minConfidence?: number; mockFaces?: any[] }
+  ): Promise<ExtractFacesResult> {
+    const b64 = typeof imageBufferOrBase64 === 'string'
+      ? imageBufferOrBase64
+      : imageBufferOrBase64.toString('base64');
+
+    return this.sendCommand<ExtractFacesResult>('extract_faces', {
+      image_base64: b64,
+      min_face_size: options?.minFaceSize,
+      min_confidence: options?.minConfidence,
+      mock_faces: options?.mockFaces,
     });
   }
 

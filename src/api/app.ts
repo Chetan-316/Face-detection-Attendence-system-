@@ -11,14 +11,17 @@ import { createAuthRouter } from './routes/auth.routes';
 import { createResidentRouter } from './routes/resident.routes';
 import { createCameraRouter } from './routes/camera.routes';
 import { createBiometricRouter } from './routes/biometric.routes';
+import { createRecognitionRouter } from './routes/recognition.routes';
 import { EnrollmentService } from '../modules/biometrics/enrollment.service';
 import { BiometricService } from '../modules/biometrics/biometric.service';
 import { CameraService } from '../modules/cameras/camera.service';
+import { RecognitionService } from '../modules/recognition/recognition.service';
 
 export interface CreateAppOptions {
   enrollmentService?: EnrollmentService;
   biometricService?: BiometricService;
   cameraService?: CameraService;
+  recognitionService?: RecognitionService;
 }
 
 export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppOptions) {
@@ -63,6 +66,7 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   app.use('/api/v1/auth', createAuthRouter(db));
   app.use('/api/v1/residents', createResidentRouter(db, options?.enrollmentService));
   app.use('/api/v1/cameras', createCameraRouter(db, options?.cameraService));
+  app.use('/api/v1/cameras', createRecognitionRouter(db, options?.recognitionService));
   app.use('/api/v1/biometrics', createBiometricRouter(db, options?.biometricService));
 
   // Static frontend serving if client/dist exists (production / single-server mode)

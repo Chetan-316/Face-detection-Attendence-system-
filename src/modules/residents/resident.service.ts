@@ -18,6 +18,7 @@ import {
   PaginatedResult,
   ResidentSummary,
 } from './resident.types';
+import { defaultTemplateCache } from '../recognition/template-cache';
 
 export interface CreateResidentInput {
   organizationId: string;
@@ -268,8 +269,10 @@ export class ResidentService {
       assertUserCanOperateInHostel(staffUser, resident.organizationId, resident.hostelId);
     }
 
-    return this.db.$transaction(async (tx) => {
-      const updated = await tx.resident.update({
+    const targetHostelId = resident.hostelId;
+
+    const updated = await this.db.$transaction(async (tx) => {
+      const res = await tx.resident.update({
         where: { id: residentId },
         data: {
           status: ResidentStatus.INACTIVE,
@@ -292,8 +295,11 @@ export class ResidentService {
         tx
       );
 
-      return updated;
+      return res;
     });
+
+    defaultTemplateCache.invalidate(targetHostelId);
+    return updated;
   }
 
   public async reactivateResident(
@@ -327,8 +333,10 @@ export class ResidentService {
       assertUserCanOperateInHostel(staffUser, resident.organizationId, resident.hostelId);
     }
 
-    return this.db.$transaction(async (tx) => {
-      const updated = await tx.resident.update({
+    const targetHostelId = resident.hostelId;
+
+    const updated = await this.db.$transaction(async (tx) => {
+      const res = await tx.resident.update({
         where: { id: residentId },
         data: {
           status: ResidentStatus.ACTIVE,
@@ -351,8 +359,11 @@ export class ResidentService {
         tx
       );
 
-      return updated;
+      return res;
     });
+
+    defaultTemplateCache.invalidate(targetHostelId);
+    return updated;
   }
 
   public async getResident(id: string): Promise<Resident> {

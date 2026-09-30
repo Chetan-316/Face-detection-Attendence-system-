@@ -109,3 +109,23 @@ export interface BiometricHealthStatus {
   license: string;
   mock: boolean;
 }
+
+export interface ExtractedFace {
+  faceIndex: number;
+  bbox: BoundingBox;
+  detectionConfidence: number;
+  embedding: number[] | null;
+  quality: {
+    usable: boolean;
+    rejectionReason?: string | null;
+    blurScore?: number;
+    brightness?: number;
+  };
+}
+
+export interface ExtractFacesResult {
+  success: boolean;
+  faces: ExtractedFace[];
+  error?: string;
+  message?: string;
+}

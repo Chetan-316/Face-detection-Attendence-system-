@@ -242,5 +242,27 @@ Camera Database Configuration
 - **Encapsulated Configuration**: Business logic calls `CameraService` by `cameraId` only; device indices remain strictly inside `Camera.configMetadata`.
 - **Live Preview Stream**: High-performance HTTP multipart MJPEG stream served directly to client `<img>` elements without heavy plugins.
 - **Hardware Telemetry**: Real-time FPS, total frames captured, resolution, error status, and clean resource release.
-- **Biometric Isolation**: Biometric face enrollment and recognition remain strictly decoupled for Step 05.
+- **Biometric Isolation**: Biometric face enrollment and recognition remain strictly decoupled.
+
+### Biometric Face Enrollment (Step 05 & 05.1)
+- **Zero Retraining Per Resident**: Pretrained metric embedding space (YuNet 2023mar detector + SFace 2021dec 128-d embedder).
+- **Atomic Template Aggregation**: Quality-filtered multi-sample aggregation (minimum 3 samples) with strict isolation.
+- **Privacy Controls**: Raw images and video are never persisted; biometric vectors are strictly server-internal and purged upon revocation.
+
+### Continuous Local Face Recognition Engine (Step 06)
+- **Local Passive Inference**: Real-time face detection, alignment, embedding, and template matching from shared camera streams.
+- **Three-State Classification**: Classifies every usable face into `MATCH`, `UNCERTAIN`, or `UNKNOWN`.
+- **Candidate Margin Separation**: Enforces minimum margin between best and second-best candidate to prevent look-alike ambiguities.
+- **Temporal Stabilization & Cooldown**: IoU spatial tracking over a 5-frame sliding window (requires 3 consistent matches) with 8-second deduplication cooldown.
+- **Hostel-Scoped Template Cache**: Fast in-memory template cache scoped strictly to the camera's hostel, auto-invalidated on biometric lifecycle changes.
+- **Multi-Face Independence**: Independent processing of multiple faces visible within the same video frame.
+- **Observation-Only Mode**: Strictly produces ephemeral recognition observations without mutating movement, presence, or attendance records.
+
+#### Explicitly Deferred (Future Steps):
+- Liveness detection / anti-spoofing verification
+- Automated IN/OUT movement event generation (Step 07)
+- Automated gate / turnstile relay control
+- Attendance roll call automation
+- Night attendance recognition
+- Production threshold calibration for specific camera optics and environments
 

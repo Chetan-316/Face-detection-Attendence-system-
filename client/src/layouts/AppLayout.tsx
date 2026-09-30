@@ -13,6 +13,7 @@ import {
   X,
   Shield,
   Building2,
+  Eye,
 } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -114,6 +115,15 @@ export const AppLayout: React.FC = () => {
             >
               <Video size={18} />
               <span>Cameras</span>
+            </NavLink>
+
+            <NavLink
+              to="/recognition"
+              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <Eye size={18} />
+              <span>Recognition</span>
             </NavLink>
           </nav>
 

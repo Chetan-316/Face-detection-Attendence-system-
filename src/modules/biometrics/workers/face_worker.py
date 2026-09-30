@@ -197,6 +197,151 @@ def main():
                     "trace": traceback.format_exc()
                 })
 
+        elif command == "extract_faces":
+            b64_data = cmd_data.get("image_base64")
+            if not b64_data:
+                send_response({"success": False, "error": "MISSING_IMAGE", "faces": []})
+                continue
+
+            if "," in b64_data:
+                b64_data = b64_data.split(",", 1)[1]
+
+            min_face_size = int(cmd_data.get("min_face_size") or 50)
+            min_confidence = float(cmd_data.get("min_confidence") or 0.6)
+
+            try:
+                if is_mock:
+                    if "mock_faces" in cmd_data:
+                        send_response({
+                            "success": True,
+                            "faces": cmd_data["mock_faces"]
+                        })
+                        continue
+
+                    # Synthetic mock face for testing without camera
+                    mock_embedding = [round(float(np.sin(i + 0.1)), 6) for i in range(128)]
+                    send_response({
+                        "success": True,
+                        "faces": [
+                            {
+                                "faceIndex": 0,
+                                "bbox": {"x": 200, "y": 140, "width": 240, "height": 260},
+                                "detectionConfidence": 0.95,
+                                "embedding": mock_embedding,
+                                "quality": {
+                                    "usable": True,
+                                    "rejectionReason": None,
+                                    "blurScore": 120.0,
+                                    "brightness": 128.0
+                                }
+                            }
+                        ]
+                    })
+                    continue
+
+                try:
+                    img_bytes = base64.b64decode(b64_data)
+                except Exception as decode_err:
+                    send_response({
+                        "success": False,
+                        "error": "DECODE_FAILED",
+                        "message": str(decode_err),
+                        "faces": []
+                    })
+                    continue
+
+                import cv2
+                np_arr = np.frombuffer(img_bytes, np.uint8)
+                img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+                if img is None:
+                    send_response({
+                        "success": False,
+                        "error": "DECODE_FAILED",
+                        "message": "Failed to decode image frame",
+                        "faces": []
+                    })
+                    continue
+
+                h, w = img.shape[:2]
+                detected_faces = detector.detect(img) if detector else []
+                extracted = []
+
+                for idx, face in enumerate(detected_faces):
+                    raw_face = face["raw_face"]
+                    bbox = face["bbox"]
+                    score = face["score"]
+
+                    bx, by, bw, bh = bbox["x"], bbox["y"], bbox["width"], bbox["height"]
+                    y1 = max(0, by)
+                    y2 = min(h, by + bh)
+                    x1 = max(0, bx)
+                    x2 = min(w, bx + bw)
+                    crop = img[y1:y2, x1:x2]
+
+                    blur_score = 0.0
+                    brightness = 0.0
+                    rejection_reason = None
+
+                    if crop.size == 0 or bw < 10 or bh < 10:
+                        rejection_reason = "FACE_OFF_CENTER"
+                    else:
+                        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
+                        blur_score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+                        brightness = float(np.mean(gray))
+
+                        if bw < min_face_size or bh < min_face_size:
+                            rejection_reason = "FACE_TOO_SMALL"
+                        elif score < min_confidence:
+                            rejection_reason = "LOW_DETECTION_CONFIDENCE"
+                        elif blur_score < 20.0:
+                            rejection_reason = "TOO_BLURRY"
+                        elif brightness < 20.0:
+                            rejection_reason = "TOO_DARK"
+                        elif brightness > 240.0:
+                            rejection_reason = "TOO_BRIGHT"
+
+                    usable = (rejection_reason is None)
+                    emb = None
+
+                    if usable and embedder:
+                        try:
+                            feat = embedder.align_and_extract(img, raw_face)
+                            emb = [round(float(x), 6) for x in feat.tolist()]
+                        except Exception as align_err:
+                            usable = False
+                            rejection_reason = f"ALIGNMENT_ERROR: {str(align_err)}"
+
+                    extracted.append({
+                        "faceIndex": idx,
+                        "bbox": bbox,
+                        "detectionConfidence": round(score, 3),
+                        "embedding": emb,
+                        "quality": {
+                            "usable": usable,
+                            "rejectionReason": rejection_reason,
+                            "blurScore": round(blur_score, 1),
+                            "brightness": round(brightness, 1)
+                        }
+                    })
+
+                del img
+                del np_arr
+
+                send_response({
+                    "success": True,
+                    "faces": extracted
+                })
+
+            except Exception as e:
+                send_response({
+                    "success": False,
+                    "error": "PROCESSING_ERROR",
+                    "message": str(e),
+                    "faces": [],
+                    "trace": traceback.format_exc()
+                })
+
         elif command == "aggregate_embeddings":
             embeddings = cmd_data.get("embeddings", [])
             if is_mock or embedder is None:

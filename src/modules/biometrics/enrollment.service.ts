@@ -18,6 +18,7 @@ import {
   EnrollmentSessionError,
   EnrollmentInconsistentError,
 } from './biometric.errors';
+import { TemplateCache, defaultTemplateCache } from '../recognition/template-cache';
 
 export interface AuthenticatedActor {
   id: string;
@@ -29,15 +30,18 @@ export interface AuthenticatedActor {
 export class EnrollmentService {
   private auditService: AuditService;
   private cameraService: CameraService;
+  private templateCache: TemplateCache;
   private sessions: Map<string, EnrollmentSession> = new Map(); // residentId -> EnrollmentSession
 
   constructor(
     private readonly db: PrismaClient = defaultPrisma,
     private readonly workerClient: PythonWorkerClient = defaultPythonWorkerClient,
-    cameraService?: CameraService
+    cameraService?: CameraService,
+    templateCache?: TemplateCache
   ) {
     this.auditService = new AuditService(this.db);
     this.cameraService = cameraService || new CameraService(this.db);
+    this.templateCache = templateCache || defaultTemplateCache;
   }
 
   /**
@@ -380,6 +384,9 @@ export class EnrollmentService {
     session.acceptedEmbeddings = [];
     this.sessions.delete(residentId);
 
+    // Invalidate recognition template cache for this hostel
+    this.templateCache.invalidate(resident.hostelId);
+
     return {
       residentId: result.residentId,
       enrollmentStatus: result.enrollmentStatus,
@@ -491,6 +498,9 @@ export class EnrollmentService {
 
     // Also clear any active capture session
     this.sessions.delete(residentId);
+
+    // Invalidate recognition template cache for this hostel
+    this.templateCache.invalidate(resident.hostelId);
 
     return {
       residentId: resident.id,
