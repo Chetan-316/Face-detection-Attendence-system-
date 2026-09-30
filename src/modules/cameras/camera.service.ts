@@ -114,6 +114,16 @@ export class CameraService {
       }
     }
 
+    let finalConfigMetadata = input.configMetadata;
+    if (input.configMetadata) {
+      const existingConfig = (existing.configMetadata as Record<string, any>) || {};
+      finalConfigMetadata = { ...existingConfig, ...input.configMetadata };
+      // If operator omitted or left password blank, retain existing password
+      if (!input.configMetadata.password && existingConfig.password) {
+        finalConfigMetadata.password = existingConfig.password;
+      }
+    }
+
     const updated = await this.db.$transaction(async (tx) => {
       const camera = await tx.camera.update({
         where: { id },
@@ -122,7 +132,7 @@ export class CameraService {
           ...(input.locationId !== undefined ? { locationId: input.locationId } : {}),
           ...(input.role !== undefined ? { role: input.role } : {}),
           ...(input.isEnabled !== undefined ? { isEnabled: input.isEnabled } : {}),
-          ...(input.configMetadata !== undefined ? { configMetadata: input.configMetadata } : {}),
+          ...(finalConfigMetadata !== undefined ? { configMetadata: finalConfigMetadata } : {}),
         },
         include: { location: true },
       });
@@ -157,12 +167,27 @@ export class CameraService {
     if (adapter) {
       if (updated.isEnabled === false) {
         await adapter.stop();
-      } else if (input.configMetadata) {
-        await adapter.initialize(input.configMetadata);
+      } else if (finalConfigMetadata) {
+        await adapter.initialize(finalConfigMetadata);
       }
     }
 
     return updated;
+  }
+
+  public async testCameraConnection(id: string) {
+    const camera = await this.getCamera(id);
+    const config = (camera.configMetadata as Record<string, any>) || {};
+    const { testCameraConnection } = await import('./utils/camera-connection-test');
+    return testCameraConnection({
+      sourceType: camera.sourceType as any,
+      rtspUrl: config.rtspUrl,
+      transport: config.transport,
+      username: config.username,
+      password: config.password,
+      deviceIndex: config.deviceIndex,
+      testInputOverride: config.testInputOverride,
+    });
   }
 
   public async getCamera(id: string): Promise<Camera> {

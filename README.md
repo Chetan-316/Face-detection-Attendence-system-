@@ -287,9 +287,20 @@ Camera Database Configuration
 - **Spreadsheet-Safe CSV Export**: Server-side RFC 4180 CSV export for attendance and movement reports with UTF-8 BOM encoding and formula injection protection (automatic neutralization of `=`, `+`, `-`, `@` triggers).
 - **Role Security & Privacy**: Strict organization and hostel isolation; Guard accounts are restricted to real-time presence and movement oversight while blocked from historical trends, resident summaries, and data exports. Zero biometric templates, embeddings, similarity scores, or face crops are ever exposed in reports or exports.
 
+### Production RTSP / IP Camera Frame Pipeline (Step 10)
+- **Real RTSP / IP Camera Support**: Direct ingestion and decoding of IP network camera streams (H.264 / H.265 / HEVC) via robust FFmpeg subprocess execution.
+- **Shared Camera Streams**: A single underlying connection per camera is shared concurrently by live preview (`GET /api/v1/cameras/:id/preview`), face recognition (`RecognitionService`), and snapshot capture (`captureSnapshot()`), preventing redundant decoder processes.
+- **Automatic Reconnect**: Resilient state recovery with bounded exponential backoff (`1s -> 2s -> 4s -> 8s -> max 15s`) transitioning to `DEGRADED` upon unexpected stream interruption and automatically recovering to `ONLINE` upon reconnection.
+- **Manual Stop Distinction**: Clean separation between operator-initiated manual stop (which strictly prevents auto-reconnection) and transient network disconnects.
+- **Credential Privacy & URL Redaction**: Full redaction (`rtsp://***:***@...`) of all RTSP credentials across error messages, JSON responses, application logs, and `AuditLog` records. Plaintext passwords are never returned to clients.
+- **Camera Connection Probing**: Server-side probe endpoints (`POST /api/v1/cameras/:id/test` and `POST /api/v1/cameras/test-connection`) allowing staff to verify camera reachability, codec, resolution, and latency prior to saving.
+- **LAN-First & Cloud-Independent**: All streams remain strictly on the local area network with zero cloud or Internet dependencies. No CCTV video recording or persistent video archives are retained.
+
 #### Explicitly Deferred (Future Steps):
-- Step 10: Production multi-camera deployment & RTSP IP camera calibration
+- Step 11: Production deployment, security audit & observability stack
 - Liveness detection / anti-spoofing verification
 - Leave management automation & multi-day absence inference
 - Hardware gate relay control & physical turnstile integration
+- ONVIF camera discovery automation
+
 

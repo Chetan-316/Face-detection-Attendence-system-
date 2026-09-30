@@ -123,12 +123,12 @@ describe('Step 04: Cameras & Gate Live Preview Interface', () => {
     );
   };
 
-  it('renders camera feeds header, architecture banner, and configured camera cards', async () => {
+  it('renders operational cameras header and configured camera cards without developer banners', async () => {
     renderComponent();
 
-    expect(screen.getByText('Camera Feeds & Gate Monitoring')).toBeInTheDocument();
-    expect(screen.getByText(/STEP 04 CAMERA ABSTRACTION/i)).toBeInTheDocument();
-    expect(screen.getByText(/ICameraAdapter/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Cameras' })).toBeInTheDocument();
+    expect(screen.getByText('Manage hostel cameras and live feeds.')).toBeInTheDocument();
+    expect(screen.queryByText(/STEP 04 CAMERA ABSTRACTION/i)).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getAllByText('Laptop Builtin Webcam').length).toBeGreaterThan(0);

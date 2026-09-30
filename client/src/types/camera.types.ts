@@ -62,3 +62,13 @@ export interface UpdateCameraPayload {
   isEnabled?: boolean;
   configMetadata?: Record<string, any>;
 }
+
+export interface CameraTestResult {
+  reachable: boolean;
+  sourceType: string;
+  resolution?: { width: number; height: number };
+  fps?: number;
+  codec?: string;
+  latencyMs: number;
+  message?: string;
+}

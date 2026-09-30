@@ -14,6 +14,8 @@ import {
   assertUserCanOperateInHostel,
   assertUserCanOperateInOrganization,
 } from '../../modules/auth/permissions';
+import { toSafeCameraDto } from '../../modules/cameras/utils/camera-dto';
+import { testCameraConnection } from '../../modules/cameras/utils/camera-connection-test';
 
 const createCameraSchema = z.object({
   name: z.string().min(1, 'Camera name is required').max(100),
@@ -31,6 +33,16 @@ const updateCameraSchema = z.object({
   role: z.nativeEnum(CameraRole).optional(),
   isEnabled: z.boolean().optional(),
   configMetadata: z.record(z.string(), z.any()).optional(),
+});
+
+const testConnectionSchema = z.object({
+  sourceType: z.enum(['RTSP', 'WEBCAM', 'SMART_CAMERA']),
+  rtspUrl: z.string().optional(),
+  transport: z.enum(['tcp', 'udp']).optional(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  deviceIndex: z.number().optional(),
+  testInputOverride: z.string().optional(),
 });
 
 export function createCameraRouter(
@@ -137,16 +149,11 @@ export function createCameraRouter(
         roleQuery
       );
 
-      // Enhance with live streaming status
+      // Enhance with live streaming status & sanitize credentials
       const camerasWithDiagnostics = await Promise.all(
         cameras.map(async (c) => {
           const diagnostics = await cameraService.getDiagnostics(c.id);
-          return {
-            ...c,
-            isStreaming: diagnostics.isActive,
-            fps: diagnostics.fps,
-            diagnostics,
-          };
+          return toSafeCameraDto(c, diagnostics);
         })
       );
 
@@ -158,6 +165,25 @@ export function createCameraRouter(
       next(err);
     }
   });
+
+  // 1.1 POST /api/v1/cameras/test-connection - Test camera connection before registration
+  router.post(
+    '/test-connection',
+    requireAuth,
+    requireRole(StaffRole.ADMIN, StaffRole.WARDEN),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const parsed = testConnectionSchema.safeParse(req.body);
+        if (!parsed.success) {
+          throw new ValidationError(parsed.error.issues[0].message);
+        }
+        const result = await testCameraConnection(parsed.data as any);
+        res.json({ data: result });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
 
   // 2. POST /api/v1/cameras - Register a camera (Admin or Warden)
   router.post(
@@ -203,7 +229,7 @@ export function createCameraRouter(
 
         res.status(201).json({
           message: 'Camera registered successfully',
-          data: camera,
+          data: toSafeCameraDto(camera),
         });
       } catch (err) {
         next(err);
@@ -218,10 +244,7 @@ export function createCameraRouter(
       const diagnostics = await cameraService.getDiagnostics(camera.id);
 
       res.json({
-        data: {
-          ...camera,
-          diagnostics,
-        },
+        data: toSafeCameraDto(camera, diagnostics),
       });
     } catch (err) {
       next(err);
@@ -250,15 +273,28 @@ export function createCameraRouter(
           updatedByUserId: req.user!.id,
         });
 
+        const diagnostics = await cameraService.getDiagnostics(updated.id);
+
         res.json({
           message: 'Camera updated successfully',
-          data: updated,
+          data: toSafeCameraDto(updated, diagnostics),
         });
       } catch (err) {
         next(err);
       }
     }
   );
+
+  // 4.1 POST /api/v1/cameras/:id/test - Test connection to configured camera
+  router.post('/:id/test', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const camera = await resolveAndAuthorizeCamera(req, req.params.id);
+      const result = await cameraService.testCameraConnection(camera.id);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
 
   // 5. POST /api/v1/cameras/:id/start - Start streaming
   router.post('/:id/start', requireAuth, async (req: Request, res: Response, next: NextFunction) => {

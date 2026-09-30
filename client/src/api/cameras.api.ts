@@ -54,6 +54,26 @@ export const camerasApi = {
     return apiClient<{ data: any }>(`/cameras/${id}/snapshot?format=json`);
   },
 
+  async testCameraConnection(id: string): Promise<{ data: CameraTestResult }> {
+    return apiClient<{ data: CameraTestResult }>(`/cameras/${id}/test`, {
+      method: 'POST',
+    });
+  },
+
+  async testNewConnection(payload: {
+    sourceType: string;
+    rtspUrl?: string;
+    transport?: 'tcp' | 'udp';
+    username?: string;
+    password?: string;
+    deviceIndex?: number;
+  }): Promise<{ data: CameraTestResult }> {
+    return apiClient<{ data: CameraTestResult }>('/cameras/test-connection', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   getPreviewStreamUrl(id: string): string {
     const token = getStoredToken();
     const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
