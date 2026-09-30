@@ -14,6 +14,7 @@ import { reportsApi } from '../api/reports.api';
 import { residentsApi } from '../api/residents.api';
 import {
   AttendanceSessionReportItem,
+  AttendanceReportSummary,
   SessionRosterReport,
   AttendanceTrendPoint,
   MovementReportItem,
@@ -21,7 +22,7 @@ import {
   CurrentlyOutsideReportItem,
   ResidentSummaryReport,
 } from '../types/reports.types';
-import { ResidentEntity } from '../types/resident.types';
+import { SafeResident } from '../types/resident.types';
 import {
   FileText,
   Calendar,
@@ -57,6 +58,11 @@ export const ReportsPage: React.FC = () => {
   const [attCustomFrom, setAttCustomFrom] = useState<string>('');
   const [attCustomTo, setAttCustomTo] = useState<string>('');
   const [attSessions, setAttSessions] = useState<AttendanceSessionReportItem[]>([]);
+  const [attSummary, setAttSummary] = useState<AttendanceReportSummary | null>(null);
+  const [attPage, setAttPage] = useState<number>(1);
+  const [attPageSize] = useState<number>(15);
+  const [attTotal, setAttTotal] = useState<number>(0);
+  const [attTotalPages, setAttTotalPages] = useState<number>(1);
   const [attTrend, setAttTrend] = useState<AttendanceTrendPoint[]>([]);
   const [attLoading, setAttLoading] = useState<boolean>(false);
   const [attError, setAttError] = useState<string | null>(null);
@@ -94,7 +100,7 @@ export const ReportsPage: React.FC = () => {
   // RESIDENT SUMMARY TAB STATE
   // ----------------------------------------------------
   const [residentSearch, setResidentSearch] = useState<string>('');
-  const [residentSearchResults, setResidentSearchResults] = useState<ResidentEntity[]>([]);
+  const [residentSearchResults, setResidentSearchResults] = useState<SafeResident[]>([]);
   const [selectedResidentId, setSelectedResidentId] = useState<string | null>(null);
   const [residentSummary, setResidentSummary] = useState<ResidentSummaryReport | null>(null);
   const [resSummaryLoading, setResSummaryLoading] = useState<boolean>(false);
@@ -135,18 +141,26 @@ export const ReportsPage: React.FC = () => {
       const { dateFrom, dateTo } = getDateRangeParams(attDateRange, attCustomFrom, attCustomTo);
 
       const [sessionsRes, trendRes] = await Promise.all([
-        reportsApi.getAttendanceSessions({ dateFrom, dateTo, pageSize: 50 }),
+        reportsApi.getAttendanceSessions({
+          dateFrom,
+          dateTo,
+          page: attPage,
+          pageSize: attPageSize,
+        }),
         !isGuard ? reportsApi.getAttendanceTrend({ dateFrom, dateTo }) : Promise.resolve({ data: [] }),
       ]);
 
       setAttSessions(sessionsRes.data);
+      setAttSummary(sessionsRes.summary);
+      setAttTotal(sessionsRes.total);
+      setAttTotalPages(sessionsRes.totalPages);
       setAttTrend(trendRes.data);
     } catch (err: any) {
       setAttError(err.message || 'Unable to load attendance report. Please try again.');
     } finally {
       setAttLoading(false);
     }
-  }, [attDateRange, attCustomFrom, attCustomTo, isGuard]);
+  }, [attDateRange, attCustomFrom, attCustomTo, attPage, attPageSize, isGuard]);
 
   // Fetch Session Roster Details
   const fetchSessionRoster = useCallback(
@@ -283,15 +297,11 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
-  // Attendance Aggregates for Cards
-  const totalSessionsCount = attSessions.length;
-  const totalExpectedResidents = attSessions.reduce((acc, s) => acc + s.expectedResidents, 0);
-  const totalPresentResidents = attSessions.reduce((acc, s) => acc + s.presentCount, 0);
-  const totalAbsentResidents = attSessions.reduce((acc, s) => acc + s.absentCount, 0);
-  const avgAttendanceRate =
-    totalExpectedResidents > 0
-      ? Math.round((totalPresentResidents / totalExpectedResidents) * 100)
-      : 0;
+  // Attendance Aggregates for Cards (Authoritative Server-side Summary across all matching rows)
+  const totalSessionsCount = attSummary?.sessions ?? 0;
+  const avgAttendanceRate = attSummary?.attendanceRate ?? 0;
+  const totalPresentResidents = attSummary?.present ?? 0;
+  const totalAbsentResidents = attSummary?.absent ?? 0;
 
   return (
     <div className="reports-page">
@@ -383,7 +393,10 @@ export const ReportsPage: React.FC = () => {
                           ? 'bg-primary text-white border-primary'
                           : 'bg-surface text-secondary border-border hover:bg-surface-hover'
                       }`}
-                      onClick={() => setAttDateRange(r.key)}
+                      onClick={() => {
+                        setAttDateRange(r.key);
+                        setAttPage(1);
+                      }}
                     >
                       {r.label}
                     </button>
@@ -399,7 +412,10 @@ export const ReportsPage: React.FC = () => {
                       type="date"
                       className="input-field text-xs py-1.5 px-2 border border-border rounded"
                       value={attCustomFrom}
-                      onChange={(e) => setAttCustomFrom(e.target.value)}
+                      onChange={(e) => {
+                        setAttCustomFrom(e.target.value);
+                        setAttPage(1);
+                      }}
                     />
                   </div>
                   <div>
@@ -408,7 +424,10 @@ export const ReportsPage: React.FC = () => {
                       type="date"
                       className="input-field text-xs py-1.5 px-2 border border-border rounded"
                       value={attCustomTo}
-                      onChange={(e) => setAttCustomTo(e.target.value)}
+                      onChange={(e) => {
+                        setAttCustomTo(e.target.value);
+                        setAttPage(1);
+                      }}
                     />
                   </div>
                 </div>
@@ -517,7 +536,8 @@ export const ReportsPage: React.FC = () => {
                 No attendance sessions found for this period.
               </p>
             ) : (
-              <div className="table-responsive">
+              <>
+                <div className="table-responsive">
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -572,6 +592,17 @@ export const ReportsPage: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              <div className="mt-4 flex justify-end">
+                <Pagination
+                  currentPage={attPage}
+                  totalPages={attTotalPages}
+                  totalItems={attTotal}
+                  pageSize={attPageSize}
+                  onPageChange={(page) => setAttPage(page)}
+                />
+              </div>
+            </>
             )}
           </Card>
         </div>

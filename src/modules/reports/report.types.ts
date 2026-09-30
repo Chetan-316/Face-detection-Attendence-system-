@@ -27,6 +27,19 @@ export interface PaginatedResult<T> {
   totalPages: number;
 }
 
+export interface AttendanceReportSummary {
+  sessions: number;
+  closedSessions: number;
+  present: number;
+  absent: number;
+  expected: number;
+  attendanceRate: number;
+}
+
+export interface PaginatedAttendanceResult extends PaginatedResult<AttendanceSessionReportItem> {
+  summary: AttendanceReportSummary;
+}
+
 export interface AttendanceReportQuery extends DateRangeFilter, PaginationParams {
   hostelId?: string;
   sessionId?: string;

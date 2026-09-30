@@ -25,6 +25,8 @@ import {
   MovementReportQuery,
   MovementReportItem,
   PaginatedResult,
+  AttendanceReportSummary,
+  PaginatedAttendanceResult,
   PresenceSummaryReport,
   CurrentlyOutsideReportItem,
   ResidentSummaryReport,
@@ -83,7 +85,7 @@ export class ReportService {
   public async getAttendanceSessionsReport(
     query: AttendanceReportQuery,
     actor: StaffActor
-  ): Promise<PaginatedResult<AttendanceSessionReportItem>> {
+  ): Promise<PaginatedAttendanceResult> {
     const hostelId = await this.resolveHostelScope(actor, query.hostelId);
 
     const page = Math.max(1, query.page || 1);
@@ -120,7 +122,7 @@ export class ReportService {
       if (query.dateTo) where.attendanceDate.lte = new Date(query.dateTo);
     }
 
-    const [total, sessions] = await Promise.all([
+    const [total, sessions, closedSessions] = await Promise.all([
       this.db.attendanceSession.count({ where }),
       this.db.attendanceSession.findMany({
         where,
@@ -131,10 +133,64 @@ export class ReportService {
         skip,
         take: pageSize,
       }),
+      this.db.attendanceSession.findMany({
+        where: {
+          ...where,
+          status: AttendanceSessionStatus.CLOSED,
+        },
+        select: { id: true },
+      }),
     ]);
 
+    // Authoritative Server-side Summary covering the ENTIRE filtered dataset (closed sessions weighted rate)
+    const closedSessionIds = closedSessions.map((s) => s.id);
+    let summaryPresent = 0;
+    let summaryAbsent = 0;
+    let summaryExpected = 0;
+
+    if (closedSessionIds.length > 0) {
+      const closedRecordCounts = await this.db.attendanceRecord.groupBy({
+        by: ['status'],
+        where: {
+          attendanceSessionId: { in: closedSessionIds },
+        },
+        _count: { id: true },
+      });
+
+      for (const item of closedRecordCounts) {
+        summaryExpected += item._count.id;
+        if (
+          item.status === AttendanceRecordStatus.PRESENT ||
+          item.status === AttendanceRecordStatus.CORRECTED_PRESENT
+        ) {
+          summaryPresent += item._count.id;
+        } else if (item.status === AttendanceRecordStatus.ABSENT) {
+          summaryAbsent += item._count.id;
+        }
+      }
+    }
+
+    const summaryAttendanceRate =
+      summaryExpected > 0 ? Math.round((summaryPresent / summaryExpected) * 100) : 0;
+
+    const summary: AttendanceReportSummary = {
+      sessions: total,
+      closedSessions: closedSessionIds.length,
+      present: summaryPresent,
+      absent: summaryAbsent,
+      expected: summaryExpected,
+      attendanceRate: summaryAttendanceRate,
+    };
+
     if (sessions.length === 0) {
-      return { data: [], page, pageSize, total, totalPages: 0 };
+      return {
+        data: [],
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+        summary,
+      };
     }
 
     const sessionIds = sessions.map((s) => s.id);
@@ -220,6 +276,7 @@ export class ReportService {
       pageSize,
       total,
       totalPages: Math.ceil(total / pageSize),
+      summary,
     };
   }
 

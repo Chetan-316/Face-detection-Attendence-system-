@@ -9,6 +9,7 @@ import {
   CurrentlyOutsideReportItem,
   ResidentSummaryReport,
   PaginatedReportResponse,
+  PaginatedAttendanceReportResponse,
 } from '../types/reports.types';
 
 export const reportsApi = {
@@ -22,7 +23,7 @@ export const reportsApi = {
     dateTo?: string;
     page?: number;
     pageSize?: number;
-  }): Promise<PaginatedReportResponse<AttendanceSessionReportItem>> => {
+  }): Promise<PaginatedAttendanceReportResponse> => {
     const query = new URLSearchParams();
     if (params?.hostelId) query.set('hostelId', params.hostelId);
     if (params?.sessionId) query.set('sessionId', params.sessionId);
@@ -35,7 +36,7 @@ export const reportsApi = {
     if (params?.pageSize) query.set('pageSize', params.pageSize.toString());
 
     const qs = query.toString();
-    return apiClient<PaginatedReportResponse<AttendanceSessionReportItem>>(
+    return apiClient<PaginatedAttendanceReportResponse>(
       `/reports/attendance${qs ? `?${qs}` : ''}`
     );
   },

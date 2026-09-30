@@ -170,8 +170,16 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
       data: mockAttendanceSessions,
       total: 1,
       page: 1,
-      pageSize: 50,
+      pageSize: 15,
       totalPages: 1,
+      summary: {
+        sessions: 1,
+        closedSessions: 1,
+        present: 92,
+        absent: 8,
+        expected: 100,
+        attendanceRate: 92,
+      },
     });
 
     (reportsApi.getAttendanceTrend as any).mockResolvedValue({
@@ -445,5 +453,82 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
     for (const term of forbiddenTerms) {
       expect(pageText).not.toContain(term);
     }
+  });
+
+  // 10. Pagination Independence Test: changing pagination does NOT change summary cards
+  it('10. changing pagination does NOT change summary cards', async () => {
+    const fixedSummary = {
+      sessions: 25,
+      closedSessions: 20,
+      present: 1800,
+      absent: 200,
+      expected: 2000,
+      attendanceRate: 90,
+    };
+
+    const page1Data = Array.from({ length: 10 }, (_, i) => ({
+      ...mockAttendanceSessions[0],
+      id: `session-p1-${i}`,
+      title: `Page 1 Session ${i + 1}`,
+    }));
+
+    const page2Data = Array.from({ length: 10 }, (_, i) => ({
+      ...mockAttendanceSessions[0],
+      id: `session-p2-${i}`,
+      title: `Page 2 Session ${i + 1}`,
+    }));
+
+    (reportsApi.getAttendanceSessions as any).mockImplementation((params: any) => {
+      if (params?.page === 2) {
+        return Promise.resolve({
+          data: page2Data,
+          total: 25,
+          page: 2,
+          pageSize: 10,
+          totalPages: 3,
+          summary: fixedSummary,
+        });
+      }
+      return Promise.resolve({
+        data: page1Data,
+        total: 25,
+        page: 1,
+        pageSize: 10,
+        totalPages: 3,
+        summary: fixedSummary,
+      });
+    });
+
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <ReportsPage />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+
+    // Initial page 1 render: summary cards show authoritative figures
+    await waitFor(() => {
+      expect(screen.getAllByText('25').length).toBeGreaterThanOrEqual(1); // Sessions
+      expect(screen.getByText('90%')).toBeInTheDocument(); // Attendance Rate
+      expect(screen.getByText('1800')).toBeInTheDocument(); // Total Present
+      expect(screen.getByText('200')).toBeInTheDocument(); // Total Absent
+      expect(screen.getByText('Page 1 Session 1')).toBeInTheDocument();
+    });
+
+    // Navigate to page 2 via pagination Next button
+    const nextButton = screen.getByRole('button', { name: /next page/i });
+    fireEvent.click(nextButton);
+
+    // Verify page 2 data loaded, but summary cards remain identical
+    await waitFor(() => {
+      expect(screen.getByText('Page 2 Session 1')).toBeInTheDocument();
+      expect(screen.queryByText('Page 1 Session 1')).not.toBeInTheDocument();
+      // Summary cards MUST remain unchanged
+      expect(screen.getAllByText('25').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('90%')).toBeInTheDocument();
+      expect(screen.getByText('1800')).toBeInTheDocument();
+      expect(screen.getByText('200')).toBeInTheDocument();
+    });
   });
 });

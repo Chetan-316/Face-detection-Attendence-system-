@@ -146,3 +146,16 @@ export interface PaginatedReportResponse<T> {
   total: number;
   totalPages: number;
 }
+
+export interface AttendanceReportSummary {
+  sessions: number;
+  closedSessions: number;
+  present: number;
+  absent: number;
+  expected: number;
+  attendanceRate: number;
+}
+
+export interface PaginatedAttendanceReportResponse extends PaginatedReportResponse<AttendanceSessionReportItem> {
+  summary: AttendanceReportSummary;
+}

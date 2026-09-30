@@ -1013,4 +1013,328 @@ describe('Step 09: Operational Attendance & Movement Reporting Tests', () => {
     expect(res.body.attendanceRate).toBe(0);
     expect(res.body.totalAttendanceSessions).toBe(0);
   });
+
+  // ----------------------------------------------------
+  // Step 09.1 Hardening Tests: Authoritative Server-side Summary
+  // ----------------------------------------------------
+  describe('Step 09.1: Authoritative Server-Side Attendance Summary & Pagination Independence', () => {
+    it('computes summary across 25 sessions and returns identical summary on page 1 and page 2', async () => {
+      // Create 2 test residents
+      const r1 = await testPrisma.resident.create({
+        data: {
+          organizationId: orgAId,
+          hostelId: hostelA1Id,
+          residentCode: 'R_PAG_1',
+          fullName: 'Pag Resident 1',
+          roomGroup: 'P-1',
+          status: ResidentStatus.ACTIVE,
+        },
+      });
+      const r2 = await testPrisma.resident.create({
+        data: {
+          organizationId: orgAId,
+          hostelId: hostelA1Id,
+          residentCode: 'R_PAG_2',
+          fullName: 'Pag Resident 2',
+          roomGroup: 'P-2',
+          status: ResidentStatus.ACTIVE,
+        },
+      });
+
+      // Create 25 closed sessions, each with 1 PRESENT and 1 ABSENT
+      for (let i = 1; i <= 25; i++) {
+        const dayStr = i < 10 ? `0${i}` : `${i}`;
+        const session = await testPrisma.attendanceSession.create({
+          data: {
+            organizationId: orgAId,
+            hostelId: hostelA1Id,
+            sessionType: AttendanceSessionType.NIGHT,
+            title: `Night Attendance Session ${i}`,
+            attendanceDate: new Date(`2026-08-${dayStr}T00:00:00.000Z`),
+            status: AttendanceSessionStatus.CLOSED,
+            startTime: new Date(`2026-08-${dayStr}T21:00:00.000Z`),
+            endTime: new Date(`2026-08-${dayStr}T22:00:00.000Z`),
+            createdByUserId: userWardenA1Id,
+          },
+        });
+
+        await testPrisma.attendanceRecord.createMany({
+          data: [
+            {
+              attendanceSessionId: session.id,
+              residentId: r1.id,
+              status: AttendanceRecordStatus.PRESENT,
+              markMethod: AttendanceMarkMethod.FACE_RECOGNITION,
+            },
+            {
+              attendanceSessionId: session.id,
+              residentId: r2.id,
+              status: AttendanceRecordStatus.ABSENT,
+              markMethod: AttendanceMarkMethod.SYSTEM,
+            },
+          ],
+        });
+      }
+
+      // Query Page 1 with pageSize = 10
+      const page1Res = await request(app)
+        .get(`/api/v1/reports/attendance?hostelId=${hostelA1Id}&dateFrom=2026-08-01T00:00:00.000Z&dateTo=2026-08-30T00:00:00.000Z&page=1&pageSize=10`)
+        .set('Authorization', `Bearer ${wardenA1Token}`);
+
+      expect(page1Res.status).toBe(200);
+      expect(page1Res.body.data).toHaveLength(10);
+      expect(page1Res.body.total).toBe(25);
+      expect(page1Res.body.totalPages).toBe(3);
+      expect(page1Res.body.summary).toEqual({
+        sessions: 25,
+        closedSessions: 25,
+        present: 25,
+        absent: 25,
+        expected: 50,
+        attendanceRate: 50,
+      });
+
+      // Query Page 2 with pageSize = 10
+      const page2Res = await request(app)
+        .get(`/api/v1/reports/attendance?hostelId=${hostelA1Id}&dateFrom=2026-08-01T00:00:00.000Z&dateTo=2026-08-30T00:00:00.000Z&page=2&pageSize=10`)
+        .set('Authorization', `Bearer ${wardenA1Token}`);
+
+      expect(page2Res.status).toBe(200);
+      expect(page2Res.body.data).toHaveLength(10);
+      expect(page2Res.body.total).toBe(25);
+      // Different page data rows
+      expect(page2Res.body.data[0].id).not.toBe(page1Res.body.data[0].id);
+      // Summary MUST remain identical
+      expect(page2Res.body.summary).toEqual(page1Res.body.summary);
+    });
+
+    it('closed sessions only for finalized rate: active sessions do NOT affect summary rate or present/absent', async () => {
+      // Create residents for Closed Session 1 (100 residents: 90 present, 10 absent)
+      const resSession1 = [];
+      for (let i = 1; i <= 100; i++) {
+        const res = await testPrisma.resident.create({
+          data: {
+            organizationId: orgAId,
+            hostelId: hostelA1Id,
+            residentCode: `R_C1_${i}`,
+            fullName: `C1 Resident ${i}`,
+            roomGroup: 'C1',
+            status: ResidentStatus.ACTIVE,
+          },
+        });
+        resSession1.push(res);
+      }
+
+      // Create residents for Closed Session 2 (10 residents: 5 present, 5 absent)
+      const resSession2 = [];
+      for (let i = 1; i <= 10; i++) {
+        const res = await testPrisma.resident.create({
+          data: {
+            organizationId: orgAId,
+            hostelId: hostelA1Id,
+            residentCode: `R_C2_${i}`,
+            fullName: `C2 Resident ${i}`,
+            roomGroup: 'C2',
+            status: ResidentStatus.ACTIVE,
+          },
+        });
+        resSession2.push(res);
+      }
+
+      // Create residents for Active Session (10 residents: 10 present, 0 absent)
+      const resSessionActive = [];
+      for (let i = 1; i <= 10; i++) {
+        const res = await testPrisma.resident.create({
+          data: {
+            organizationId: orgAId,
+            hostelId: hostelA1Id,
+            residentCode: `R_ACT_${i}`,
+            fullName: `Active Resident ${i}`,
+            roomGroup: 'ACT',
+            status: ResidentStatus.ACTIVE,
+          },
+        });
+        resSessionActive.push(res);
+      }
+
+      // Closed Session 1
+      const closed1 = await testPrisma.attendanceSession.create({
+        data: {
+          organizationId: orgAId,
+          hostelId: hostelA1Id,
+          sessionType: AttendanceSessionType.NIGHT,
+          title: 'Closed Session 1',
+          attendanceDate: new Date('2026-07-01T00:00:00.000Z'),
+          status: AttendanceSessionStatus.CLOSED,
+          startTime: new Date('2026-07-01T21:00:00.000Z'),
+          endTime: new Date('2026-07-01T22:00:00.000Z'),
+          createdByUserId: userWardenA1Id,
+        },
+      });
+      const records1 = [];
+      for (let i = 0; i < 90; i++) {
+        records1.push({
+          attendanceSessionId: closed1.id,
+          residentId: resSession1[i].id,
+          status: AttendanceRecordStatus.PRESENT,
+          markMethod: AttendanceMarkMethod.FACE_RECOGNITION,
+        });
+      }
+      for (let i = 90; i < 100; i++) {
+        records1.push({
+          attendanceSessionId: closed1.id,
+          residentId: resSession1[i].id,
+          status: AttendanceRecordStatus.ABSENT,
+          markMethod: AttendanceMarkMethod.SYSTEM,
+        });
+      }
+      await testPrisma.attendanceRecord.createMany({ data: records1 });
+
+      // Closed Session 2
+      const closed2 = await testPrisma.attendanceSession.create({
+        data: {
+          organizationId: orgAId,
+          hostelId: hostelA1Id,
+          sessionType: AttendanceSessionType.NIGHT,
+          title: 'Closed Session 2',
+          attendanceDate: new Date('2026-07-02T00:00:00.000Z'),
+          status: AttendanceSessionStatus.CLOSED,
+          startTime: new Date('2026-07-02T21:00:00.000Z'),
+          endTime: new Date('2026-07-02T22:00:00.000Z'),
+          createdByUserId: userWardenA1Id,
+        },
+      });
+      const records2 = [];
+      for (let i = 0; i < 5; i++) {
+        records2.push({
+          attendanceSessionId: closed2.id,
+          residentId: resSession2[i].id,
+          status: AttendanceRecordStatus.PRESENT,
+          markMethod: AttendanceMarkMethod.FACE_RECOGNITION,
+        });
+      }
+      for (let i = 5; i < 10; i++) {
+        records2.push({
+          attendanceSessionId: closed2.id,
+          residentId: resSession2[i].id,
+          status: AttendanceRecordStatus.ABSENT,
+          markMethod: AttendanceMarkMethod.SYSTEM,
+        });
+      }
+      await testPrisma.attendanceRecord.createMany({ data: records2 });
+
+      // Active Session
+      const activeSession = await testPrisma.attendanceSession.create({
+        data: {
+          organizationId: orgAId,
+          hostelId: hostelA1Id,
+          sessionType: AttendanceSessionType.NIGHT,
+          title: 'Active Session',
+          attendanceDate: new Date('2026-07-03T00:00:00.000Z'),
+          status: AttendanceSessionStatus.ACTIVE,
+          startTime: new Date('2026-07-03T21:00:00.000Z'),
+          createdByUserId: userWardenA1Id,
+        },
+      });
+      const recordsActive = [];
+      for (let i = 0; i < 10; i++) {
+        recordsActive.push({
+          attendanceSessionId: activeSession.id,
+          residentId: resSessionActive[i].id,
+          status: AttendanceRecordStatus.PRESENT,
+          markMethod: AttendanceMarkMethod.FACE_RECOGNITION,
+        });
+      }
+      await testPrisma.attendanceRecord.createMany({ data: recordsActive });
+
+      const res = await request(app)
+        .get(`/api/v1/reports/attendance?hostelId=${hostelA1Id}&dateFrom=2026-07-01T00:00:00.000Z&dateTo=2026-07-04T00:00:00.000Z`)
+        .set('Authorization', `Bearer ${wardenA1Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(3); // 3 total sessions in filter
+      expect(res.body.summary).toEqual({
+        sessions: 3,
+        closedSessions: 2,
+        present: 95,
+        absent: 15,
+        expected: 110,
+        attendanceRate: 86, // 95 / 110 = 86.36% -> 86%
+      });
+    });
+
+    it('returns zeroed summary without dividing by zero when no closed sessions exist', async () => {
+      // Create an active session with no closed sessions
+      await testPrisma.attendanceSession.create({
+        data: {
+          organizationId: orgAId,
+          hostelId: hostelA1Id,
+          sessionType: AttendanceSessionType.NIGHT,
+          title: 'Only Active Session',
+          attendanceDate: new Date('2026-06-01T00:00:00.000Z'),
+          status: AttendanceSessionStatus.ACTIVE,
+          startTime: new Date('2026-06-01T21:00:00.000Z'),
+          createdByUserId: userWardenA1Id,
+        },
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/reports/attendance?hostelId=${hostelA1Id}&dateFrom=2026-06-01T00:00:00.000Z&dateTo=2026-06-02T00:00:00.000Z`)
+        .set('Authorization', `Bearer ${wardenA1Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(1);
+      expect(res.body.summary).toEqual({
+        sessions: 1,
+        closedSessions: 0,
+        present: 0,
+        absent: 0,
+        expected: 0,
+        attendanceRate: 0,
+      });
+    });
+
+    it('ensures date filters apply consistently to both table rows and server summary', async () => {
+      // Session outside date range
+      await testPrisma.attendanceSession.create({
+        data: {
+          organizationId: orgAId,
+          hostelId: hostelA1Id,
+          sessionType: AttendanceSessionType.NIGHT,
+          title: 'May Old Session',
+          attendanceDate: new Date('2026-05-01T00:00:00.000Z'),
+          status: AttendanceSessionStatus.CLOSED,
+          startTime: new Date('2026-05-01T21:00:00.000Z'),
+          endTime: new Date('2026-05-01T22:00:00.000Z'),
+          createdByUserId: userWardenA1Id,
+        },
+      });
+
+      // Session inside date range
+      await testPrisma.attendanceSession.create({
+        data: {
+          organizationId: orgAId,
+          hostelId: hostelA1Id,
+          sessionType: AttendanceSessionType.NIGHT,
+          title: 'May Filtered Session',
+          attendanceDate: new Date('2026-05-15T00:00:00.000Z'),
+          status: AttendanceSessionStatus.CLOSED,
+          startTime: new Date('2026-05-15T21:00:00.000Z'),
+          endTime: new Date('2026-05-15T22:00:00.000Z'),
+          createdByUserId: userWardenA1Id,
+        },
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/reports/attendance?hostelId=${hostelA1Id}&dateFrom=2026-05-10T00:00:00.000Z&dateTo=2026-05-20T00:00:00.000Z`)
+        .set('Authorization', `Bearer ${wardenA1Token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(1);
+      expect(res.body.summary.sessions).toBe(1);
+      expect(res.body.summary.closedSessions).toBe(1);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0].title).toBe('May Filtered Session');
+    });
+  });
 });

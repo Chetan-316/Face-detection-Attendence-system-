@@ -25,6 +25,10 @@ export const residentsApi = {
     return apiClient<PaginatedResult<SafeResident>>(endpoint);
   },
 
+  async getResidents(query: ListResidentsQuery = {}): Promise<PaginatedResult<SafeResident>> {
+    return this.listResidents(query);
+  },
+
   async getSummary(hostelId?: string): Promise<ResidentSummary> {
     const endpoint = hostelId ? `/residents/summary?hostelId=${encodeURIComponent(hostelId)}` : '/residents/summary';
     return apiClient<ResidentSummary>(endpoint);
