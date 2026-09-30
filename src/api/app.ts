@@ -15,17 +15,32 @@ import { createRecognitionRouter } from './routes/recognition.routes';
 import { EnrollmentService } from '../modules/biometrics/enrollment.service';
 import { BiometricService } from '../modules/biometrics/biometric.service';
 import { CameraService } from '../modules/cameras/camera.service';
-import { RecognitionService } from '../modules/recognition/recognition.service';
+import { RecognitionService, defaultRecognitionService } from '../modules/recognition/recognition.service';
+import { MovementDecisionService } from '../modules/movement-decision/movement-decision.service';
+import { MovementRecognitionBridge } from '../modules/movement-decision/movement-bridge';
+import { createMovementRouter } from './routes/movement.routes';
 
 export interface CreateAppOptions {
   enrollmentService?: EnrollmentService;
   biometricService?: BiometricService;
   cameraService?: CameraService;
   recognitionService?: RecognitionService;
+  movementDecisionService?: MovementDecisionService;
+  movementBridge?: MovementRecognitionBridge;
 }
 
 export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppOptions) {
   const app = express();
+
+  const movementDecisionService =
+    options?.movementDecisionService || new MovementDecisionService(db);
+  const movementBridge =
+    options?.movementBridge || new MovementRecognitionBridge(movementDecisionService);
+
+  const recognitionService = options?.recognitionService || defaultRecognitionService;
+  if (!recognitionService.getMovementBridge()) {
+    recognitionService.setMovementBridge(movementBridge);
+  }
 
   // Basic Security & HTTP Headers
   app.use(helmet());
@@ -66,8 +81,9 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   app.use('/api/v1/auth', createAuthRouter(db));
   app.use('/api/v1/residents', createResidentRouter(db, options?.enrollmentService));
   app.use('/api/v1/cameras', createCameraRouter(db, options?.cameraService));
-  app.use('/api/v1/cameras', createRecognitionRouter(db, options?.recognitionService));
+  app.use('/api/v1/cameras', createRecognitionRouter(db, recognitionService));
   app.use('/api/v1/biometrics', createBiometricRouter(db, options?.biometricService));
+  app.use('/api/v1/movements', createMovementRouter(db, movementDecisionService));
 
   // Static frontend serving if client/dist exists (production / single-server mode)
   const clientDistPath = path.resolve(__dirname, '../../../client/dist');

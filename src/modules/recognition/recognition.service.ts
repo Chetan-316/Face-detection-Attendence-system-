@@ -15,6 +15,7 @@ import {
   RecognitionSessionStatus,
   MatcherThresholds,
 } from './recognition.types';
+import { MovementRecognitionBridge } from '../movement-decision/movement-bridge';
 import { config } from '../../config';
 
 export interface AuthenticatedActor {
@@ -56,19 +57,29 @@ export class RecognitionService {
   private workerClient: PythonWorkerClient;
   private defaultMaxFps: number;
   private defaultHistoryLimit: number;
+  private movementBridge?: MovementRecognitionBridge;
 
   constructor(
     private readonly db: PrismaClient = defaultPrisma,
     cameraService?: CameraService,
     templateCache?: TemplateCache,
     workerClient?: PythonWorkerClient,
-    options?: { maxFps?: number; historyLimit?: number }
+    options?: { maxFps?: number; historyLimit?: number; movementBridge?: MovementRecognitionBridge }
   ) {
     this.cameraService = cameraService || new CameraService(this.db);
     this.templateCache = templateCache || defaultTemplateCache;
     this.workerClient = workerClient || defaultPythonWorkerClient;
     this.defaultMaxFps = options?.maxFps ?? config.recognition.maxFps;
     this.defaultHistoryLimit = options?.historyLimit ?? config.recognition.historyLimit;
+    this.movementBridge = options?.movementBridge;
+  }
+
+  public setMovementBridge(bridge: MovementRecognitionBridge): void {
+    this.movementBridge = bridge;
+  }
+
+  public getMovementBridge(): MovementRecognitionBridge | undefined {
+    return this.movementBridge;
   }
 
   /**
@@ -185,6 +196,12 @@ export class RecognitionService {
     }
 
     this.activeSessions.set(cameraId, session);
+
+    // Attach movement bridge if present
+    if (this.movementBridge) {
+      this.movementBridge.attachSession(camera.id, session.eventEmitter);
+    }
+
     return this.buildSessionStatus(session);
   }
 
@@ -225,6 +242,11 @@ export class RecognitionService {
         session.unsubscribeStream();
       } catch (e) {}
       session.unsubscribeStream = undefined;
+    }
+
+    // Detach movement bridge
+    if (this.movementBridge) {
+      this.movementBridge.detachSession(cameraId, session.eventEmitter);
     }
 
     session.state = 'STOPPED';
@@ -377,6 +399,12 @@ export class RecognitionService {
             qualityUsable: false,
             qualityReason: face.quality.rejectionReason || 'QUALITY_INSUFFICIENT',
             detectedAt: new Date().toISOString(),
+            movementDecision: {
+              status: 'NO_MATCH',
+              cameraId,
+              timestamp: new Date().toISOString(),
+              reason: 'Quality insufficient - no movement side effect',
+            },
           };
           session.qualityInsufficients++;
         } else {
@@ -399,14 +427,41 @@ export class RecognitionService {
             qualityUsable: true,
             qualityReason: null,
             detectedAt: new Date().toISOString(),
+            isStable: stabilized.isStable,
+            shouldEmitEvent: stabilized.shouldEmitEvent,
           };
 
           if (stabilized.classification === 'MATCH') {
             session.matches++;
+
+            // Only trigger movement on temporally stable MATCH when cooldown allows event emission
+            if (stabilized.isStable && stabilized.shouldEmitEvent && stabilized.resident) {
+              session.eventEmitter.emit('stableMatch', obs);
+              if (this.movementBridge) {
+                try {
+                  const decision = await this.movementBridge.processObservation(obs);
+                  obs.movementDecision = decision;
+                } catch (err) {
+                  console.error(`[RecognitionService] Error processing movement decision for camera ${cameraId}:`, err);
+                }
+              }
+            }
           } else if (stabilized.classification === 'UNCERTAIN') {
             session.uncertains++;
+            obs.movementDecision = {
+              status: 'NO_MATCH',
+              cameraId,
+              timestamp: obs.detectedAt,
+              reason: 'Uncertain match - no movement side effect',
+            };
           } else {
             session.unknowns++;
+            obs.movementDecision = {
+              status: 'NO_MATCH',
+              cameraId,
+              timestamp: obs.detectedAt,
+              reason: 'Unknown person - no movement side effect',
+            };
           }
         }
 

@@ -8,6 +8,12 @@ import {
   RecognitionObservation,
   RecognitionSessionStatus,
 } from '../types/recognition.types';
+import { movementsApi } from '../api/movements.api';
+import {
+  MovementEventEntity,
+  PresenceCounts,
+  AutomationStatus,
+} from '../types/movement.types';
 import {
   Play,
   Square,
@@ -36,6 +42,11 @@ export const RecognitionPage: React.FC = () => {
   const [sessionStatus, setSessionStatus] = useState<RecognitionSessionStatus | null>(null);
   const [observations, setObservations] = useState<RecognitionObservation[]>([]);
   const [activeBoxes, setActiveBoxes] = useState<RecognitionObservation[]>([]);
+
+  const [presenceCounts, setPresenceCounts] = useState<PresenceCounts | null>(null);
+  const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
+  const [recentMovements, setRecentMovements] = useState<MovementEventEntity[]>([]);
+  const [feedTab, setFeedTab] = useState<'observations' | 'movements'>('observations');
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isActionPending, setIsActionPending] = useState<boolean>(false);
@@ -74,6 +85,19 @@ export const RecognitionPage: React.FC = () => {
   }, [fetchCameras]);
 
   // 2. Fetch recognition status & initial observations when camera changes
+  const fetchMovementData = useCallback(async (hostelId?: string) => {
+    try {
+      const [counts, autoStat, movs] = await Promise.all([
+        hostelId ? movementsApi.getPresenceCounts(hostelId).catch(() => null) : Promise.resolve(null),
+        movementsApi.getAutomationStatus().catch(() => null),
+        movementsApi.getMovements({ hostelId, pageSize: 15 }).catch(() => ({ data: [] })),
+      ]);
+      if (counts) setPresenceCounts(counts);
+      if (autoStat) setAutomationStatus(autoStat);
+      if (movs?.data) setRecentMovements(movs.data);
+    } catch (e) {}
+  }, []);
+
   const fetchStatusAndResults = useCallback(async (cameraId: string) => {
     try {
       const statusRes = await recognitionApi.getStatus(cameraId);
@@ -90,8 +114,11 @@ export const RecognitionPage: React.FC = () => {
   useEffect(() => {
     if (selectedCameraId) {
       fetchStatusAndResults(selectedCameraId);
+      if (selectedCamera?.hostelId) {
+        fetchMovementData(selectedCamera.hostelId);
+      }
     }
-  }, [selectedCameraId, fetchStatusAndResults]);
+  }, [selectedCameraId, selectedCamera?.hostelId, fetchStatusAndResults, fetchMovementData]);
 
   // 3. Connect to live SSE recognition stream using short-lived stream token
   useEffect(() => {
@@ -139,6 +166,11 @@ export const RecognitionPage: React.FC = () => {
             }
 
             setObservations((prev) => [obs, ...prev.slice(0, 49)]);
+
+            // If a movement was created, refresh presence counts and recent movements feed
+            if (obs.movementDecision?.status === 'MOVEMENT_CREATED' && selectedCamera?.hostelId) {
+              fetchMovementData(selectedCamera.hostelId);
+            }
 
             // Update active overlay boxes
             setActiveBoxes((prev) => {
@@ -370,6 +402,81 @@ export const RecognitionPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Gate Monitor & Telemetry Status Bar */}
+      <div className="gate-monitor-summary-card mb-6 grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
+        <div className="gate-role-cell flex flex-col gap-0.5">
+          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Active Gate & Role</span>
+          <span className="text-base font-bold text-slate-100 flex items-center gap-1.5">
+            <span>{selectedCamera?.name || 'Gate Camera'}</span>
+            <span
+              className={`text-xs px-2 py-0.5 rounded font-mono font-bold uppercase ${
+                selectedCamera?.role === 'IN'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  : selectedCamera?.role === 'OUT'
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  : 'bg-slate-800 text-slate-300 border border-slate-700'
+              }`}
+            >
+              {selectedCamera?.role || 'GENERAL'}
+            </span>
+          </span>
+        </div>
+
+        <div className="rec-state-cell flex flex-col gap-0.5">
+          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Recognition</span>
+          <span className="text-base font-bold flex items-center gap-2">
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
+              }`}
+            />
+            <span className={isRunning ? 'text-emerald-400' : 'text-slate-400'}>
+              {isRunning ? 'RUNNING' : 'STOPPED'}
+            </span>
+          </span>
+        </div>
+
+        <div className="automation-state-cell flex flex-col gap-0.5">
+          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Movement Automation</span>
+          {(() => {
+            const isRoleMovement = selectedCamera?.role === 'IN' || selectedCamera?.role === 'OUT';
+            const isCamAutoEnabled = selectedCamera?.configMetadata?.movementAutomationEnabled !== false;
+            const isGlobalAuto = automationStatus?.globalAutomationEnabled ?? false;
+            const isAutomationActive = isRoleMovement && isCamAutoEnabled && isGlobalAuto;
+
+            return (
+              <span className="text-base font-bold flex items-center gap-1.5">
+                <span
+                  className={`text-xs px-2.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                    isAutomationActive
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                  }`}
+                  data-testid="movement-automation-indicator"
+                >
+                  Movement automation: {isAutomationActive ? 'ENABLED' : 'DISABLED'}
+                </span>
+              </span>
+            );
+          })()}
+        </div>
+
+        <div className="presence-stats-cell flex flex-col gap-0.5">
+          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Hostel Presence</span>
+          <div className="text-sm font-semibold flex items-center gap-3">
+            <span className="text-emerald-400 flex items-center gap-1">
+              <span>Inside hostel:</span>
+              <strong className="text-white text-base font-bold">{presenceCounts?.currentlyIn ?? '—'}</strong>
+            </span>
+            <span className="text-slate-500">•</span>
+            <span className="text-amber-400 flex items-center gap-1">
+              <span>Outside hostel:</span>
+              <strong className="text-white text-base font-bold">{presenceCounts?.currentlyOut ?? '—'}</strong>
+            </span>
+          </div>
+        </div>
+      </div>
+
       {/* Main Grid: Video Stream on Left, Live Observations on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Live Camera + HUD */}
@@ -496,31 +603,95 @@ export const RecognitionPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Isolation Notice Alert */}
+          {/* Operational Policy Notice */}
           <div className="isolation-notice bg-slate-900/60 border border-slate-800/80 rounded-lg p-3 text-xs text-slate-400 flex items-start gap-2.5">
             <AlertCircle size={16} className="text-sky-400 shrink-0 mt-0.5" />
             <div>
               <span className="font-semibold text-slate-300">Passive Observation Mode</span>
               <p className="mt-0.5 text-slate-400 leading-relaxed">
-                Face recognition operates strictly as an identity observer. It does NOT create attendance records, mark IN/OUT movements, or alter resident presence status.
+                Configured gate cameras (IN / OUT) automatically create resident movement records from stable MATCH observations. Attendance sessions and leave automation remain decoupled.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Live Recognition Observations Feed */}
+        {/* Right Column: Live Recognition Observations & Gate Movement Feed */}
         <div className="lg:col-span-1 flex flex-col gap-3">
           <div className="feed-card bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col h-[600px]">
-            <div className="feed-header px-4 py-3 bg-slate-800/80 border-b border-slate-700/60 flex items-center justify-between">
+            {/* Feed Tabs Header */}
+            <div className="feed-header px-4 py-2.5 bg-slate-800/80 border-b border-slate-700/60 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Clock size={16} className="text-slate-400" />
-                <h3 className="text-sm font-semibold text-slate-200">Recent Observations</h3>
+                <button
+                  type="button"
+                  onClick={() => setFeedTab('observations')}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded transition-all ${
+                    feedTab === 'observations'
+                      ? 'bg-slate-700 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Observations ({observations.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFeedTab('movements')}
+                  className={`text-xs font-semibold px-2.5 py-1 rounded transition-all ${
+                    feedTab === 'movements'
+                      ? 'bg-slate-700 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Gate Feed ({recentMovements.length})
+                </button>
               </div>
-              <span className="text-xs text-slate-400">{observations.length} items</span>
             </div>
 
-            {/* Scrollable Observations List */}
-            <div className="feed-list p-3 overflow-y-auto flex-1 flex flex-col gap-2.5">
+            {feedTab === 'movements' ? (
+              /* Recent Gate Movement Decisions Feed (Requirement 35) */
+              <div className="feed-list p-3 overflow-y-auto flex-1 flex flex-col gap-2">
+                {recentMovements.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500 text-xs flex flex-col items-center">
+                    <Clock size={32} className="mb-2 opacity-30" />
+                    <p>No recent gate movements recorded</p>
+                  </div>
+                ) : (
+                  recentMovements.map((mov) => {
+                    const movTime = new Date(mov.effectiveTimestamp).toLocaleTimeString();
+                    const isIN = mov.movementType === 'IN';
+
+                    return (
+                      <div
+                        key={mov.id}
+                        className="movement-feed-item p-2.5 rounded-lg bg-slate-800/50 border border-slate-700/50 flex items-center justify-between text-xs"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-mono text-slate-400 text-[11px]">{movTime}</span>
+                          <span className="font-semibold text-slate-200">
+                            {mov.resident?.fullName || mov.residentId}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                              isIN
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                            }`}
+                          >
+                            {mov.movementType}
+                          </span>
+                          <span className="text-[11px] text-slate-400 truncate max-w-[90px]">
+                            {mov.camera?.name || 'Gate'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : (
+              /* Scrollable Observations List */
+              <div className="feed-list p-3 overflow-y-auto flex-1 flex flex-col gap-2.5">
               {observations.length === 0 ? (
                 <div className="text-center py-12 text-slate-500 text-xs flex flex-col items-center">
                   <Eye size={32} className="mb-2 opacity-30" />
@@ -576,6 +747,58 @@ export const RecognitionPage: React.FC = () => {
                         </div>
                       )}
 
+                      {/* Movement Decision Status Banner (Step 07) */}
+                      <div className="movement-decision-block mt-2 pt-2 border-t border-slate-700/50 text-xs">
+                        {isMatch ? (
+                          obs.movementDecision ? (
+                            obs.movementDecision.status === 'MOVEMENT_CREATED' ? (
+                              <div className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                <span>
+                                  Movement Decision: <strong>{obs.movementDecision.direction} RECORDED</strong> (Presence: {obs.movementDecision.currentPresence})
+                                </span>
+                              </div>
+                            ) : obs.movementDecision.status === 'ALREADY_IN' ? (
+                              <div className="font-semibold text-sky-400 flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+                                <span>Already IN — duplicate suppressed</span>
+                              </div>
+                            ) : obs.movementDecision.status === 'ALREADY_OUT' ? (
+                              <div className="font-semibold text-sky-400 flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
+                                <span>Already OUT — duplicate suppressed</span>
+                              </div>
+                            ) : obs.movementDecision.status === 'TRANSITION_SUPPRESSED' ? (
+                              <div className="font-semibold text-amber-400 flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                                <span>Transition suppressed (rapid opposite movement)</span>
+                              </div>
+                            ) : obs.movementDecision.status === 'AUTOMATION_DISABLED' ? (
+                              <div className="font-semibold text-slate-400 flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+                                <span>Movement automation disabled — No movement recorded</span>
+                              </div>
+                            ) : obs.movementDecision.status === 'CAMERA_NOT_MOVEMENT_CAPABLE' ? (
+                              <div className="text-slate-400">
+                                Camera role {selectedCamera?.role || 'GENERAL'} — No movement action
+                              </div>
+                            ) : (
+                              <div className="text-slate-400">
+                                Decision: {obs.movementDecision.status}
+                              </div>
+                            )
+                          ) : (
+                            <div className="text-slate-400">Movement Decision: Evaluating...</div>
+                          )
+                        ) : isUnknown ? (
+                          <div className="text-slate-400 font-medium">UNKNOWN No movement action</div>
+                        ) : isUncertain ? (
+                          <div className="text-slate-400 font-medium">UNCERTAIN No movement action</div>
+                        ) : (
+                          <div className="text-slate-400 font-medium">QUALITY INSUFFICIENT No movement action</div>
+                        )}
+                      </div>
+
                       {isUncertain && (
                         <div className="uncertain-info text-xs text-amber-300/80 mt-0.5">
                           Ambiguous match or low candidate separation. Identity kept private.
@@ -604,9 +827,10 @@ export const RecognitionPage: React.FC = () => {
                 })
               )}
             </div>
-          </div>
+          )}
         </div>
       </div>
+    </div>
     </div>
   );
 };

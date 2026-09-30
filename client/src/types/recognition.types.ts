@@ -1,3 +1,5 @@
+import { MovementDecisionResult } from './movement.types';
+
 export type RecognitionClassification = 'MATCH' | 'UNCERTAIN' | 'UNKNOWN' | 'QUALITY_INSUFFICIENT';
 
 export interface RecognitionBoundingBox {
@@ -25,6 +27,9 @@ export interface RecognitionObservation {
   qualityUsable: boolean;
   qualityReason?: string | null;
   detectedAt: string;
+  isStable?: boolean;
+  shouldEmitEvent?: boolean;
+  movementDecision?: MovementDecisionResult;
 }
 
 export type RecognitionSessionState = 'STOPPED' | 'STARTING' | 'RUNNING' | 'ERROR';

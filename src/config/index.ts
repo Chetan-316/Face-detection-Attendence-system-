@@ -19,5 +19,9 @@ export const config = {
     cooldownMs: parseInt(process.env.RECOGNITION_COOLDOWN_MS || '8000', 10),
     historyLimit: parseInt(process.env.RECOGNITION_HISTORY_LIMIT || '100', 10),
   },
+  movement: {
+    automationEnabled: process.env.MOVEMENT_AUTOMATION_ENABLED === 'true',
+    minTransitionIntervalMs: parseInt(process.env.MOVEMENT_MIN_TRANSITION_INTERVAL_MS || '5000', 10),
+  },
 };
 

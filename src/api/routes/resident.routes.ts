@@ -14,10 +14,12 @@ import { NotFoundError, ValidationError } from '../../common/errors';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createFaceEnrollmentRouter } from './face-enrollment.routes';
 import { EnrollmentService } from '../../modules/biometrics/enrollment.service';
+import { PresenceService } from '../../modules/presence/presence.service';
 
 export function createResidentRouter(db = defaultPrisma, enrollmentService?: EnrollmentService) {
   const router = Router();
   const residentService = new ResidentService(db);
+  const presenceService = new PresenceService(db);
   const { requireAuth, requirePermission } = createAuthMiddleware(db);
 
   // All resident routes require authentication
@@ -272,6 +274,62 @@ export function createResidentRouter(db = defaultPrisma, enrollmentService?: Enr
     }
   );
 
+  /**
+   * GET /api/v1/residents/:id/presence
+   * Fetch current presence state for resident
+   */
+  router.get('/:id/presence', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      // Authorize scope first
+      await residentService.getResidentScoped(id, user);
+      const presence = await presenceService.getResidentPresence(id);
+      res.status(200).json(presence);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
+   * GET /api/v1/residents/:id/movements
+   * Fetch movement history for specific resident
+   */
+  router.get('/:id/movements', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      // Authorize scope first
+      const resident = await residentService.getResidentScoped(id, user);
+
+      const movements = await db.movementEvent.findMany({
+        where: { residentId: resident.id },
+        include: {
+          camera: {
+            select: {
+              id: true,
+              name: true,
+              role: true,
+            },
+          },
+          location: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+        },
+        orderBy: { effectiveTimestamp: 'desc' },
+        take: 50,
+      });
+
+      res.status(200).json({ data: movements });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   // Mount face enrollment routes under /:id/face-enrollment
   router.use('/:id/face-enrollment', createFaceEnrollmentRouter(db, enrollmentService));
 
@@ -279,3 +337,4 @@ export function createResidentRouter(db = defaultPrisma, enrollmentService?: Enr
 }
 
 export const residentRouter = createResidentRouter();
+

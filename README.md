@@ -258,11 +258,24 @@ Camera Database Configuration
 - **Multi-Face Independence**: Independent processing of multiple faces visible within the same video frame.
 - **Observation-Only Mode**: Strictly produces ephemeral recognition observations without mutating movement, presence, or attendance records.
 
+### Automated Gate Movement Decision Engine (Step 07)
+- **Safe Deterministic Side Effects**: Converts stable face recognition MATCH observations from configured gate cameras into real-world `IN` / `OUT` movement decisions and updates authoritative `ResidentPresence`.
+- **Camera-Role Ingress / Egress Rules**:
+  - `CameraRole.IN`: Stable MATCH creates `IN` MovementEvent; transitions resident `OUT -> IN`.
+  - `CameraRole.OUT`: Stable MATCH creates `OUT` MovementEvent; transitions resident `IN -> OUT`.
+  - `CameraRole.GENERAL` & `CameraRole.ATTENDANCE`: No automatic movement side effects (`CAMERA_NOT_MOVEMENT_CAPABLE`).
+- **Server-Authoritative Direction**: Direction is derived strictly from `camera.role` on the server; client requests are never trusted for automatic direction.
+- **Duplicate Suppression**: Identical same-direction recognitions (`IN` when already `IN`, `OUT` when already `OUT`) are suppressed (`ALREADY_IN` / `ALREADY_OUT`) with zero redundant DB writes.
+- **Observation Idempotency & Replay Defense**: In-memory LRU cache and `MovementEvent.recognitionReference` DB uniqueness prevent duplicate movement creation across retries and SSE reconnections.
+- **Rapid Transition Guard**: Configurable guard window (`MOVEMENT_MIN_TRANSITION_INTERVAL_MS`, e.g. 5000ms) prevents unrealistic oscillation across overlapping camera views (`TRANSITION_SUPPRESSED`).
+- **Operational Automation Switches**: Global server switch (`MOVEMENT_AUTOMATION_ENABLED`) and per-camera toggles (`configMetadata.movementAutomationEnabled`) permit turning automation ON/OFF without stopping recognition.
+- **Complete Decoupling**: Attendance sessions, night attendance, and leave modules remain completely independent. Zero attendance records or leave mutations are generated.
+
 #### Explicitly Deferred (Future Steps):
 - Liveness detection / anti-spoofing verification
-- Automated IN/OUT movement event generation (Step 07)
-- Automated gate / turnstile relay control
 - Attendance roll call automation
-- Night attendance recognition
-- Production threshold calibration for specific camera optics and environments
+- Night attendance automation
+- Leave automation & absence inference
+- Advanced anti-tailgating
+- Production multi-camera calibration and gate relay control
 

@@ -48,6 +48,7 @@ export const CamerasPage: React.FC = () => {
   const [newCameraName, setNewCameraName] = useState('');
   const [newCameraSourceType, setNewCameraSourceType] = useState<'WEBCAM' | 'RTSP' | 'SMART_CAMERA'>('WEBCAM');
   const [newCameraRole, setNewCameraRole] = useState<'GENERAL' | 'IN' | 'OUT' | 'ATTENDANCE'>('GENERAL');
+  const [newCameraMovementAutomation, setNewCameraMovementAutomation] = useState(true);
   const [newCameraDeviceIndex, setNewCameraDeviceIndex] = useState('0');
   const [newCameraRtspUrl, setNewCameraRtspUrl] = useState('');
   const [isSubmittingCamera, setIsSubmittingCamera] = useState(false);
@@ -186,6 +187,9 @@ export const CamerasPage: React.FC = () => {
     try {
       setIsSubmittingCamera(true);
       const configMetadata: Record<string, any> = {};
+      if (newCameraRole === 'IN' || newCameraRole === 'OUT') {
+        configMetadata.movementAutomationEnabled = newCameraMovementAutomation;
+      }
       if (newCameraSourceType === 'WEBCAM') {
         configMetadata.deviceIndex = parseInt(newCameraDeviceIndex, 10) || 0;
         configMetadata.fps = 15;
@@ -327,6 +331,18 @@ export const CamerasPage: React.FC = () => {
                         <Badge value={camera.sourceType} size="sm" />
                       </span>
                       <span className="meta-tag role-tag">Role: {camera.role}</span>
+                      {(camera.role === 'IN' || camera.role === 'OUT') && (
+                        <span
+                          className={`meta-tag ${
+                            camera.configMetadata?.movementAutomationEnabled !== false
+                              ? 'text-emerald-400 font-semibold'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          Movement Automation:{' '}
+                          {camera.configMetadata?.movementAutomationEnabled !== false ? 'ON' : 'OFF'}
+                        </span>
+                      )}
                       {camera.location && (
                         <span className="meta-tag location-tag">{camera.location.name}</span>
                       )}
@@ -367,6 +383,25 @@ export const CamerasPage: React.FC = () => {
                       <span>Type: <strong>{selectedCamera.sourceType}</strong></span>
                       <span className="separator">•</span>
                       <span>Role: <strong>{selectedCamera.role}</strong></span>
+                      {(selectedCamera.role === 'IN' || selectedCamera.role === 'OUT') && (
+                        <>
+                          <span className="separator">•</span>
+                          <span>
+                            Movement Automation:{' '}
+                            <strong
+                              className={
+                                selectedCamera.configMetadata?.movementAutomationEnabled !== false
+                                  ? 'text-emerald-400 font-semibold'
+                                  : 'text-slate-400'
+                              }
+                            >
+                              {selectedCamera.configMetadata?.movementAutomationEnabled !== false
+                                ? 'ON'
+                                : 'OFF'}
+                            </strong>
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -694,6 +729,21 @@ export const CamerasPage: React.FC = () => {
                     <option value="ATTENDANCE">ATTENDANCE (Assembly / Roll Call Checkpoint)</option>
                   </select>
                 </div>
+
+                {(newCameraRole === 'IN' || newCameraRole === 'OUT') && (
+                  <div className="form-group flex items-center gap-2 py-1">
+                    <input
+                      id="cam-movement-auto"
+                      type="checkbox"
+                      className="rounded border-slate-700 text-primary-500 focus:ring-primary-500"
+                      checked={newCameraMovementAutomation}
+                      onChange={(e) => setNewCameraMovementAutomation(e.target.checked)}
+                    />
+                    <label htmlFor="cam-movement-auto" className="text-sm text-slate-300 font-medium">
+                      Enable Gate Movement Automation (Create IN/OUT records on stable MATCH)
+                    </label>
+                  </div>
+                )}
 
                 {newCameraSourceType === 'WEBCAM' && (
                   <div className="form-group">
