@@ -1,5 +1,6 @@
 import { BoundingBox } from '../biometrics/biometric.types';
 import { MovementDecisionResult } from '../movement-decision/movement-decision.types';
+import { AttendanceDecisionResult } from '../attendance-decision/attendance-decision.types';
 
 export type RecognitionClassification = 'MATCH' | 'UNCERTAIN' | 'UNKNOWN' | 'QUALITY_INSUFFICIENT';
 
@@ -53,6 +54,9 @@ export interface RecognitionObservation {
   isStable?: boolean;
   shouldEmitEvent?: boolean;
   movementDecision?: MovementDecisionResult;
+  attendanceDecision?: AttendanceDecisionResult;
+  observationId?: string;
+  residentId?: string;
 }
 
 export type RecognitionSessionState = 'STOPPED' | 'STARTING' | 'RUNNING' | 'ERROR';

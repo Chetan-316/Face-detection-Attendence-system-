@@ -19,6 +19,10 @@ import { RecognitionService, defaultRecognitionService } from '../modules/recogn
 import { MovementDecisionService } from '../modules/movement-decision/movement-decision.service';
 import { MovementRecognitionBridge } from '../modules/movement-decision/movement-bridge';
 import { createMovementRouter } from './routes/movement.routes';
+import { AttendanceService } from '../modules/attendance/attendance.service';
+import { AttendanceDecisionService } from '../modules/attendance-decision/attendance-decision.service';
+import { AttendanceRecognitionBridge } from '../modules/attendance-decision/attendance-bridge';
+import { createAttendanceRouter } from './routes/attendance.routes';
 
 export interface CreateAppOptions {
   enrollmentService?: EnrollmentService;
@@ -27,6 +31,9 @@ export interface CreateAppOptions {
   recognitionService?: RecognitionService;
   movementDecisionService?: MovementDecisionService;
   movementBridge?: MovementRecognitionBridge;
+  attendanceService?: AttendanceService;
+  attendanceDecisionService?: AttendanceDecisionService;
+  attendanceBridge?: AttendanceRecognitionBridge;
 }
 
 export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppOptions) {
@@ -37,9 +44,19 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   const movementBridge =
     options?.movementBridge || new MovementRecognitionBridge(movementDecisionService);
 
+  const attendanceService =
+    options?.attendanceService || new AttendanceService(db);
+  const attendanceDecisionService =
+    options?.attendanceDecisionService || new AttendanceDecisionService(db);
+  const attendanceBridge =
+    options?.attendanceBridge || new AttendanceRecognitionBridge(attendanceDecisionService);
+
   const recognitionService = options?.recognitionService || defaultRecognitionService;
   if (!recognitionService.getMovementBridge()) {
     recognitionService.setMovementBridge(movementBridge);
+  }
+  if (!recognitionService.getAttendanceBridge()) {
+    recognitionService.setAttendanceBridge(attendanceBridge);
   }
 
   // Basic Security & HTTP Headers
@@ -84,6 +101,7 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   app.use('/api/v1/cameras', createRecognitionRouter(db, recognitionService));
   app.use('/api/v1/biometrics', createBiometricRouter(db, options?.biometricService));
   app.use('/api/v1/movements', createMovementRouter(db, movementDecisionService));
+  app.use('/api/v1/attendance', createAttendanceRouter(db, attendanceService, attendanceDecisionService));
 
   // Static frontend serving if client/dist exists (production / single-server mode)
   const clientDistPath = path.resolve(__dirname, '../../../client/dist');

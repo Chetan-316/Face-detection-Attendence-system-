@@ -408,10 +408,25 @@ export class MovementDecisionService {
     } catch (err: any) {
       // Catch DB-level unique constraint violation on recognitionReference (P2002)
       // This is the final safety net for concurrent writes that pass all prior checks.
+      const isTargetMatch = (() => {
+        if (!err || err.code !== 'P2002') return false;
+        const target = err.meta?.target;
+        if (Array.isArray(target)) {
+          return target.some((t: any) => typeof t === 'string' && (t.includes('recognitionReference') || t.includes('movement_events_recognitionReference_key')));
+        }
+        if (typeof target === 'string') {
+          return target.includes('recognitionReference') || target.includes('movement_events_recognitionReference_key');
+        }
+        if (typeof err.message === 'string' && err.message.includes('recognitionReference')) {
+          return true;
+        }
+        return false;
+      })();
+
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
         err.code === 'P2002' &&
-        (err.meta?.target as string[] | undefined)?.includes?.('recognitionReference')
+        isTargetMatch
       ) {
         const existingEvent = await this.db.movementEvent.findFirst({
           where: { recognitionReference: observationId },

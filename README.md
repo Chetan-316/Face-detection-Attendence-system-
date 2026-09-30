@@ -258,7 +258,7 @@ Camera Database Configuration
 - **Multi-Face Independence**: Independent processing of multiple faces visible within the same video frame.
 - **Observation-Only Mode**: Strictly produces ephemeral recognition observations without mutating movement, presence, or attendance records.
 
-### Automated Gate Movement Decision Engine (Step 07)
+### Automated Gate Movement Decision Engine (Step 07 & 07.1)
 - **Safe Deterministic Side Effects**: Converts stable face recognition MATCH observations from configured gate cameras into real-world `IN` / `OUT` movement decisions and updates authoritative `ResidentPresence`.
 - **Camera-Role Ingress / Egress Rules**:
   - `CameraRole.IN`: Stable MATCH creates `IN` MovementEvent; transitions resident `OUT -> IN`.
@@ -268,14 +268,22 @@ Camera Database Configuration
 - **Duplicate Suppression**: Identical same-direction recognitions (`IN` when already `IN`, `OUT` when already `OUT`) are suppressed (`ALREADY_IN` / `ALREADY_OUT`) with zero redundant DB writes.
 - **Observation Idempotency & Replay Defense**: In-memory LRU cache and `MovementEvent.recognitionReference` DB uniqueness prevent duplicate movement creation across retries and SSE reconnections.
 - **Rapid Transition Guard**: Configurable guard window (`MOVEMENT_MIN_TRANSITION_INTERVAL_MS`, e.g. 5000ms) prevents unrealistic oscillation across overlapping camera views (`TRANSITION_SUPPRESSED`).
-- **Operational Automation Switches**: Global server switch (`MOVEMENT_AUTOMATION_ENABLED`) and per-camera toggles (`configMetadata.movementAutomationEnabled`) permit turning automation ON/OFF without stopping recognition.
 - **Complete Decoupling**: Attendance sessions, night attendance, and leave modules remain completely independent. Zero attendance records or leave mutations are generated.
 
+### Hostel Night Attendance Workflow (Step 08)
+- **Operational Session Roll Call**: Warden or Admin initiates timed attendance sessions (Night Attendance, Assembly, Curfew Check) linked optionally to dedicated attendance cameras.
+- **Single Active Session Per Hostel**: Strict database and domain constraint prevents overlapping active sessions within the same hostel.
+- **Automated Marking via Face Recognition**: Stable MATCH observations from cameras with `CameraRole.ATTENDANCE` automatically mark matching active residents as `PRESENT` once per session.
+- **Strict Decoupling from Gate Movement**: Attendance cameras **never** generate `MovementEvent` records and **never** modify `ResidentPresence`. Ingress/Egress cameras **never** create `AttendanceRecord` rows.
+- **Atomic Session Closure & Absence Generation**: Closing an attendance session automatically marks all active, unmarked residents as `ABSENT` in a single server-side batch operation. Un-enrolled active residents are fully accounted for in expected counts and marked `ABSENT` upon session closure.
+- **Audited Manual Corrections**: Wardens and Admins can override attendance records with mandatory written justification, recorded in the append-only `AuditLog` (`ATTENDANCE_OVERRIDE`).
+- **Enterprise Web UI**: Dedicated Hostel Attendance page with real-time session status, expected/present/remaining roll call counters, searchable roster with room groups and status badges, session creation, closing confirmation, and manual correction dialog. Guard accounts are strictly restricted to read-only access.
+- **Strict Terminology & Privacy Standards**: Professional ERP/SaaS aesthetic without biometric or computer vision jargon.
+
 #### Explicitly Deferred (Future Steps):
+- Step 09: Attendance Analytics, Movement Logs & Reporting Dashboards
 - Liveness detection / anti-spoofing verification
-- Attendance roll call automation
-- Night attendance automation
-- Leave automation & absence inference
+- Leave management automation & multi-day absence inference
 - Advanced anti-tailgating
-- Production multi-camera calibration and gate relay control
+- Production multi-camera calibration and hardware gate relay control
 

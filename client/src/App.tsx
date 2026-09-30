@@ -10,6 +10,7 @@ import { ResidentsPage } from './pages/ResidentsPage';
 import { ResidentDetailPage } from './pages/ResidentDetailPage';
 import { CamerasPage } from './pages/CamerasPage';
 import { RecognitionPage } from './pages/RecognitionPage';
+import { AttendancePage } from './pages/AttendancePage';
 
 export const App: React.FC = () => {
   return (
@@ -32,6 +33,7 @@ export const App: React.FC = () => {
               <Route index element={<OverviewPage />} />
               <Route path="residents" element={<ResidentsPage />} />
               <Route path="residents/:id" element={<ResidentDetailPage />} />
+              <Route path="attendance" element={<AttendancePage />} />
               <Route path="cameras" element={<CamerasPage />} />
               <Route path="recognition" element={<RecognitionPage />} />
             </Route>

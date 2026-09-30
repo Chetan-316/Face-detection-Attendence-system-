@@ -14,6 +14,7 @@ import {
   Shield,
   Building2,
   Eye,
+  CalendarCheck,
 } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -106,6 +107,15 @@ export const AppLayout: React.FC = () => {
             >
               <Users size={18} />
               <span>Residents</span>
+            </NavLink>
+
+            <NavLink
+              to="/attendance"
+              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              <CalendarCheck size={18} />
+              <span>Attendance</span>
             </NavLink>
 
             <NavLink

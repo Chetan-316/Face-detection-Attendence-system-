@@ -15,6 +15,7 @@ import {
   ResidentStatus,
   FaceEnrollmentStatus,
   StaffRole,
+  Prisma,
 } from '@prisma/client';
 import { RecognitionObservation } from '../src/modules/recognition/recognition.types';
 
@@ -440,6 +441,52 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     });
     expect(presence?.currentState).toBe(PresenceState.IN);
     expect(presence?.lastMovementEventId).toBe(events[0].id);
+  });
+
+  // Test 62d: P2002 DEFENSIVE HARDENING REGRESSION (Step 08 requirement 33)
+  it('62d: suppresses duplicate observation when P2002 meta.target is a string instead of string[]', async () => {
+    const resident = await createTestResident('R_P2002_STR', PresenceState.OUT);
+    const observationId = `obs_p2002_str_${Date.now()}`;
+    const obs = createObservation(inCameraId, resident, 'MATCH', observationId);
+
+    // Mock db.$transaction to simulate a race where another concurrent write inserted the record
+    // and this write threw PrismaClientKnownRequestError with meta.target as string
+    const originalTransaction = (movementDecisionService as any).db.$transaction;
+    const p2002Error = new Prisma.PrismaClientKnownRequestError(
+      'Unique constraint failed on the fields: (`recognitionReference`)',
+      {
+        code: 'P2002',
+        clientVersion: '6.19.3',
+        meta: { target: 'recognitionReference' }, // String, not string[]!
+      }
+    );
+
+    (movementDecisionService as any).db.$transaction = vi.fn().mockImplementationOnce(async () => {
+      // Concurrent thread committed the row right before this thread's insert failed with P2002
+      await testPrisma.movementEvent.create({
+        data: {
+          hostelId: hostelId,
+          residentId: resident.id,
+          cameraId: inCameraId,
+          movementType: MovementType.IN,
+          source: MovementSource.FACE_RECOGNITION,
+          effectiveTimestamp: new Date(),
+          recordedTimestamp: new Date(),
+          recognitionReference: observationId,
+        },
+      });
+      throw p2002Error;
+    });
+
+    try {
+      // Clear cache so it attempts the transaction
+      movementDecisionService.clearCache();
+      const decision = await movementDecisionService.evaluateObservation(obs);
+      expect(decision.status).toBe('DUPLICATE_OBSERVATION_SUPPRESSED');
+      expect(decision.reason).toContain('DB unique constraint caught concurrent duplicate');
+    } finally {
+      (movementDecisionService as any).db.$transaction = originalTransaction;
+    }
   });
 
   // Test 63: TRANSITION GUARD

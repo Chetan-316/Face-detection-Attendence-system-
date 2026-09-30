@@ -1,4 +1,4 @@
-import { PrismaClient, StaffRole } from '@prisma/client';
+import { PrismaClient, StaffRole, CameraRole } from '@prisma/client';
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { prisma as defaultPrisma } from '../../database/client';
@@ -16,6 +16,7 @@ import {
   MatcherThresholds,
 } from './recognition.types';
 import { MovementRecognitionBridge } from '../movement-decision/movement-bridge';
+import { AttendanceRecognitionBridge } from '../attendance-decision/attendance-bridge';
 import { config } from '../../config';
 
 export interface AuthenticatedActor {
@@ -58,13 +59,19 @@ export class RecognitionService {
   private defaultMaxFps: number;
   private defaultHistoryLimit: number;
   private movementBridge?: MovementRecognitionBridge;
+  private attendanceBridge?: AttendanceRecognitionBridge;
 
   constructor(
     private readonly db: PrismaClient = defaultPrisma,
     cameraService?: CameraService,
     templateCache?: TemplateCache,
     workerClient?: PythonWorkerClient,
-    options?: { maxFps?: number; historyLimit?: number; movementBridge?: MovementRecognitionBridge }
+    options?: {
+      maxFps?: number;
+      historyLimit?: number;
+      movementBridge?: MovementRecognitionBridge;
+      attendanceBridge?: AttendanceRecognitionBridge;
+    }
   ) {
     this.cameraService = cameraService || new CameraService(this.db);
     this.templateCache = templateCache || defaultTemplateCache;
@@ -72,6 +79,7 @@ export class RecognitionService {
     this.defaultMaxFps = options?.maxFps ?? config.recognition.maxFps;
     this.defaultHistoryLimit = options?.historyLimit ?? config.recognition.historyLimit;
     this.movementBridge = options?.movementBridge;
+    this.attendanceBridge = options?.attendanceBridge;
   }
 
   public setMovementBridge(bridge: MovementRecognitionBridge): void {
@@ -80,6 +88,14 @@ export class RecognitionService {
 
   public getMovementBridge(): MovementRecognitionBridge | undefined {
     return this.movementBridge;
+  }
+
+  public setAttendanceBridge(bridge: AttendanceRecognitionBridge): void {
+    this.attendanceBridge = bridge;
+  }
+
+  public getAttendanceBridge(): AttendanceRecognitionBridge | undefined {
+    return this.attendanceBridge;
   }
 
   /**
@@ -197,31 +213,43 @@ export class RecognitionService {
 
     this.activeSessions.set(cameraId, session);
 
-    // Attach movement bridge if present.
-    // The bridge listens to 'stableMatch' events and calls decisionService.evaluateObservation()
-    // exactly once per observation.  When the decision is ready the bridge emits 'movementDecision'
-    // back so that RecognitionService can attach it to the observation for SSE / UI consumption.
-    if (this.movementBridge) {
+    // Event Routing (Step 08 Requirements 4, 30, 31, 32):
+    // ATTENDANCE camera -> AttendanceRecognitionBridge
+    // IN / OUT camera -> MovementRecognitionBridge
+    // GENERAL camera -> Recognition only (no business side effects)
+    if ((camera.role === CameraRole.IN || camera.role === CameraRole.OUT) && this.movementBridge) {
       this.movementBridge.attachSession(camera.id, session.eventEmitter);
 
-      // Subscribe to 'movementDecision' so the SSE observation gets the result populated.
-      // The bridge owns the evaluation – we only read back what it emits.
-      const onDecision = ({ observation, decision }: { observation: any; decision: any }) => {
-        // Find the stored observation by id and attach the decision
+      const onMovementDecision = ({ observation, decision }: { observation: any; decision: any }) => {
         const stored = session.recentObservations.find((o) => o.id === observation.id);
         if (stored) {
           stored.movementDecision = decision;
         }
-        // Also propagate on the observation channel so SSE subscribers get the updated obs
         session.eventEmitter.emit('observation', { ...observation, movementDecision: decision });
       };
-      this.movementBridge.on('movementDecision', onDecision);
+      this.movementBridge.on('movementDecision', onMovementDecision);
 
-      // Store cleanup reference alongside unsubscribeStream
       const originalUnsubscribe = session.unsubscribeStream;
       session.unsubscribeStream = () => {
         if (originalUnsubscribe) originalUnsubscribe();
-        this.movementBridge?.off('movementDecision', onDecision);
+        this.movementBridge?.off('movementDecision', onMovementDecision);
+      };
+    } else if (camera.role === CameraRole.ATTENDANCE && this.attendanceBridge) {
+      this.attendanceBridge.attachSession(camera.id, camera.role, session.eventEmitter);
+
+      const onAttendanceDecision = ({ observation, decision }: { observation: any; decision: any }) => {
+        const stored = session.recentObservations.find((o) => o.id === observation.id);
+        if (stored) {
+          stored.attendanceDecision = decision;
+        }
+        session.eventEmitter.emit('observation', { ...observation, attendanceDecision: decision });
+      };
+      this.attendanceBridge.on('attendanceDecision', onAttendanceDecision);
+
+      const originalUnsubscribe = session.unsubscribeStream;
+      session.unsubscribeStream = () => {
+        if (originalUnsubscribe) originalUnsubscribe();
+        this.attendanceBridge?.off('attendanceDecision', onAttendanceDecision);
       };
     }
 
