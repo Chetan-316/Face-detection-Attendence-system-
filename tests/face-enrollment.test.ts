@@ -25,34 +25,64 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
   let org: any;
   let hostel1: any;
   let hostel2: any;
+  let hostel3NoCam: any;
   let otherOrg: any;
   let otherHostel: any;
 
   let adminUser: any;
   let warden1User: any;
   let guard1User: any;
+  let warden3NoCamUser: any;
   let otherOrgUser: any;
 
   let adminToken: string;
   let warden1Token: string;
   let guard1Token: string;
+  let warden3NoCamToken: string;
   let otherOrgToken: string;
 
   let resident1: any;
   let residentHostel2: any;
+  let resident3NoCam: any;
   let inactiveResident: any;
   let testCamera: any;
+  let hostel2Camera: any;
+  let otherOrgCamera: any;
+  let disabledCamera: any;
 
   beforeAll(async () => {
     // Instantiate mock-capable python worker client for automated deterministic test execution
     mockWorkerClient = new PythonWorkerClient({ mock: true });
     cameraService = new CameraService(testPrisma);
     enrollmentService = new EnrollmentService(testPrisma, mockWorkerClient, cameraService);
-    app = createApp(testPrisma);
+    // Dependency injection into createApp
+    app = createApp(testPrisma, { enrollmentService, cameraService });
   });
 
   beforeEach(async () => {
     await resetTestDatabase();
+    vi.restoreAllMocks();
+
+    // Default mock worker response for normal frame capture
+    vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValue({
+      success: true,
+      quality: {
+        is_valid: true,
+        rejection_reason: null,
+        message: 'Good quality face sample detected',
+        face_count: 1,
+        metrics: {
+          face_count: 1,
+          confidence: 0.95,
+          blur_score: 120.0,
+          brightness: 128.0,
+          bbox: { x: 200, y: 140, width: 240, height: 260 },
+          frame_width: 640,
+          frame_height: 480,
+        },
+      },
+      embedding: Array(128).fill(0.088),
+    });
 
     // 1. Setup Organizations & Hostels
     org = await testPrisma.organization.create({
@@ -69,6 +99,10 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
 
     hostel2 = await testPrisma.hostel.create({
       data: { organizationId: org.id, code: 'H2', name: 'Hostel 2', isActive: true },
+    });
+
+    hostel3NoCam = await testPrisma.hostel.create({
+      data: { organizationId: org.id, code: 'H3_NOCAM', name: 'Hostel 3 Without Camera', isActive: true },
     });
 
     otherHostel = await testPrisma.hostel.create({
@@ -114,6 +148,18 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       },
     });
 
+    warden3NoCamUser = await testPrisma.user.create({
+      data: {
+        organizationId: org.id,
+        hostelId: hostel3NoCam.id,
+        username: 'warden3_user',
+        fullName: 'Hostel 3 Warden',
+        passwordHash: pwHash,
+        role: StaffRole.WARDEN,
+        status: UserStatus.ACTIVE,
+      },
+    });
+
     otherOrgUser = await testPrisma.user.create({
       data: {
         organizationId: otherOrg.id,
@@ -145,6 +191,13 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       organizationId: guard1User.organizationId,
       hostelId: guard1User.hostelId,
       role: guard1User.role,
+    }).token;
+
+    warden3NoCamToken = tokenService.generateToken({
+      sub: warden3NoCamUser.id,
+      organizationId: warden3NoCamUser.organizationId,
+      hostelId: warden3NoCamUser.hostelId,
+      role: warden3NoCamUser.role,
     }).token;
 
     otherOrgToken = tokenService.generateToken({
@@ -179,11 +232,23 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       },
     });
 
+    resident3NoCam = await testPrisma.resident.create({
+      data: {
+        organizationId: org.id,
+        hostelId: hostel3NoCam.id,
+        residentCode: 'R003_NOCAM',
+        fullName: 'NoCam Student',
+        roomGroup: 'Room 301',
+        status: ResidentStatus.ACTIVE,
+        faceEnrollmentStatus: FaceEnrollmentStatus.NOT_ENROLLED,
+      },
+    });
+
     inactiveResident = await testPrisma.resident.create({
       data: {
         organizationId: org.id,
         hostelId: hostel1.id,
-        residentCode: 'R003',
+        residentCode: 'R004_INACT',
         fullName: 'Inactive Student',
         roomGroup: 'Room 102',
         status: ResidentStatus.INACTIVE,
@@ -191,7 +256,7 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       },
     });
 
-    // 4. Setup Camera
+    // 4. Setup Cameras
     testCamera = await testPrisma.camera.create({
       data: {
         organizationId: org.id,
@@ -203,6 +268,42 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
         configMetadata: { backend: 'synthetic' },
       },
     });
+
+    hostel2Camera = await testPrisma.camera.create({
+      data: {
+        organizationId: org.id,
+        hostelId: hostel2.id,
+        name: 'Hostel 2 Webcam',
+        sourceType: CameraSourceType.WEBCAM,
+        role: CameraRole.GENERAL,
+        isEnabled: true,
+        configMetadata: { backend: 'synthetic' },
+      },
+    });
+
+    otherOrgCamera = await testPrisma.camera.create({
+      data: {
+        organizationId: otherOrg.id,
+        hostelId: otherHostel.id,
+        name: 'Other Org Webcam',
+        sourceType: CameraSourceType.WEBCAM,
+        role: CameraRole.GENERAL,
+        isEnabled: true,
+        configMetadata: { backend: 'synthetic' },
+      },
+    });
+
+    disabledCamera = await testPrisma.camera.create({
+      data: {
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Disabled Webcam',
+        sourceType: CameraSourceType.WEBCAM,
+        role: CameraRole.GENERAL,
+        isEnabled: false,
+        configMetadata: { backend: 'synthetic' },
+      },
+    });
   });
 
   afterAll(async () => {
@@ -211,8 +312,8 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
     await testPrisma.$disconnect();
   });
 
-  describe('1. Role Authorization & Scoping Constraints', () => {
-    it('Admin can start enrollment session for resident within organization', async () => {
+  describe('1. Role Authorization & Camera Scoping Constraints', () => {
+    it('Admin can start enrollment session for resident within organization using hostel camera', async () => {
       const res = await request(app)
         .post(`/api/v1/residents/${resident1.id}/face-enrollment/start`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -221,6 +322,7 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
 
       expect(res.body.data.sessionId).toBeDefined();
       expect(res.body.data.residentId).toBe(resident1.id);
+      expect(res.body.data.cameraId).toBe(testCamera.id);
       expect(res.body.data.status).toBe('CAPTURING');
       expect(res.body.data.requiredSamples).toBe(7);
       expect(res.body.data.acceptedSamples).toBe(0);
@@ -235,6 +337,51 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
 
       expect(res.body.data.status).toBe('CAPTURING');
       expect(res.body.data.residentId).toBe(resident1.id);
+      expect(res.body.data.cameraId).toBe(testCamera.id);
+    });
+
+    it('Warden cannot supply another hostel camera ID (returns 404 to avoid leaking existence)', async () => {
+      // resident1 is in hostel1; hostel2Camera is in hostel2
+      await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/start`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({ cameraId: hostel2Camera.id })
+        .expect(404);
+    });
+
+    it('Admin cannot use another hostel camera when enrolling a resident (scoped to resident hostel, returns 404)', async () => {
+      // Admin is org-wide, but resident1 is in hostel1. Supplying hostel2Camera must fail.
+      await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/start`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ cameraId: hostel2Camera.id })
+        .expect(404);
+    });
+
+    it('Camera from different organization is strictly rejected with 404', async () => {
+      await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/start`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ cameraId: otherOrgCamera.id })
+        .expect(404);
+    });
+
+    it('Disabled camera in resident hostel is rejected with 404', async () => {
+      await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/start`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({ cameraId: disabledCamera.id })
+        .expect(404);
+    });
+
+    it('Resident in hostel without enabled cameras returns clean error and does NOT fall back to another hostel camera', async () => {
+      // resident3NoCam is in hostel3NoCam which has no cameras
+      const res = await request(app)
+        .post(`/api/v1/residents/${resident3NoCam.id}/face-enrollment/start`)
+        .set('Authorization', `Bearer ${warden3NoCamToken}`)
+        .expect(400);
+
+      expect(res.body.error.message).toMatch(/No active camera is available in this resident's hostel/i);
     });
 
     it('Guard is strictly rejected with 403 Forbidden', async () => {
@@ -324,9 +471,28 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       const profiles = await testPrisma.faceProfile.findMany({ where: { residentId: resident1.id } });
       expect(profiles.length).toBe(0);
     });
+
+    it('Rejects frame capture when session has expired', async () => {
+      await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/start`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .expect(201);
+
+      // Fast-forward time past 5 minute TTL
+      const pastDate = new Date(Date.now() - 1000);
+      (enrollmentService as any).sessions.get(resident1.id).expiresAt = pastDate;
+
+      const res = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(410);
+
+      expect(res.body.error.message).toMatch(/expired/i);
+    });
   });
 
-  describe('3. Biometric Quality Gates & Single-Face Rule', () => {
+  describe('3. Public API Safety & Quality Inspection Gates', () => {
     beforeEach(async () => {
       await request(app)
         .post(`/api/v1/residents/${resident1.id}/face-enrollment/start`)
@@ -334,22 +500,43 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
         .expect(201);
     });
 
+    it('Public /capture API strictly rejects client-supplied mockOverride or frameBase64', async () => {
+      // Attempting to send mockOverride is rejected by strict Zod validation with 400
+      const res1 = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({ mockOverride: { quality: { is_valid: true } } })
+        .expect(400);
+
+      expect(res1.body.error.message).toMatch(/unrecognized|validation/i);
+
+      // Attempting to send frameBase64 is also rejected by strict Zod validation with 400
+      const res2 = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({ frameBase64: 'malicious-injected-frame' })
+        .expect(400);
+
+      expect(res2.body.error.message).toMatch(/unrecognized|validation/i);
+    });
+
     it('Rejects frame when zero faces are detected (NO_FACE)', async () => {
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: false,
+          rejection_reason: 'NO_FACE',
+          message: 'No face detected. Please position yourself in front of the camera.',
+          face_count: 0,
+          metrics: null,
+        },
+        embedding: null,
+      });
+
       const res = await request(app)
         .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
         .set('Authorization', `Bearer ${warden1Token}`)
-        .send({
-          frameBase64: 'fake-frame',
-          mockOverride: {
-            quality: {
-              is_valid: false,
-              rejection_reason: 'NO_FACE',
-              message: 'No face detected',
-              face_count: 0,
-            },
-            embedding: null,
-          },
-        })
+        .send({})
         .expect(200);
 
       expect(res.body.data.sampleAccepted).toBe(false);
@@ -359,21 +546,22 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
     });
 
     it('Rejects frame when multiple faces are detected (MULTIPLE_FACES)', async () => {
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: false,
+          rejection_reason: 'MULTIPLE_FACES',
+          message: 'Multiple faces detected. Only one person must be visible during enrollment.',
+          face_count: 2,
+          metrics: null,
+        },
+        embedding: null,
+      });
+
       const res = await request(app)
         .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
         .set('Authorization', `Bearer ${warden1Token}`)
-        .send({
-          frameBase64: 'fake-frame',
-          mockOverride: {
-            quality: {
-              is_valid: false,
-              rejection_reason: 'MULTIPLE_FACES',
-              message: 'Multiple faces detected',
-              face_count: 2,
-            },
-            embedding: null,
-          },
-        })
+        .send({})
         .expect(200);
 
       expect(res.body.data.sampleAccepted).toBe(false);
@@ -381,20 +569,22 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
     });
 
     it('Rejects frame when image is blurry (TOO_BLURRY)', async () => {
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: false,
+          rejection_reason: 'TOO_BLURRY',
+          message: 'Image is blurry. Please hold still.',
+          face_count: 1,
+          metrics: null,
+        },
+        embedding: null,
+      });
+
       const res = await request(app)
         .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
         .set('Authorization', `Bearer ${warden1Token}`)
-        .send({
-          frameBase64: 'fake-frame',
-          mockOverride: {
-            quality: {
-              is_valid: false,
-              rejection_reason: 'TOO_BLURRY',
-              message: 'Image is blurry. Please hold still.',
-            },
-            embedding: null,
-          },
-        })
+        .send({})
         .expect(200);
 
       expect(res.body.data.sampleAccepted).toBe(false);
@@ -402,20 +592,22 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
     });
 
     it('Rejects frame when face is too small (FACE_TOO_SMALL)', async () => {
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: false,
+          rejection_reason: 'FACE_TOO_SMALL',
+          message: 'Please move closer to the camera.',
+          face_count: 1,
+          metrics: null,
+        },
+        embedding: null,
+      });
+
       const res = await request(app)
         .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
         .set('Authorization', `Bearer ${warden1Token}`)
-        .send({
-          frameBase64: 'fake-frame',
-          mockOverride: {
-            quality: {
-              is_valid: false,
-              rejection_reason: 'FACE_TOO_SMALL',
-              message: 'Please move closer to the camera.',
-            },
-            embedding: null,
-          },
-        })
+        .send({})
         .expect(200);
 
       expect(res.body.data.sampleAccepted).toBe(false);
@@ -423,21 +615,30 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
     });
 
     it('Accepts frame with valid quality and increments acceptedSamples', async () => {
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          metrics: {
+            face_count: 1,
+            confidence: 0.95,
+            blur_score: 120.0,
+            brightness: 128.0,
+            bbox: { x: 200, y: 140, width: 240, height: 260 },
+            frame_width: 640,
+            frame_height: 480,
+          },
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
       const res = await request(app)
         .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
         .set('Authorization', `Bearer ${warden1Token}`)
-        .send({
-          frameBase64: 'fake-frame',
-          mockOverride: {
-            quality: {
-              is_valid: true,
-              rejection_reason: null,
-              message: 'Good quality face sample detected',
-              face_count: 1,
-            },
-            embedding: Array(128).fill(0.088),
-          },
-        })
+        .send({})
         .expect(200);
 
       expect(res.body.data.sampleAccepted).toBe(true);
@@ -468,19 +669,19 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
         .set('Authorization', `Bearer ${warden1Token}`)
         .expect(201);
 
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValue({
+        success: true,
+        quality: { is_valid: true, rejection_reason: null, message: 'Good quality face sample detected', face_count: 1 },
+        embedding: Array(128).fill(0.088),
+      });
+
       // Capture 5 valid samples
       for (let i = 0; i < 5; i++) {
         await new Promise((r) => setTimeout(r, 410)); // Pacing
         await request(app)
           .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
           .set('Authorization', `Bearer ${warden1Token}`)
-          .send({
-            frameBase64: 'valid-face-frame',
-            mockOverride: {
-              quality: { is_valid: true, rejection_reason: null, face_count: 1 },
-              embedding: Array(128).fill(0.088),
-            },
-          })
+          .send({})
           .expect(200);
       }
 
@@ -532,18 +733,18 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
         .set('Authorization', `Bearer ${warden1Token}`)
         .expect(201);
 
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValue({
+        success: true,
+        quality: { is_valid: true, rejection_reason: null, message: 'Good quality face sample detected', face_count: 1 },
+        embedding: Array(128).fill(0.088),
+      });
+
       for (let i = 0; i < 5; i++) {
         await new Promise((r) => setTimeout(r, 410));
         await request(app)
           .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
           .set('Authorization', `Bearer ${warden1Token}`)
-          .send({
-            frameBase64: 'face-frame',
-            mockOverride: {
-              quality: { is_valid: true, rejection_reason: null, face_count: 1 },
-              embedding: Array(128).fill(0.088),
-            },
-          })
+          .send({})
           .expect(200);
       }
 
@@ -560,18 +761,18 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
         .set('Authorization', `Bearer ${warden1Token}`)
         .expect(201);
 
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValue({
+        success: true,
+        quality: { is_valid: true, rejection_reason: null, message: 'Good quality face sample detected', face_count: 1 },
+        embedding: Array(128).fill(0.099),
+      });
+
       for (let i = 0; i < 5; i++) {
         await new Promise((r) => setTimeout(r, 410));
         await request(app)
           .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
           .set('Authorization', `Bearer ${warden1Token}`)
-          .send({
-            frameBase64: 'new-face-frame',
-            mockOverride: {
-              quality: { is_valid: true, rejection_reason: null, face_count: 1 },
-              embedding: Array(128).fill(0.099),
-            },
-          })
+          .send({})
           .expect(200);
       }
 

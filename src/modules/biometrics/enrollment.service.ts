@@ -92,27 +92,28 @@ export class EnrollmentService {
     // Determine target camera
     let targetCameraId = cameraId;
     if (!targetCameraId) {
-      // Find first enabled camera in resident's hostel
+      // Find first enabled camera in resident's hostel ONLY
       const availableCam = await this.db.camera.findFirst({
-        where: { hostelId: resident.hostelId, isEnabled: true },
+        where: {
+          organizationId: resident.organizationId,
+          hostelId: resident.hostelId,
+          isEnabled: true,
+        },
         orderBy: { createdAt: 'asc' },
       });
-      if (availableCam) {
-        targetCameraId = availableCam.id;
-      } else {
-        // Fallback: search org-level camera
-        const anyCam = await this.db.camera.findFirst({
-          where: { organizationId: resident.organizationId, isEnabled: true },
-        });
-        if (!anyCam) {
-          throw new ValidationError('No active camera available for face enrollment');
-        }
-        targetCameraId = anyCam.id;
+      if (!availableCam) {
+        throw new ValidationError("No active camera is available in this resident's hostel");
       }
+      targetCameraId = availableCam.id;
     } else {
       const camera = await this.db.camera.findUnique({ where: { id: targetCameraId } });
-      if (!camera || !camera.isEnabled) {
-        throw new ValidationError(`Camera '${targetCameraId}' is not found or disabled`);
+      if (
+        !camera ||
+        camera.organizationId !== resident.organizationId ||
+        camera.hostelId !== resident.hostelId ||
+        !camera.isEnabled
+      ) {
+        throw new NotFoundError('Camera', targetCameraId);
       }
     }
 
@@ -175,7 +176,6 @@ export class EnrollmentService {
    */
   public async captureFrame(
     residentId: string,
-    options: { frameBase64?: string; mockOverride?: any },
     actor?: AuthenticatedActor
   ): Promise<{
     sessionStatus: EnrollmentStatusResponse;
@@ -201,20 +201,14 @@ export class EnrollmentService {
       throw new EnrollmentSessionError(`Enrollment session is already ${session.status}`);
     }
 
-    let frameData: Buffer | string;
-    if (options.frameBase64) {
-      frameData = options.frameBase64;
-    } else {
-      // Capture live snapshot from camera service
-      const snapshot = await this.cameraService.captureSnapshot(session.cameraId);
-      if (!snapshot || !snapshot.frameBuffer) {
-        throw new ValidationError('Camera failed to deliver snapshot frame');
-      }
-      frameData = snapshot.frameBuffer;
+    // Capture live snapshot from camera service using session's validated camera
+    const snapshot = await this.cameraService.captureSnapshot(session.cameraId);
+    if (!snapshot || !snapshot.frameBuffer) {
+      throw new ValidationError('Camera failed to deliver snapshot frame');
     }
 
-    // Run frame through Python worker
-    const processResult = await this.workerClient.processFrame(frameData, options.mockOverride);
+    // Run server frame through Python worker
+    const processResult = await this.workerClient.processFrame(snapshot.frameBuffer);
     const quality: BiometricQualityResult = processResult?.quality || {
       is_valid: false,
       rejection_reason: 'NO_FACE',

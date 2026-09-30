@@ -11,8 +11,17 @@ import { createAuthRouter } from './routes/auth.routes';
 import { createResidentRouter } from './routes/resident.routes';
 import { createCameraRouter } from './routes/camera.routes';
 import { createBiometricRouter } from './routes/biometric.routes';
+import { EnrollmentService } from '../modules/biometrics/enrollment.service';
+import { BiometricService } from '../modules/biometrics/biometric.service';
+import { CameraService } from '../modules/cameras/camera.service';
 
-export function createApp(db: PrismaClient = defaultPrisma) {
+export interface CreateAppOptions {
+  enrollmentService?: EnrollmentService;
+  biometricService?: BiometricService;
+  cameraService?: CameraService;
+}
+
+export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppOptions) {
   const app = express();
 
   // Basic Security & HTTP Headers
@@ -52,9 +61,9 @@ export function createApp(db: PrismaClient = defaultPrisma) {
 
   // Versioned API Routes (/api/v1)
   app.use('/api/v1/auth', createAuthRouter(db));
-  app.use('/api/v1/residents', createResidentRouter(db));
-  app.use('/api/v1/cameras', createCameraRouter(db));
-  app.use('/api/v1/biometrics', createBiometricRouter(db));
+  app.use('/api/v1/residents', createResidentRouter(db, options?.enrollmentService));
+  app.use('/api/v1/cameras', createCameraRouter(db, options?.cameraService));
+  app.use('/api/v1/biometrics', createBiometricRouter(db, options?.biometricService));
 
   // Static frontend serving if client/dist exists (production / single-server mode)
   const clientDistPath = path.resolve(__dirname, '../../../client/dist');

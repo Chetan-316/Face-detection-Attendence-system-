@@ -59,10 +59,9 @@ export const biometricsApi = {
     return apiClient<{ data: EnrollmentStatusData }>(`/residents/${residentId}/face-enrollment/status`);
   },
 
-  async captureFrame(residentId: string, frameBase64?: string): Promise<{ data: CaptureFrameResponse }> {
+  async captureFrame(residentId: string): Promise<{ data: CaptureFrameResponse }> {
     return apiClient<{ data: CaptureFrameResponse }>(`/residents/${residentId}/face-enrollment/capture`, {
       method: 'POST',
-      body: JSON.stringify({ frameBase64 }),
     });
   },
 

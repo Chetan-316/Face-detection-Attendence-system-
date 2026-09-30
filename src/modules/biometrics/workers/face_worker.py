@@ -109,16 +109,6 @@ def main():
                 b64_data = b64_data.split(",", 1)[1]
 
             try:
-                mock_override = cmd_data.get("mock_override")
-                if mock_override:
-                    # Direct test injection
-                    send_response({
-                        "success": True,
-                        "quality": mock_override.get("quality"),
-                        "embedding": mock_override.get("embedding")
-                    })
-                    continue
-
                 if is_mock:
 
                     # Generate deterministic synthetic sample for mock mode

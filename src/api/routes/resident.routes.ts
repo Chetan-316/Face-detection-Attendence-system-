@@ -13,8 +13,9 @@ import {
 import { NotFoundError, ValidationError } from '../../common/errors';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createFaceEnrollmentRouter } from './face-enrollment.routes';
+import { EnrollmentService } from '../../modules/biometrics/enrollment.service';
 
-export function createResidentRouter(db = defaultPrisma) {
+export function createResidentRouter(db = defaultPrisma, enrollmentService?: EnrollmentService) {
   const router = Router();
   const residentService = new ResidentService(db);
   const { requireAuth, requirePermission } = createAuthMiddleware(db);
@@ -272,7 +273,7 @@ export function createResidentRouter(db = defaultPrisma) {
   );
 
   // Mount face enrollment routes under /:id/face-enrollment
-  router.use('/:id/face-enrollment', createFaceEnrollmentRouter(db));
+  router.use('/:id/face-enrollment', createFaceEnrollmentRouter(db, enrollmentService));
 
   return router;
 }

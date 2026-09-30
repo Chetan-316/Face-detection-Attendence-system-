@@ -4,16 +4,11 @@ export const startEnrollmentSchema = z
   .object({
     cameraId: z.string().optional(),
   })
+  .strict()
   .optional()
   .default({});
 
-export const captureFrameSchema = z
-  .object({
-    frameBase64: z.string().optional(),
-    mockOverride: z.any().optional(),
-  })
-  .optional()
-  .default({});
+export const captureFrameSchema = z.object({}).strict().optional().default({});
 
 export const revokeEnrollmentSchema = z.object({
   reason: z.string().min(1, 'Reason is mandatory for revoking biometric enrollment'),
