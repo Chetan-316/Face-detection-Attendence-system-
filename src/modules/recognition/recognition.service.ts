@@ -197,9 +197,32 @@ export class RecognitionService {
 
     this.activeSessions.set(cameraId, session);
 
-    // Attach movement bridge if present
+    // Attach movement bridge if present.
+    // The bridge listens to 'stableMatch' events and calls decisionService.evaluateObservation()
+    // exactly once per observation.  When the decision is ready the bridge emits 'movementDecision'
+    // back so that RecognitionService can attach it to the observation for SSE / UI consumption.
     if (this.movementBridge) {
       this.movementBridge.attachSession(camera.id, session.eventEmitter);
+
+      // Subscribe to 'movementDecision' so the SSE observation gets the result populated.
+      // The bridge owns the evaluation – we only read back what it emits.
+      const onDecision = ({ observation, decision }: { observation: any; decision: any }) => {
+        // Find the stored observation by id and attach the decision
+        const stored = session.recentObservations.find((o) => o.id === observation.id);
+        if (stored) {
+          stored.movementDecision = decision;
+        }
+        // Also propagate on the observation channel so SSE subscribers get the updated obs
+        session.eventEmitter.emit('observation', { ...observation, movementDecision: decision });
+      };
+      this.movementBridge.on('movementDecision', onDecision);
+
+      // Store cleanup reference alongside unsubscribeStream
+      const originalUnsubscribe = session.unsubscribeStream;
+      session.unsubscribeStream = () => {
+        if (originalUnsubscribe) originalUnsubscribe();
+        this.movementBridge?.off('movementDecision', onDecision);
+      };
     }
 
     return this.buildSessionStatus(session);
@@ -434,17 +457,14 @@ export class RecognitionService {
           if (stabilized.classification === 'MATCH') {
             session.matches++;
 
-            // Only trigger movement on temporally stable MATCH when cooldown allows event emission
+            // Only trigger movement on temporally stable MATCH when cooldown allows event emission.
+            // The movement bridge's 'stableMatch' listener (attached via attachSession) is the
+            // SOLE authoritative path that calls decisionService.evaluateObservation().
+            // Do NOT call processObservation() here – that would cause double evaluation.
             if (stabilized.isStable && stabilized.shouldEmitEvent && stabilized.resident) {
               session.eventEmitter.emit('stableMatch', obs);
-              if (this.movementBridge) {
-                try {
-                  const decision = await this.movementBridge.processObservation(obs);
-                  obs.movementDecision = decision;
-                } catch (err) {
-                  console.error(`[RecognitionService] Error processing movement decision for camera ${cameraId}:`, err);
-                }
-              }
+              // obs.movementDecision will be populated asynchronously when the bridge emits
+              // 'movementDecision' back (see onDecision handler registered in startRecognition).
             }
           } else if (stabilized.classification === 'UNCERTAIN') {
             session.uncertains++;

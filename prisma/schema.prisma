@@ -307,7 +307,7 @@ model MovementEvent {
   notes                String?
   isCorrection         Boolean        @default(false)
   correctionId         String?
-  recognitionReference String?
+  recognitionReference String?  @unique
   createdAt            DateTime       @default(now())
 
   resident           Resident            @relation(fields: [residentId], references: [id], onDelete: Restrict)

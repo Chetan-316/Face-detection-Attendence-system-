@@ -193,6 +193,24 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     return resident;
   };
 
+  /**
+   * Creates a resident with NO ResidentPresence row (simulates a brand-new, never-before-seen resident
+   * who has not gone through initial setup).
+   */
+  const createResidentNoPresence = async (code: string) => {
+    const resident = await testPrisma.resident.create({
+      data: {
+        organizationId: orgId,
+        hostelId: hostelId,
+        residentCode: code,
+        fullName: `Resident ${code}`,
+        roomGroup: 'B-200',
+        faceEnrollmentStatus: FaceEnrollmentStatus.ENROLLED,
+      },
+    });
+    return resident;
+  };
+
   const createObservation = (
     cameraId: string,
     resident: any,
@@ -361,8 +379,8 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     expect(decision.movementEventId).toBeUndefined();
   });
 
-  // Test 62: IDEMPOTENCY
-  it('62: processing the same recognition observation twice produces only ONE MovementEvent', async () => {
+  // Test 62: SEQUENTIAL IDEMPOTENCY
+  it('62: processing the same recognition observation twice (sequential) produces only ONE MovementEvent', async () => {
     const resident = await createTestResident('R_IDEMP_1', PresenceState.OUT);
     const observationId = `obs_idemp_${Date.now()}`;
     const obs = createObservation(inCameraId, resident, 'MATCH', observationId);
@@ -382,6 +400,46 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     });
     expect(events.length).toBe(1);
     expect(events[0].id).toBe(decision1.movementEventId);
+  });
+
+  // Test 62c: CONCURRENT IDEMPOTENCY REGRESSION
+  it('62c: concurrent evaluation of the same observationId produces exactly ONE MovementEvent even when calls begin simultaneously', async () => {
+    const resident = await createTestResident('R_CONCURRENT_1', PresenceState.OUT);
+    const observationId = `obs_concurrent_${Date.now()}`;
+    const obs = createObservation(inCameraId, resident, 'MATCH', observationId);
+
+    // Clear cache to ensure a clean slate (no prior in-memory result)
+    movementDecisionService.clearCache();
+
+    // Fire 5 concurrent evaluations of the exact same observationId
+    const results = await Promise.all([
+      movementDecisionService.evaluateObservation(obs),
+      movementDecisionService.evaluateObservation(obs),
+      movementDecisionService.evaluateObservation(obs),
+      movementDecisionService.evaluateObservation(obs),
+      movementDecisionService.evaluateObservation(obs),
+    ]);
+
+    // All results must be either MOVEMENT_CREATED or DUPLICATE_OBSERVATION_SUPPRESSED
+    // (never ERROR — idempotency layers must absorb all duplicates gracefully)
+    for (const result of results) {
+      expect(['MOVEMENT_CREATED', 'DUPLICATE_OBSERVATION_SUPPRESSED']).toContain(result.status);
+    }
+
+    // CRITICAL INVARIANT: Database must contain exactly ONE MovementEvent for this observation,
+    // regardless of how many concurrent callers reported MOVEMENT_CREATED.
+    // This is enforced by: (1) in-flight promise dedup map, (2) DB unique constraint on recognitionReference.
+    const events = await testPrisma.movementEvent.findMany({
+      where: { recognitionReference: observationId },
+    });
+    expect(events.length).toBe(1);
+
+    // ResidentPresence must be IN (updated exactly once)
+    const presence = await testPrisma.residentPresence.findUnique({
+      where: { residentId: resident.id },
+    });
+    expect(presence?.currentState).toBe(PresenceState.IN);
+    expect(presence?.lastMovementEventId).toBe(events[0].id);
   });
 
   // Test 63: TRANSITION GUARD
@@ -465,7 +523,7 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     expect(decision.status).toBe('RESIDENT_NOT_ENROLLED');
   });
 
-  // Test 66: ATOMIC ROLLBACK
+  // Test 66: ATOMIC ROLLBACK (resident WITH existing presence)
   it('66: atomic rollback prevents partial writes if database transaction fails', async () => {
     const resident = await createTestResident('R_ROLLBACK_1', PresenceState.OUT);
     const obs = createObservation(inCameraId, resident, 'MATCH');
@@ -490,6 +548,38 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     });
     expect(presence?.currentState).toBe(PresenceState.OUT);
     expect(presence?.lastMovementEventId).toBeNull();
+
+    recordNormalSpy.mockRestore();
+  });
+
+  // Test 66a: ATOMIC ROLLBACK — initial presence resident
+  it('66a: atomic rollback on initial-presence resident leaves ZERO MovementEvents AND ZERO ResidentPresence rows', async () => {
+    // Resident with NO ResidentPresence row at all (brand new, uninitialized)
+    const resident = await createResidentNoPresence('R_ROLLBACK_INIT_1');
+
+    const obs = createObservation(inCameraId, resident, 'MATCH');
+
+    // Spy on recordNormalMovement to simulate a DB failure after the transaction starts
+    const recordNormalSpy = vi.spyOn(movementService, 'recordNormalMovement').mockRejectedValueOnce(
+      new Error('Simulated atomic failure on initial presence')
+    );
+
+    const decision = await movementDecisionService.evaluateObservation(obs);
+
+    expect(decision.status).toBe('ERROR');
+    expect(decision.reason).toContain('Simulated atomic failure');
+
+    // CRITICAL: No MovementEvent must exist
+    const movementCount = await testPrisma.movementEvent.count({
+      where: { residentId: resident.id },
+    });
+    expect(movementCount).toBe(0);
+
+    // CRITICAL: No ResidentPresence must exist — no temporary OUT placeholder row
+    const presence = await testPrisma.residentPresence.findUnique({
+      where: { residentId: resident.id },
+    });
+    expect(presence).toBeNull();
 
     recordNormalSpy.mockRestore();
   });
@@ -523,6 +613,57 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
       where: { id: session.id },
     });
     expect(refreshedSession.status).toBe('ACTIVE');
+  });
+
+  // Test 68: INITIAL PRESENCE ATOMICITY — IN camera creates presence atomically
+  it('68: first-ever IN movement on resident with no prior ResidentPresence creates presence atomically (no temp OUT row outside transaction)', async () => {
+    const resident = await createResidentNoPresence('R_INIT_ATOMIC_1');
+
+    // Confirm NO presence row before
+    const beforePresence = await testPrisma.residentPresence.findUnique({
+      where: { residentId: resident.id },
+    });
+    expect(beforePresence).toBeNull();
+
+    const obs = createObservation(inCameraId, resident, 'MATCH');
+    const decision = await movementDecisionService.evaluateObservation(obs);
+
+    expect(decision.status).toBe('MOVEMENT_CREATED');
+    expect(decision.direction).toBe(MovementType.IN);
+
+    // Presence must now be IN (not OUT, no intermediate state)
+    const afterPresence = await testPrisma.residentPresence.findUnique({
+      where: { residentId: resident.id },
+    });
+    expect(afterPresence?.currentState).toBe(PresenceState.IN);
+    expect(afterPresence?.lastMovementEventId).toBe(decision.movementEventId);
+
+    // Exactly 1 MovementEvent
+    const movementCount = await testPrisma.movementEvent.count({
+      where: { residentId: resident.id },
+    });
+    expect(movementCount).toBe(1);
+  });
+
+  // Test 69: INITIAL PRESENCE OUT POLICY MAINTAINED
+  it('69: OUT camera on resident with no prior ResidentPresence is safely refused (INITIAL_PRESENCE_MISSING)', async () => {
+    const resident = await createResidentNoPresence('R_INIT_OUT_1');
+
+    const obs = createObservation(outCameraId, resident, 'MATCH');
+    const decision = await movementDecisionService.evaluateObservation(obs);
+
+    expect(decision.status).toBe('INITIAL_PRESENCE_MISSING');
+
+    // No movement, no presence row created
+    const movementCount = await testPrisma.movementEvent.count({
+      where: { residentId: resident.id },
+    });
+    expect(movementCount).toBe(0);
+
+    const presence = await testPrisma.residentPresence.findUnique({
+      where: { residentId: resident.id },
+    });
+    expect(presence).toBeNull();
   });
 
   // Test 70: SAFETY SWITCH VERIFICATION
@@ -584,7 +725,7 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     expect(event.recognitionReference).toBe(obs.id);
   });
 
-  // API Integration Tests (Requirement 30, 31, 32)
+  // API Integration Tests
   describe('Movement REST API Endpoints', () => {
     it('GET /api/v1/movements returns paginated movements for authorized Warden', async () => {
       const resident = await createTestResident('R_API_1', PresenceState.OUT);
@@ -630,31 +771,52 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
       expect(res.body.totalResidents).toBe(3);
     });
 
-    it('GET & PATCH /api/v1/movements/automation-status allows Warden/Admin to inspect and configure', async () => {
-      // Warden inspects status
+    it('GET /api/v1/movements/automation-status is readable by all authenticated roles', async () => {
       const getRes = await request(app)
         .get('/api/v1/movements/automation-status')
         .set('Authorization', `Bearer ${wardenToken}`);
 
       expect(getRes.status).toBe(200);
       expect(getRes.body.globalAutomationEnabled).toBe(true);
+    });
 
-      // Guard cannot toggle automation (403 Forbidden)
-      const guardPatchRes = await request(app)
+    it('PATCH /api/v1/movements/automation-status: ADMIN can toggle global automation', async () => {
+      const res = await request(app)
+        .patch('/api/v1/movements/automation-status')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ enabled: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.globalAutomationEnabled).toBe(false);
+
+      // Re-enable
+      await request(app)
+        .patch('/api/v1/movements/automation-status')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ enabled: true });
+    });
+
+    it('PATCH /api/v1/movements/automation-status: GUARD is forbidden (403)', async () => {
+      const res = await request(app)
         .patch('/api/v1/movements/automation-status')
         .set('Authorization', `Bearer ${guardToken}`)
         .send({ enabled: false });
 
-      expect(guardPatchRes.status).toBe(403);
+      expect(res.status).toBe(403);
+    });
 
-      // Warden toggles automation
-      const wardenPatchRes = await request(app)
+    it('PATCH /api/v1/movements/automation-status: WARDEN is forbidden (403) — global toggle is ADMIN only', async () => {
+      const res = await request(app)
         .patch('/api/v1/movements/automation-status')
         .set('Authorization', `Bearer ${wardenToken}`)
         .send({ enabled: false });
 
-      expect(wardenPatchRes.status).toBe(200);
-      expect(wardenPatchRes.body.globalAutomationEnabled).toBe(false);
+      expect(res.status).toBe(403);
+      // Automation state must NOT have changed
+      const statusRes = await request(app)
+        .get('/api/v1/movements/automation-status')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(statusRes.body.globalAutomationEnabled).toBe(true);
     });
   });
 });

@@ -1,4 +1,5 @@
 import {
+  Prisma,
   PrismaClient,
   CameraRole,
   MovementType,
@@ -24,8 +25,21 @@ export interface MovementDecisionServiceOptions {
 export class MovementDecisionService {
   private globalAutomationEnabled: boolean;
   private minTransitionIntervalMs: number;
+
+  /**
+   * Completed-observation cache: observationId → settled MovementDecisionResult.
+   * Used as fast-path dedup after evaluation has committed.
+   */
   private processedObservationIds: Map<string, MovementDecisionResult> = new Map();
   private maxCacheSize = 5000;
+
+  /**
+   * In-flight promise map: observationId → evaluation Promise.
+   * Ensures concurrent calls for the SAME observationId share one promise
+   * and therefore make exactly one DB write, even when calls begin before
+   * the first evaluation has committed.
+   */
+  private inFlightObservations: Map<string, Promise<MovementDecisionResult>> = new Map();
 
   constructor(
     private readonly db: PrismaClient = defaultPrisma,
@@ -57,11 +71,54 @@ export class MovementDecisionService {
   /**
    * Evaluates a recognition observation and creates safe, deterministic movement events.
    * Only stable MATCH observations create real-world side effects.
+   *
+   * Concurrent-safe: if the same observationId is evaluated multiple times simultaneously
+   * (e.g. double listener, retry), all callers share a single in-flight promise so only
+   * one DB transaction runs.
    */
   public async evaluateObservation(
     observation: RecognitionObservation
   ): Promise<MovementDecisionResult> {
+    const observationId = observation.id;
+
+    // Fast-path: observation already fully evaluated and cached
+    if (observationId && this.processedObservationIds.has(observationId)) {
+      const cached = this.processedObservationIds.get(observationId)!;
+      return {
+        ...cached,
+        status: 'DUPLICATE_OBSERVATION_SUPPRESSED',
+        reason: 'Observation was already evaluated (cached idempotency)',
+      };
+    }
+
+    // Concurrent dedup: if an evaluation for this observationId is already in-flight,
+    // return the same promise so only one DB write ever happens.
+    if (observationId && this.inFlightObservations.has(observationId)) {
+      return this.inFlightObservations.get(observationId)!;
+    }
+
+    // Start a new evaluation.  Register it in inFlight so concurrent callers share it.
+    const evaluationPromise = this._doEvaluate(observation).finally(() => {
+      if (observationId) {
+        this.inFlightObservations.delete(observationId);
+      }
+    });
+
+    if (observationId) {
+      this.inFlightObservations.set(observationId, evaluationPromise);
+    }
+
+    return evaluationPromise;
+  }
+
+  /**
+   * Internal evaluation implementation.  Never called concurrently for the same observationId.
+   */
+  private async _doEvaluate(
+    observation: RecognitionObservation
+  ): Promise<MovementDecisionResult> {
     const timestamp = new Date().toISOString();
+    const observationId = observation.id;
 
     // 1. Mandatory Gate: ONLY classification = 'MATCH' may create movement
     if (observation.classification !== 'MATCH') {
@@ -84,19 +141,8 @@ export class MovementDecisionService {
     }
 
     const residentId = observation.resident.id;
-    const observationId = observation.id;
 
-    // 2. Idempotency Check (In-memory cache fast path)
-    if (observationId && this.processedObservationIds.has(observationId)) {
-      const cached = this.processedObservationIds.get(observationId)!;
-      return {
-        ...cached,
-        status: 'DUPLICATE_OBSERVATION_SUPPRESSED',
-        reason: 'Observation was already evaluated (cached idempotency)',
-      };
-    }
-
-    // 3. Database Idempotency Check (prevent duplicate replay across restarts / multiple workers)
+    // 2. Database Idempotency Check (prevent duplicate replay across restarts / multiple workers)
     if (observationId) {
       const existingDbEvent = await this.db.movementEvent.findFirst({
         where: { recognitionReference: observationId },
@@ -120,7 +166,7 @@ export class MovementDecisionService {
       }
     }
 
-    // 4. Camera Role & Capability Validation
+    // 3. Camera Role & Capability Validation
     const camera = await this.db.camera.findUnique({
       where: { id: observation.cameraId },
     });
@@ -146,7 +192,7 @@ export class MovementDecisionService {
       };
     }
 
-    // 5. Automation Enablement Checks (Global switch + per-camera switch)
+    // 4. Automation Enablement Checks (Global switch + per-camera switch)
     if (!this.globalAutomationEnabled) {
       return {
         status: 'AUTOMATION_DISABLED',
@@ -174,11 +220,11 @@ export class MovementDecisionService {
       };
     }
 
-    // 6. Direction MUST come from camera role (server-authoritative)
+    // 5. Direction MUST come from camera role (server-authoritative)
     const targetDirection: MovementType =
       camera.role === CameraRole.IN ? MovementType.IN : MovementType.OUT;
 
-    // 7. Validate Resident Eligibility Server-Side
+    // 6. Validate Resident Eligibility Server-Side
     const resident = await this.db.resident.findUnique({
       where: { id: residentId },
     });
@@ -217,7 +263,7 @@ export class MovementDecisionService {
       };
     }
 
-    // 8. Cross-Hostel & Organization Defense-in-Depth
+    // 7. Cross-Hostel & Organization Defense-in-Depth
     if (
       resident.organizationId !== camera.organizationId ||
       resident.hostelId !== camera.hostelId
@@ -234,14 +280,15 @@ export class MovementDecisionService {
       };
     }
 
-    // 9. Inspect Current Authoritative ResidentPresence State
+    // 8. Inspect Current Authoritative ResidentPresence State
     const currentPresence = await this.db.residentPresence.findUnique({
       where: { residentId: resident.id },
     });
 
-    // Handle initial presence state policy (Requirement 10)
+    // Handle initial presence state policy
     if (!currentPresence) {
       if (targetDirection === MovementType.OUT) {
+        // OUT with no prior presence is refused — cannot assume resident is inside
         return {
           status: 'INITIAL_PRESENCE_MISSING',
           cameraId: camera.id,
@@ -253,26 +300,13 @@ export class MovementDecisionService {
           reason: 'No prior presence record found; automatic OUT movement refused',
         };
       }
-
-      // For IN camera: safely initialize presence to OUT so recordNormalMovement can transition OUT -> IN
-      await this.db.residentPresence.create({
-        data: {
-          residentId: resident.id,
-          hostelId: resident.hostelId,
-          currentState: PresenceState.OUT,
-        },
-      });
+      // IN with no prior presence: fall through to MovementService which will atomically
+      // create the presence row and the movement event inside a single transaction.
     }
 
-    const effectiveCurrentPresence =
-      currentPresence ||
-      (await this.db.residentPresence.findUniqueOrThrow({
-        where: { residentId: resident.id },
-      }));
+    const currentState = currentPresence?.currentState ?? null;
 
-    const currentState = effectiveCurrentPresence.currentState;
-
-    // 10. Duplicate State Suppression (Requirement 9 & 19)
+    // 9. Duplicate State Suppression
     if (currentState === PresenceState.IN && targetDirection === MovementType.IN) {
       const result: MovementDecisionResult = {
         status: 'ALREADY_IN',
@@ -309,18 +343,18 @@ export class MovementDecisionService {
       return result;
     }
 
-    // 11. Rapid Camera Transition Guard (Requirement 18)
-    if (effectiveCurrentPresence.lastMovementTime) {
+    // 10. Rapid Camera Transition Guard
+    if (currentPresence?.lastMovementTime) {
       const elapsedMs =
-        Date.now() - new Date(effectiveCurrentPresence.lastMovementTime).getTime();
+        Date.now() - new Date(currentPresence.lastMovementTime).getTime();
       if (elapsedMs < this.minTransitionIntervalMs) {
         const result: MovementDecisionResult = {
           status: 'TRANSITION_SUPPRESSED',
           residentId: resident.id,
           residentCode: resident.residentCode,
           residentName: resident.fullName,
-          previousPresence: currentState,
-          currentPresence: currentState,
+          previousPresence: currentState!,
+          currentPresence: currentState!,
           cameraId: camera.id,
           cameraRole: camera.role,
           timestamp,
@@ -331,7 +365,9 @@ export class MovementDecisionService {
       }
     }
 
-    // 12. Commit Atomic Movement Transaction via MovementService (Requirement 11 & 39)
+    // 11. Commit Atomic Movement Transaction via MovementService
+    // MovementService handles: SELECT FOR UPDATE, atomic presence init (if first IN),
+    // MovementEvent creation, ResidentPresence update, AuditLog — all in ONE transaction.
     try {
       const movementEvent = await this.movementService.recordNormalMovement({
         residentId: resident.id,
@@ -357,7 +393,7 @@ export class MovementDecisionService {
         residentId: resident.id,
         residentCode: resident.residentCode,
         residentName: resident.fullName,
-        previousPresence: currentState,
+        previousPresence: currentState ?? PresenceState.OUT,
         currentPresence: newPresence,
         cameraId: camera.id,
         cameraRole: camera.role,
@@ -370,6 +406,31 @@ export class MovementDecisionService {
 
       return result;
     } catch (err: any) {
+      // Catch DB-level unique constraint violation on recognitionReference (P2002)
+      // This is the final safety net for concurrent writes that pass all prior checks.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002' &&
+        (err.meta?.target as string[] | undefined)?.includes?.('recognitionReference')
+      ) {
+        const existingEvent = await this.db.movementEvent.findFirst({
+          where: { recognitionReference: observationId },
+        });
+        const dedupeResult: MovementDecisionResult = {
+          status: 'DUPLICATE_OBSERVATION_SUPPRESSED',
+          direction: existingEvent?.movementType,
+          movementEventId: existingEvent?.id,
+          residentId: resident.id,
+          residentCode: resident.residentCode,
+          residentName: resident.fullName,
+          cameraId: camera.id,
+          timestamp,
+          reason: 'DB unique constraint caught concurrent duplicate recognition observation',
+        };
+        if (observationId) this.cacheResult(observationId, dedupeResult);
+        return dedupeResult;
+      }
+
       console.error(`[MovementDecisionService] Error recording movement for resident ${resident.id}:`, err);
       return {
         status: 'ERROR',
@@ -394,5 +455,6 @@ export class MovementDecisionService {
 
   public clearCache(): void {
     this.processedObservationIds.clear();
+    this.inFlightObservations.clear();
   }
 }

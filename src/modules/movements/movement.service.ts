@@ -69,18 +69,37 @@ export class MovementService {
 
     const executeOperation = async (tx: Prisma.TransactionClient) => {
       // 1. Lock resident presence row with FOR UPDATE
-      const lockedPresence = await tx.$queryRaw<Array<{ currentState: PresenceState; hostelId: string }>>`
+      const lockedPresence = await tx.$queryRaw<Array<{ currentState: PresenceState; hostelId: string }> >`
         SELECT "currentState", "hostelId" 
         FROM "resident_presences" 
         WHERE "residentId" = ${input.residentId} 
         FOR UPDATE
       `;
 
-      if (!lockedPresence || lockedPresence.length === 0) {
-        throw new NotFoundError('ResidentPresence', input.residentId);
-      }
+      let currentPresence: { currentState: PresenceState; hostelId: string } | null =
+        lockedPresence && lockedPresence.length > 0 ? lockedPresence[0] : null;
 
-      const currentPresence = lockedPresence[0];
+      // 1a. Initial presence initialization (atomically inside this transaction)
+      if (!currentPresence) {
+        if (input.movementType === MovementType.OUT) {
+          // OUT on a resident with no presence record is rejected (cannot assume they are inside)
+          throw new NotFoundError('ResidentPresence', input.residentId);
+        }
+
+        // First-ever IN: create the presence row as OUT so the transition below succeeds (OUT → IN)
+        const resident = await tx.resident.findUnique({ where: { id: input.residentId } });
+        if (!resident) throw new NotFoundError('Resident', input.residentId);
+
+        await tx.residentPresence.create({
+          data: {
+            residentId: input.residentId,
+            hostelId: resident.hostelId,
+            currentState: PresenceState.OUT,
+          },
+        });
+
+        currentPresence = { currentState: PresenceState.OUT, hostelId: resident.hostelId };
+      }
 
       // 2. Cross-Hostel Movement Integrity
       if (currentPresence.hostelId !== input.hostelId) {

@@ -47,13 +47,20 @@ export function createMovementRouter(
 
   /**
    * PATCH /api/v1/movements/automation-status
-   * Toggle global movement automation (Admin / Warden only)
+   * Toggle global movement automation (ADMIN only).
+   * Warden and Guard receive 403 Forbidden.
    */
   router.patch('/automation-status', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const actor = getActor(req);
-      if (actor.role === StaffRole.GUARD) {
-        throw new ForbiddenError('Guards cannot modify movement automation settings');
+      // Global automation switch is restricted to ADMIN only.
+      // WARDEN and GUARD are forbidden from modifying global movement automation.
+      if (actor.role !== StaffRole.ADMIN) {
+        throw new ForbiddenError(
+          actor.role === StaffRole.GUARD
+            ? 'Guards cannot modify movement automation settings'
+            : 'Wardens cannot modify global movement automation settings; contact an Administrator'
+        );
       }
 
       const { enabled, minTransitionIntervalMs } = req.body;
