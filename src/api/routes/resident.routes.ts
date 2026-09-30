@@ -12,6 +12,7 @@ import {
 } from '../../modules/residents/resident.schemas';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import { prisma as defaultPrisma } from '../../database/client';
+import { createFaceEnrollmentRouter } from './face-enrollment.routes';
 
 export function createResidentRouter(db = defaultPrisma) {
   const router = Router();
@@ -269,6 +270,9 @@ export function createResidentRouter(db = defaultPrisma) {
       }
     }
   );
+
+  // Mount face enrollment routes under /:id/face-enrollment
+  router.use('/:id/face-enrollment', createFaceEnrollmentRouter(db));
 
   return router;
 }

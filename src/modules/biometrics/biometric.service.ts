@@ -2,6 +2,9 @@ import { PrismaClient, FaceEnrollmentStatus, FaceProfile } from '@prisma/client'
 import { prisma as defaultPrisma } from '../../database/client';
 import { NotFoundError, ValidationError } from '../../common/errors';
 import { AuditService } from '../audit/audit.service';
+import { EnrollmentService, AuthenticatedActor } from './enrollment.service';
+import { PythonWorkerClient, defaultPythonWorkerClient } from './python-worker-client';
+import { BiometricHealthStatus } from './biometric.types';
 
 export interface EnrollFaceProfileInput {
   residentId: string;
@@ -14,9 +17,20 @@ export interface EnrollFaceProfileInput {
 
 export class BiometricService {
   private auditService: AuditService;
+  public readonly enrollmentService: EnrollmentService;
+  public readonly workerClient: PythonWorkerClient;
 
-  constructor(private readonly db: PrismaClient = defaultPrisma) {
+  constructor(
+    private readonly db: PrismaClient = defaultPrisma,
+    workerClient: PythonWorkerClient = defaultPythonWorkerClient
+  ) {
     this.auditService = new AuditService(this.db);
+    this.workerClient = workerClient;
+    this.enrollmentService = new EnrollmentService(this.db, this.workerClient);
+  }
+
+  public async getHealth(): Promise<BiometricHealthStatus> {
+    return this.workerClient.health();
   }
 
   public async enrollFaceProfile(input: EnrollFaceProfileInput): Promise<FaceProfile> {
@@ -35,6 +49,17 @@ export class BiometricService {
     }
 
     return this.db.$transaction(async (tx) => {
+      // Invalidate old enrolled profile if any
+      const existing = await tx.faceProfile.findFirst({
+        where: { residentId: input.residentId, enrollmentStatus: FaceEnrollmentStatus.ENROLLED },
+      });
+      if (existing) {
+        await tx.faceProfile.update({
+          where: { id: existing.id },
+          data: { enrollmentStatus: FaceEnrollmentStatus.NEEDS_REENROLLMENT },
+        });
+      }
+
       // Create separate face profile record
       const profile = await tx.faceProfile.create({
         data: {
@@ -63,8 +88,9 @@ export class BiometricService {
           hostelId: resident.hostelId,
           entityType: 'FACE_PROFILE',
           entityId: profile.id,
-          action: 'CREATE',
+          action: existing ? 'UPDATE' : 'CREATE',
           performedByUserId: input.enrolledByUserId || null,
+          reason: existing ? 'Face re-enrollment' : 'Initial face enrollment',
           newValues: {
             residentId: profile.residentId,
             modelName: profile.modelName,
@@ -97,11 +123,13 @@ export class BiometricService {
     }
 
     return this.db.$transaction(async (tx) => {
+      const existingMeta = (profile.metadata as Record<string, any>) || {};
       const updated = await tx.faceProfile.update({
         where: { id: profileId },
         data: {
           enrollmentStatus: FaceEnrollmentStatus.REVOKED,
           revokedAt: new Date(),
+          metadata: { ...existingMeta, embedding: null, revocationReason: reason },
         },
       });
 

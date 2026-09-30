@@ -10,6 +10,8 @@ import { Button } from '../components/Button';
 import { ResidentEditModal } from '../features/residents/ResidentEditModal';
 import { ResidentDeactivateModal } from '../features/residents/ResidentDeactivateModal';
 import { ResidentReactivateModal } from '../features/residents/ResidentReactivateModal';
+import { FaceEnrollmentModal } from '../features/residents/FaceEnrollmentModal';
+import { FaceRevokeModal } from '../features/residents/FaceRevokeModal';
 import { formatDateTime } from '../utils/formatters';
 import {
   ArrowLeft,
@@ -38,6 +40,8 @@ export const ResidentDetailPage: React.FC = () => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeactivateOpen, setIsDeactivateOpen] = useState(false);
   const [isReactivateOpen, setIsReactivateOpen] = useState(false);
+  const [isFaceEnrollOpen, setIsFaceEnrollOpen] = useState(false);
+  const [isFaceRevokeOpen, setIsFaceRevokeOpen] = useState(false);
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'WARDEN';
 
@@ -197,6 +201,28 @@ export const ResidentDetailPage: React.FC = () => {
               </div>
               <Badge type="enrollment" value={resident.faceEnrollmentStatus} />
             </div>
+            {canManage && (
+              <div className="biometric-actions-row flex items-center gap-2 mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsFaceEnrollOpen(true)}
+                  leftIcon={<ScanFace size={14} />}
+                >
+                  {resident.faceEnrollmentStatus === 'ENROLLED' ? 'Re-enroll Face' : 'Enroll Face'}
+                </Button>
+                {resident.faceEnrollmentStatus === 'ENROLLED' && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsFaceRevokeOpen(true)}
+                    leftIcon={<Shield size={14} />}
+                  >
+                    Revoke Face Enrollment
+                  </Button>
+                )}
+              </div>
+            )}
             <p className="biometric-deferral-notice mt-3">
               Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.
             </p>
@@ -234,6 +260,18 @@ export const ResidentDetailPage: React.FC = () => {
             isOpen={isReactivateOpen}
             resident={resident}
             onClose={() => setIsReactivateOpen(false)}
+            onSuccess={(u) => setResident(u)}
+          />
+          <FaceEnrollmentModal
+            isOpen={isFaceEnrollOpen}
+            resident={resident}
+            onClose={() => setIsFaceEnrollOpen(false)}
+            onSuccess={(u) => setResident(u)}
+          />
+          <FaceRevokeModal
+            isOpen={isFaceRevokeOpen}
+            resident={resident}
+            onClose={() => setIsFaceRevokeOpen(false)}
             onSuccess={(u) => setResident(u)}
           />
         </>

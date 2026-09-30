@@ -19,6 +19,8 @@ import { ResidentEditModal } from '../features/residents/ResidentEditModal';
 import { ResidentDeactivateModal } from '../features/residents/ResidentDeactivateModal';
 import { ResidentReactivateModal } from '../features/residents/ResidentReactivateModal';
 import { ResidentDetailModal } from '../features/residents/ResidentDetailModal';
+import { FaceEnrollmentModal } from '../features/residents/FaceEnrollmentModal';
+import { FaceRevokeModal } from '../features/residents/FaceRevokeModal';
 import { Plus, RefreshCw, AlertCircle } from 'lucide-react';
 
 export const ResidentsPage: React.FC = () => {
@@ -56,6 +58,8 @@ export const ResidentsPage: React.FC = () => {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeactivateOpen, setIsDeactivateOpen] = useState(false);
   const [isReactivateOpen, setIsReactivateOpen] = useState(false);
+  const [isFaceEnrollOpen, setIsFaceEnrollOpen] = useState(false);
+  const [isFaceRevokeOpen, setIsFaceRevokeOpen] = useState(false);
 
   // Fetch residents from real backend API
   const fetchResidents = useCallback(async () => {
@@ -294,7 +298,35 @@ export const ResidentsPage: React.FC = () => {
           setSelectedResident(r);
           setIsReactivateOpen(true);
         }}
+        onEnrollFace={(r: SafeResident) => {
+          setSelectedResident(r);
+          setIsFaceEnrollOpen(true);
+        }}
+        onRevokeFace={(r: SafeResident) => {
+          setSelectedResident(r);
+          setIsFaceRevokeOpen(true);
+        }}
       />
+
+      {/* Face Enrollment Modal */}
+      {canManage && (
+        <FaceEnrollmentModal
+          isOpen={isFaceEnrollOpen}
+          resident={selectedResident}
+          onClose={() => setIsFaceEnrollOpen(false)}
+          onSuccess={handleResidentUpdated}
+        />
+      )}
+
+      {/* Face Revoke Modal */}
+      {canManage && (
+        <FaceRevokeModal
+          isOpen={isFaceRevokeOpen}
+          resident={selectedResident}
+          onClose={() => setIsFaceRevokeOpen(false)}
+          onSuccess={handleResidentUpdated}
+        />
+      )}
     </div>
   );
 };

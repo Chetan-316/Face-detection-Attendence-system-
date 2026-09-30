@@ -10,6 +10,7 @@ import { config } from '../config';
 import { createAuthRouter } from './routes/auth.routes';
 import { createResidentRouter } from './routes/resident.routes';
 import { createCameraRouter } from './routes/camera.routes';
+import { createBiometricRouter } from './routes/biometric.routes';
 
 export function createApp(db: PrismaClient = defaultPrisma) {
   const app = express();
@@ -53,6 +54,7 @@ export function createApp(db: PrismaClient = defaultPrisma) {
   app.use('/api/v1/auth', createAuthRouter(db));
   app.use('/api/v1/residents', createResidentRouter(db));
   app.use('/api/v1/cameras', createCameraRouter(db));
+  app.use('/api/v1/biometrics', createBiometricRouter(db));
 
   // Static frontend serving if client/dist exists (production / single-server mode)
   const clientDistPath = path.resolve(__dirname, '../../../client/dist');

@@ -25,6 +25,8 @@ interface ResidentDetailModalProps {
   onEdit?: (resident: SafeResident) => void;
   onDeactivate?: (resident: SafeResident) => void;
   onReactivate?: (resident: SafeResident) => void;
+  onEnrollFace?: (resident: SafeResident) => void;
+  onRevokeFace?: (resident: SafeResident) => void;
 }
 
 export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
@@ -34,6 +36,8 @@ export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
   onEdit,
   onDeactivate,
   onReactivate,
+  onEnrollFace,
+  onRevokeFace,
 }) => {
   const { user } = useAuth();
 
@@ -145,6 +149,34 @@ export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
             </div>
             <Badge type="enrollment" value={resident.faceEnrollmentStatus} />
           </div>
+          {canManage && (
+            <div className="biometric-actions-row flex items-center gap-2 mt-3 pt-2 border-t border-slate-200 dark:border-slate-700">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  onClose();
+                  onEnrollFace?.(resident);
+                }}
+                leftIcon={<ScanFace size={14} />}
+              >
+                {resident.faceEnrollmentStatus === 'ENROLLED' ? 'Re-enroll Face' : 'Enroll Face'}
+              </Button>
+              {resident.faceEnrollmentStatus === 'ENROLLED' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onClose();
+                    onRevokeFace?.(resident);
+                  }}
+                  leftIcon={<Shield size={14} />}
+                >
+                  Revoke Face Enrollment
+                </Button>
+              )}
+            </div>
+          )}
           <p className="biometric-deferral-notice mt-2">
             Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.
           </p>

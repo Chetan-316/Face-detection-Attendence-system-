@@ -4,3 +4,14 @@ dist/
 *.log
 coverage/
 .DS_Store
+
+# Python & Biometrics
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+models/*.onnx
+src/modules/biometrics/models/*.onnx
+*.onnx
+.pytest_cache/
