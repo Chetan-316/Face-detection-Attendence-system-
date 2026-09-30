@@ -10,6 +10,11 @@ import { NotFoundError, ValidationError } from '../../common/errors';
 import { AuditService } from '../audit/audit.service';
 import { CameraDiagnostics, CameraFrame, ICameraAdapter } from './camera.types';
 import { CameraAdapterFactory } from './camera-adapter.factory';
+import {
+  normalizeCameraConfig,
+  isMaskedRtspUrl,
+  splitRtspUrlCredentials,
+} from './utils/url-redaction';
 
 export interface CreateCameraInput {
   organizationId: string;
@@ -61,6 +66,8 @@ export class CameraService {
       }
     }
 
+    const cleanConfig = normalizeCameraConfig(input.configMetadata || {});
+
     return this.db.$transaction(async (tx) => {
       const camera = await tx.camera.create({
         data: {
@@ -72,7 +79,7 @@ export class CameraService {
           role: input.role || CameraRole.GENERAL,
           isEnabled: input.isEnabled ?? true,
           healthStatus: CameraHealthStatus.OFFLINE,
-          configMetadata: input.configMetadata || {},
+          configMetadata: cleanConfig,
         },
       });
 
@@ -117,11 +124,39 @@ export class CameraService {
     let finalConfigMetadata = input.configMetadata;
     if (input.configMetadata) {
       const existingConfig = (existing.configMetadata as Record<string, any>) || {};
-      finalConfigMetadata = { ...existingConfig, ...input.configMetadata };
-      // If operator omitted or left password blank, retain existing password
-      if (!input.configMetadata.password && existingConfig.password) {
-        finalConfigMetadata.password = existingConfig.password;
+      const incoming = { ...input.configMetadata };
+
+      // Strip presentation / computed fields
+      delete incoming.credentialsConfigured;
+      delete incoming.host;
+      delete incoming.port;
+      delete incoming.path;
+
+      // Guard rtspUrl against masked placeholders
+      if (incoming.rtspUrl && isMaskedRtspUrl(incoming.rtspUrl)) {
+        delete incoming.rtspUrl;
+      } else if (incoming.rtspUrl) {
+        const split = splitRtspUrlCredentials(incoming.rtspUrl);
+        incoming.rtspUrl = split.cleanUrl;
+        if (split.username && !incoming.username) {
+          incoming.username = split.username;
+        }
+        if (split.password && !incoming.password) {
+          incoming.password = split.password;
+        }
       }
+
+      // Preserve existing username if incoming is '***' or empty string or undefined
+      if (incoming.username === '***' || incoming.username === '' || incoming.username === undefined) {
+        delete incoming.username;
+      }
+
+      // Preserve existing password if incoming is empty string or undefined
+      if (incoming.password === '' || incoming.password === undefined) {
+        delete incoming.password;
+      }
+
+      finalConfigMetadata = { ...existingConfig, ...incoming };
     }
 
     const updated = await this.db.$transaction(async (tx) => {
@@ -232,6 +267,17 @@ export class CameraService {
     const config = (camera.configMetadata as Record<string, any>) || {};
     await adapter.initialize(config);
 
+    if (adapter.onHealthChange) {
+      adapter.onHealthChange(async (healthStatus) => {
+        try {
+          await this.db.camera.update({
+            where: { id: cameraId },
+            data: { healthStatus },
+          });
+        } catch {}
+      });
+    }
+
     this.activeAdapters.set(cameraId, adapter);
     return adapter;
   }
@@ -294,12 +340,13 @@ export class CameraService {
 
   public async captureSnapshot(cameraId: string): Promise<CameraFrame> {
     const adapter = await this.getOrCreateAdapter(cameraId);
+    const wasActive = adapter.isActive();
     const frame = await adapter.captureSnapshot();
 
     await this.db.camera.update({
       where: { id: cameraId },
       data: {
-        healthStatus: CameraHealthStatus.ONLINE,
+        healthStatus: wasActive ? CameraHealthStatus.ONLINE : CameraHealthStatus.OFFLINE,
         lastSeenAt: new Date(),
       },
     });

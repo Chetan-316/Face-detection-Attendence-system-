@@ -89,6 +89,64 @@ export interface SanitizedCameraConfig {
 }
 
 /**
+ * Checks whether an RTSP URL contains masked/sanitized credential placeholders (e.g. ***).
+ */
+export function isMaskedRtspUrl(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') {
+    return false;
+  }
+  return /\*\*\*@|\*\*\*:\*\*\*@|rtsp[s]?:\/\/\*\*\*/i.test(url);
+}
+
+/**
+ * Splits an RTSP URL containing embedded credentials into a clean URL, username, and password.
+ * E.g. "rtsp://admin:Secret123@192.168.1.50:554/stream"
+ * -> { cleanUrl: "rtsp://192.168.1.50:554/stream", username: "admin", password: "Secret123" }
+ */
+export function splitRtspUrlCredentials(rawUrl?: string | null): {
+  cleanUrl: string;
+  username?: string;
+  password?: string;
+} {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return { cleanUrl: '' };
+  }
+
+  const trimmed = rawUrl.trim();
+  const match = trimmed.match(/^(rtsp[s]?:\/\/)([^:@\s]+)(?::([^@\s]*))?@(.+)$/i);
+  if (match) {
+    const protocol = match[1];
+    const user = decodeURIComponent(match[2]);
+    const pass = match[3] !== undefined ? decodeURIComponent(match[3]) : undefined;
+    const rest = match[4];
+    return {
+      cleanUrl: `${protocol}${rest}`,
+      username: user,
+      password: pass,
+    };
+  }
+
+  return { cleanUrl: trimmed };
+}
+
+/**
+ * Normalizes camera config for database persistence:
+ * Strips safe presentation / computed keys (credentialsConfigured, host, port, path).
+ * Preserves actual configuration (split or embedded).
+ */
+export function normalizeCameraConfig(config: Record<string, any> = {}): Record<string, any> {
+  const normalized: Record<string, any> = { ...config };
+
+  // Never persist presentation/safe-DTO fields
+  delete normalized.credentialsConfigured;
+  delete normalized.host;
+  delete normalized.port;
+  delete normalized.path;
+
+  return normalized;
+}
+
+/**
  * Sanitizes configMetadata for client consumption or safe audit logging.
  * Strips password and masks any credentials in rtspUrl.
  */
@@ -129,3 +187,4 @@ export function sanitizeCameraConfig(config: Record<string, any> = {}): Sanitize
 
   return sanitized;
 }
+

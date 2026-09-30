@@ -139,11 +139,14 @@ The transport protocol is configurable per camera (`transport: 'tcp' | 'udp'`):
 
 Hostel security credentials must remain strictly protected:
 
-1. **Storage**: Stored securely in backend `configMetadata`.
-2. **API Scrubbing**: The centralized `toSafeCameraDto` serializer automatically masks RTSP URLs (`rtsp://***:***@...`), deletes the `password` property, and emits `credentialsConfigured: true`.
-3. **No Credential Return**: Neither staff nor warden web interfaces ever receive plaintext passwords or credentialed URLs back from the server.
-4. **Log & Stderr Redaction**: Every FFmpeg stderr chunk and diagnostic message passes through `redactRtspUrl()` before logging. Passwords never appear in application logs or `AuditLog` records.
-5. **Editing Workflows**: When editing a camera, leaving the password field blank retains the existing saved password safely.
+1. **Storage Limitation & Current Security Architecture**:
+   - **Database-at-Rest Storage**: Camera credentials (RTSP URL, username, and password) are currently stored in `Camera.configMetadata` as JSON columns within PostgreSQL.
+   - **Important Security Distinction**: This is **NOT** encrypted-at-rest secret vaulting (e.g. HashiCorp Vault, AWS Secrets Manager, or KMS envelope encryption). Real database-at-rest secret vaulting is deferred to future enterprise hardening milestones. Do not overstate storage encryption.
+   - **API & Memory Redaction**: Strict API-level privacy and in-transit scrubbing are active. The centralized `toSafeCameraDto` serializer automatically masks RTSP URLs (`rtsp://***:***@...`), deletes the `password` property, masks the `username` to `'***'`, and emits `credentialsConfigured: true`.
+2. **No Credential Return to Browser**: Neither staff nor warden web interfaces ever receive plaintext passwords or credentialed URLs back from the server.
+3. **Log & Stderr Redaction**: Every FFmpeg stderr chunk and diagnostic message passes through `redactRtspUrl()` before logging. Passwords never appear in application logs or `AuditLog` records.
+4. **Delta-Based Editing Workflows**: When editing a camera, leaving the password or username field blank retains the existing saved secrets. Sanitized presentation values (`***`, masked URLs, `credentialsConfigured`, `host`, `port`, `path`) are rejected from being written back to database persistence.
+
 
 ---
 

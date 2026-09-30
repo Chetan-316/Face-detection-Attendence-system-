@@ -1,5 +1,6 @@
-import { CameraHealthStatus } from '@prisma/client';
 import { CameraFrame } from '../camera.types';
+
+export type FrameSourceState = 'CONNECTING' | 'ONLINE' | 'DEGRADED' | 'OFFLINE';
 
 export interface FrameSourceConfig {
   cameraId: string;
@@ -16,10 +17,13 @@ export interface IFrameSource {
   start(): Promise<void>;
   stop(): Promise<void>;
   isActive(): boolean;
-  getHealth(): CameraHealthStatus;
+  getState(): FrameSourceState;
+  getHealth?(): string;
   getLastError(): string | null;
   getLatestFrame(): CameraFrame | null;
   captureSnapshot(): Promise<CameraFrame>;
   onFrame(listener: (frame: CameraFrame) => void): () => void;
+  onStateChange?(listener: (state: FrameSourceState, error?: string | null) => void): () => void;
   destroy(): Promise<void>;
 }
+

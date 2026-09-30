@@ -1,7 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
-import { CameraHealthStatus, CameraSourceType } from '@prisma/client';
 import { CameraFrame } from '../camera.types';
-import { FrameSourceConfig, IFrameSource } from './frame-source.interface';
+import { FrameSourceConfig, FrameSourceState, IFrameSource } from './frame-source.interface';
 import { getFfmpegPath } from '../utils/ffmpeg-locator';
 import { redactRtspUrl, buildAuthenticatedRtspUrl } from '../utils/url-redaction';
 
@@ -69,6 +68,7 @@ export interface RtspFrameSourceConfig extends FrameSourceConfig {
   reconnectDelayMs?: number;
   maxReconnectDelayMs?: number;
   testInputOverride?: string; // Used for automated synthetic integration tests (e.g. lavfi testsrc)
+  realtimePacing?: boolean; // When true, passes -re to FFmpeg for paced playback
 }
 
 export class RtspFrameSource implements IFrameSource {
@@ -85,11 +85,13 @@ export class RtspFrameSource implements IFrameSource {
   private reconnectDelayMs: number = 1000;
   private maxReconnectDelayMs: number = 15000;
   private testInputOverride?: string;
+  private realtimePacing: boolean = false;
 
   private ffmpegProcess: ChildProcess | null = null;
   private active: boolean = false;
   private manualStop: boolean = false;
-  private health: CameraHealthStatus = CameraHealthStatus.OFFLINE;
+  private state: FrameSourceState = 'OFFLINE';
+  private stateListeners: Set<(state: FrameSourceState, error?: string | null) => void> = new Set();
   private lastError: string | null = null;
 
   private buffer: Buffer = Buffer.alloc(0);
@@ -101,6 +103,38 @@ export class RtspFrameSource implements IFrameSource {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private stderrRingBuffer: string[] = [];
 
+  public getState(): FrameSourceState {
+    return this.state;
+  }
+
+  public getHealth(): string {
+    return this.state;
+  }
+
+  public onStateChange(listener: (state: FrameSourceState, error?: string | null) => void): () => void {
+    this.stateListeners.add(listener);
+    return () => {
+      this.stateListeners.delete(listener);
+    };
+  }
+
+  private setState(newState: FrameSourceState, error?: string | null): void {
+    const changed = this.state !== newState || (error && error !== this.lastError);
+    this.state = newState;
+    if (error !== undefined) {
+      this.lastError = error;
+    }
+    if (changed) {
+      for (const listener of this.stateListeners) {
+        try {
+          listener(newState, this.lastError);
+        } catch (err) {
+          console.error('[RtspFrameSource] Error in state listener:', err);
+        }
+      }
+    }
+  }
+
   public async initialize(config: RtspFrameSourceConfig): Promise<void> {
     if (!config.rtspUrl && !config.testInputOverride) {
       throw new Error('RTSP URL is required to initialize RTSP frame source');
@@ -109,6 +143,7 @@ export class RtspFrameSource implements IFrameSource {
     this.cameraId = config.cameraId;
     this.rawRtspUrl = config.rtspUrl || '';
     this.testInputOverride = config.testInputOverride;
+    this.realtimePacing = Boolean(config.realtimePacing);
     this.authenticatedUrl = buildAuthenticatedRtspUrl(
       this.rawRtspUrl,
       config.username,
@@ -125,9 +160,8 @@ export class RtspFrameSource implements IFrameSource {
     this.reconnectDelayMs = config.reconnectDelayMs ?? 1000;
     this.maxReconnectDelayMs = config.maxReconnectDelayMs ?? 15000;
 
-    this.health = CameraHealthStatus.OFFLINE;
-    this.lastError = null;
     this.manualStop = false;
+    this.setState('OFFLINE', null);
   }
 
   public async start(): Promise<void> {
@@ -147,6 +181,9 @@ export class RtspFrameSource implements IFrameSource {
 
       if (this.testInputOverride) {
         // Synthetic test generator pattern
+        if (this.realtimePacing) {
+          args.push('-re');
+        }
         args.push(
           '-f', 'lavfi',
           '-i', this.testInputOverride,
@@ -182,14 +219,16 @@ export class RtspFrameSource implements IFrameSource {
         'pipe:1'
       );
 
+      this.setState('CONNECTING', null);
+
       try {
         this.ffmpegProcess = spawn(ffmpegPath, args, {
           stdio: ['ignore', 'pipe', 'pipe'],
           windowsHide: true,
         });
       } catch (err: any) {
-        this.health = CameraHealthStatus.OFFLINE;
         this.lastError = `Failed to spawn FFmpeg process: ${err.message}`;
+        this.setState('OFFLINE', this.lastError);
         return reject(new Error(this.lastError));
       }
 
@@ -201,11 +240,11 @@ export class RtspFrameSource implements IFrameSource {
       const startupTimer = setTimeout(() => {
         if (!isSettled) {
           isSettled = true;
-          this.health = CameraHealthStatus.OFFLINE;
           const parsedErr = this.extractFriendlyStderrMessage();
           this.lastError =
             parsedErr ||
             'Unable to receive video from this camera. Check camera address, credentials, network connection and RTSP settings.';
+          this.setState('OFFLINE', this.lastError);
           this.terminateSubprocess();
           reject(new Error(this.lastError));
         }
@@ -219,8 +258,8 @@ export class RtspFrameSource implements IFrameSource {
         if (!isSettled && this.latestFrame) {
           isSettled = true;
           clearTimeout(startupTimer);
-          this.health = CameraHealthStatus.ONLINE;
           this.lastError = null;
+          this.setState('ONLINE', null);
           this.reconnectAttempts = 0;
           resolve();
         }
@@ -240,8 +279,8 @@ export class RtspFrameSource implements IFrameSource {
 
       // Process error handler
       this.ffmpegProcess.on('error', (err: Error) => {
-        this.health = CameraHealthStatus.OFFLINE;
         this.lastError = `FFmpeg error: ${err.message}`;
+        this.setState('OFFLINE', this.lastError);
         if (!isSettled) {
           isSettled = true;
           clearTimeout(startupTimer);
@@ -257,16 +296,16 @@ export class RtspFrameSource implements IFrameSource {
 
         if (this.manualStop) {
           // Manual operator stop -> do not reconnect
-          this.health = CameraHealthStatus.OFFLINE;
+          this.setState('OFFLINE', null);
           return;
         }
 
         // Unexpected exit while camera was active -> schedule reconnect
-        this.health = CameraHealthStatus.DEGRADED;
         const friendlyErr = this.extractFriendlyStderrMessage();
         this.lastError =
           friendlyErr ||
           `Camera connection lost (process exited with code ${code}${signal ? `, signal ${signal}` : ''})`;
+        this.setState('DEGRADED', this.lastError);
 
         if (!isSettled && wasActive) {
           isSettled = true;
@@ -287,16 +326,12 @@ export class RtspFrameSource implements IFrameSource {
     this.active = false;
     this.clearReconnectTimer();
     this.terminateSubprocess();
-    this.health = CameraHealthStatus.OFFLINE;
+    this.setState('OFFLINE', null);
     this.buffer = Buffer.alloc(0);
   }
 
   public isActive(): boolean {
     return this.active && this.ffmpegProcess !== null;
-  }
-
-  public getHealth(): CameraHealthStatus {
-    return this.health;
   }
 
   public getLastError(): string | null {
@@ -308,19 +343,44 @@ export class RtspFrameSource implements IFrameSource {
   }
 
   public async captureSnapshot(): Promise<CameraFrame> {
+    const wasActive = this.isActive();
+
     // 1. If camera is already streaming and has a latest frame, return it immediately
-    if (this.latestFrame) {
+    if (wasActive && this.latestFrame) {
       return this.latestFrame;
     }
 
-    // 2. If camera is not active, start stream temporarily and wait for the first frame
-    if (!this.isActive()) {
-      await this.start();
-      if (this.latestFrame) {
-        return this.latestFrame;
+    // 2. If camera is not active, preserve operator state: start temporarily, capture frame, and stop
+    if (!wasActive) {
+      try {
+        await this.start();
+        if (this.latestFrame) {
+          const frame = this.latestFrame;
+          await this.stop();
+          return frame;
+        }
+
+        const frame = await new Promise<CameraFrame>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Timeout waiting for RTSP camera frame snapshot'));
+          }, Math.min(5000, this.connectTimeoutMs));
+
+          const unsubscribe = this.onFrame((f) => {
+            clearTimeout(timeout);
+            unsubscribe();
+            resolve(f);
+          });
+        });
+
+        await this.stop();
+        return frame;
+      } catch (err) {
+        await this.stop().catch(() => {});
+        throw err;
       }
     }
 
+    // 3. If camera is active but latestFrame not yet populated, wait for frame without stopping
     return new Promise<CameraFrame>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Timeout waiting for RTSP camera frame snapshot'));
@@ -344,6 +404,7 @@ export class RtspFrameSource implements IFrameSource {
   public async destroy(): Promise<void> {
     await this.stop();
     this.listeners.clear();
+    this.stateListeners.clear();
     this.latestFrame = null;
     this.buffer = Buffer.alloc(0);
     this.stderrRingBuffer = [];
@@ -358,8 +419,8 @@ export class RtspFrameSource implements IFrameSource {
     // Prevent unbounded memory growth if stream sends malformed or non-JPEG data
     if (this.buffer.length > MAX_BUFFER_SIZE) {
       this.buffer = Buffer.alloc(0);
-      this.health = CameraHealthStatus.DEGRADED;
       this.lastError = 'RTSP parser buffer exceeded threshold (10MB); buffer reset';
+      this.setState('DEGRADED', this.lastError);
       return;
     }
 
@@ -399,7 +460,7 @@ export class RtspFrameSource implements IFrameSource {
       const frame: CameraFrame = {
         timestamp: new Date(),
         cameraId: this.cameraId,
-        sourceType: CameraSourceType.RTSP,
+        sourceType: 'RTSP' as any,
         frameBuffer,
         format: 'image/jpeg',
         width,

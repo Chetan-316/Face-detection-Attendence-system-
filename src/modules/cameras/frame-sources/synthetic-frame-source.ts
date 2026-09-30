@@ -73,6 +73,12 @@ export class SyntheticFrameSource implements IFrameSource {
     return this.health;
   }
 
+  public getState(): 'CONNECTING' | 'ONLINE' | 'DEGRADED' | 'OFFLINE' {
+    if (this.health === CameraHealthStatus.ONLINE) return 'ONLINE';
+    if (this.health === CameraHealthStatus.DEGRADED) return 'DEGRADED';
+    return 'OFFLINE';
+  }
+
   public getLastError(): string | null {
     return this.lastError;
   }

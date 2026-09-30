@@ -102,7 +102,11 @@ export class WebcamAdapter extends BaseCameraAdapter {
     if (!this.frameSource) {
       return CameraHealthStatus.OFFLINE;
     }
-    const sourceHealth = this.frameSource.getHealth();
+    const state = this.frameSource.getState?.() || 'OFFLINE';
+    let sourceHealth: CameraHealthStatus = CameraHealthStatus.OFFLINE;
+    if (state === 'ONLINE') sourceHealth = CameraHealthStatus.ONLINE;
+    else if (state === 'DEGRADED') sourceHealth = CameraHealthStatus.DEGRADED;
+
     const sourceError = this.frameSource.getLastError();
     if (sourceError) {
       this.lastError = sourceError;

@@ -50,5 +50,6 @@ export interface ICameraAdapter {
   getDiagnostics(): CameraDiagnostics;
   getLatestFrame(): CameraFrame | null;
   onFrame(listener: (frame: CameraFrame) => void): () => void;
+  onHealthChange?(listener: (status: CameraHealthStatus, error?: string | null) => void): () => void;
   disconnect(): Promise<void>;
 }

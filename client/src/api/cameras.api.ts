@@ -2,6 +2,7 @@ import { apiClient, API_BASE_URL, getStoredToken } from './client';
 import {
   CameraEntity,
   CameraDiagnostics,
+  CameraTestResult,
   CreateCameraPayload,
   UpdateCameraPayload,
 } from '../types/camera.types';

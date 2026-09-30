@@ -734,5 +734,368 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
       expect(movement).toBeNull();
     });
   });
+
+  describe('F. Step 10.1: Hardening & Health Synchronization Regressions', () => {
+    it('1. runtime health overrides stale DB health (single authoritative live status)', async () => {
+      const cam = await cameraService.createCamera({
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Stale DB Test Cam',
+        sourceType: CameraSourceType.RTSP,
+        role: CameraRole.GENERAL,
+        configMetadata: {
+          testInputOverride: 'testsrc=size=320x240:rate=10',
+        },
+      });
+
+      // Force DB to say ONLINE
+      await testPrisma.camera.update({
+        where: { id: cam.id },
+        data: { healthStatus: CameraHealthStatus.ONLINE },
+      });
+
+      // Get or create adapter and manually set adapter to DEGRADED
+      const adapter = await cameraService.getOrCreateAdapter(cam.id);
+      (adapter as any).lastError = 'Connection dropped by peer';
+      // Mock frameSource state to DEGRADED
+      if ((adapter as any).frameSource) {
+        ((adapter as any).frameSource as any).state = 'DEGRADED';
+        ((adapter as any).frameSource as any).lastError = 'Connection dropped by peer';
+      }
+
+      // 1. Check getDiagnostics
+      const diag = await cameraService.getDiagnostics(cam.id);
+      expect(diag.healthStatus).toBe(CameraHealthStatus.DEGRADED);
+
+      // 2. Check GET /api/v1/cameras/:id
+      const detailRes = await request(app)
+        .get(`/api/v1/cameras/${cam.id}`)
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .expect(200);
+
+      expect(detailRes.body.data.healthStatus).toBe('DEGRADED');
+
+      // 3. Check GET /api/v1/cameras
+      const listRes = await request(app)
+        .get('/api/v1/cameras')
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .expect(200);
+
+      const found = listRes.body.data.find((c: any) => c.id === cam.id);
+      expect(found).toBeDefined();
+      expect(found.healthStatus).toBe('DEGRADED');
+    });
+
+    it('2. degraded status visible when connection lost', async () => {
+      const cam = await cameraService.createCamera({
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Degraded Visibility Cam',
+        sourceType: CameraSourceType.RTSP,
+        role: CameraRole.GENERAL,
+        configMetadata: {
+          testInputOverride: 'testsrc=size=320x240:rate=10',
+        },
+      });
+
+      await cameraService.startCamera(cam.id);
+      const adapter = await cameraService.getOrCreateAdapter(cam.id);
+
+      // Simulate unexpected process exit
+      const proc = (adapter as any).frameSource?.ffmpegProcess;
+      if (proc) {
+        proc.kill('SIGKILL');
+      }
+
+      // Allow exit handler to trigger
+      await new Promise((r) => setTimeout(r, 200));
+
+      const res = await request(app)
+        .get(`/api/v1/cameras/${cam.id}`)
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .expect(200);
+
+      expect(res.body.data.healthStatus).toBe('DEGRADED');
+      expect(res.body.data.diagnostics.healthStatus).toBe('DEGRADED');
+
+      await cameraService.stopCamera(cam.id);
+    });
+
+    it('3. reconnect returns ONLINE after recovery', async () => {
+      const source = new RtspFrameSource();
+      await source.initialize({
+        cameraId: 'reconnect-recovery-test',
+        rtspUrl: 'rtsp://synthetic',
+        testInputOverride: 'testsrc=size=320x240:rate=10',
+        reconnectDelayMs: 200,
+        maxReconnectDelayMs: 500,
+      });
+
+      // 1. Initial start -> ONLINE
+      await source.start();
+      expect(source.getState()).toBe('ONLINE');
+
+      // 2. Unexpected kill -> DEGRADED
+      const proc = (source as any).ffmpegProcess;
+      expect(proc).toBeDefined();
+      proc.kill('SIGKILL');
+
+      await new Promise((r) => setTimeout(r, 150));
+      expect(source.getState()).toBe('DEGRADED');
+
+      // 3. Reconnect watchdog triggers start() -> settles back to ONLINE
+      await new Promise((r) => setTimeout(r, 800));
+      expect(source.getState()).toBe('ONLINE');
+      expect(source.isActive()).toBe(true);
+
+      await source.stop();
+      expect(source.getState()).toBe('OFFLINE');
+    });
+
+    it('4. sanitized URL never persisted back to database', async () => {
+      const cam = await cameraService.createCamera({
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Preserve URL Cam',
+        sourceType: CameraSourceType.RTSP,
+        role: CameraRole.IN,
+        configMetadata: {
+          rtspUrl: 'rtsp://admin:RealSecretPassword@192.168.1.50:554/stream',
+          transport: 'tcp',
+        },
+      });
+
+      // Operator sends sanitized masked URL in edit
+      await request(app)
+        .put(`/api/v1/cameras/${cam.id}`)
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .send({
+          name: 'Updated Name',
+          configMetadata: {
+            rtspUrl: 'rtsp://***:***@192.168.1.50:554/stream',
+            credentialsConfigured: true,
+            host: '192.168.1.50',
+            port: 554,
+            path: '/stream',
+          },
+        })
+        .expect(200);
+
+      // Verify in DB directly
+      const dbRecord = await testPrisma.camera.findUnique({
+        where: { id: cam.id },
+      });
+      const config = dbRecord?.configMetadata as Record<string, any>;
+      expect(config.rtspUrl).toBe('rtsp://admin:RealSecretPassword@192.168.1.50:554/stream');
+      expect(config.credentialsConfigured).toBeUndefined();
+      expect(config.host).toBeUndefined();
+    });
+
+    it('5. "***" username never persisted back to database', async () => {
+      const cam = await cameraService.createCamera({
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Preserve Username Cam',
+        sourceType: CameraSourceType.RTSP,
+        role: CameraRole.IN,
+        configMetadata: {
+          rtspUrl: 'rtsp://192.168.1.50:554/stream',
+          username: 'real_operator',
+          password: 'SecretPassword',
+        },
+      });
+
+      // Operator submits form where username is still "***"
+      await request(app)
+        .put(`/api/v1/cameras/${cam.id}`)
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .send({
+          name: 'Preserve Username Cam',
+          configMetadata: {
+            username: '***',
+          },
+        })
+        .expect(200);
+
+      const dbRecord = await testPrisma.camera.findUnique({
+        where: { id: cam.id },
+      });
+      const config = dbRecord?.configMetadata as Record<string, any>;
+      expect(config.username).toBe('real_operator');
+    });
+
+    it('6. blank password preserves existing secret', async () => {
+      const cam = await cameraService.createCamera({
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Preserve Password Cam',
+        sourceType: CameraSourceType.RTSP,
+        role: CameraRole.IN,
+        configMetadata: {
+          rtspUrl: 'rtsp://192.168.1.50:554/stream',
+          username: 'admin',
+          password: 'OriginalSecretPassword',
+        },
+      });
+
+      // Operator leaves password blank
+      await request(app)
+        .put(`/api/v1/cameras/${cam.id}`)
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .send({
+          name: 'Preserve Password Cam Renamed',
+          configMetadata: {
+            password: '',
+          },
+        })
+        .expect(200);
+
+      const dbRecord = await testPrisma.camera.findUnique({
+        where: { id: cam.id },
+      });
+      const config = dbRecord?.configMetadata as Record<string, any>;
+      expect(config.password).toBe('OriginalSecretPassword');
+    });
+
+    it('7. unrelated edit preserves RTSP credentials', async () => {
+      const cam = await cameraService.createCamera({
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Unrelated Edit Cam',
+        sourceType: CameraSourceType.RTSP,
+        role: CameraRole.IN,
+        configMetadata: {
+          rtspUrl: 'rtsp://admin:SecretPass@192.168.1.50:554/stream',
+          username: 'admin',
+          password: 'SecretPass',
+        },
+      });
+
+      // Unrelated edit: change role to ATTENDANCE without passing configMetadata
+      await request(app)
+        .put(`/api/v1/cameras/${cam.id}`)
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .send({
+          role: CameraRole.ATTENDANCE,
+        })
+        .expect(200);
+
+      const dbRecord = await testPrisma.camera.findUnique({
+        where: { id: cam.id },
+      });
+      expect(dbRecord?.role).toBe(CameraRole.ATTENDANCE);
+      const config = dbRecord?.configMetadata as Record<string, any>;
+      expect(config.rtspUrl).toBe('rtsp://admin:SecretPass@192.168.1.50:554/stream');
+      expect(config.username).toBe('admin');
+      expect(config.password).toBe('SecretPass');
+    });
+
+    it('8. credential-containing URL remains secret across all APIs and audit logs', async () => {
+      const secret = 'MegaUltraSecret123!';
+      const res = await request(app)
+        .post('/api/v1/cameras')
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .send({
+          name: 'Mega Secret Cam',
+          sourceType: 'RTSP',
+          role: 'GENERAL',
+          configMetadata: {
+            rtspUrl: `rtsp://operator:${secret}@10.0.0.99:554/feed`,
+            username: 'operator',
+            password: secret,
+          },
+        })
+        .expect(201);
+
+      const camId = res.body.data.id;
+
+      // 1. API JSON POST response
+      expect(JSON.stringify(res.body)).not.toContain(secret);
+
+      // 2. GET /cameras
+      const listRes = await request(app)
+        .get('/api/v1/cameras')
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .expect(200);
+      expect(JSON.stringify(listRes.body)).not.toContain(secret);
+
+      // 3. GET /cameras/:id
+      const getRes = await request(app)
+        .get(`/api/v1/cameras/${camId}`)
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .expect(200);
+      expect(JSON.stringify(getRes.body)).not.toContain(secret);
+
+      // 4. GET /cameras/:id/health
+      const healthRes = await request(app)
+        .get(`/api/v1/cameras/${camId}/health`)
+        .set('Authorization', `Bearer ${wardenToken}`)
+        .expect(200);
+      expect(JSON.stringify(healthRes.body)).not.toContain(secret);
+
+      // 5. AuditLog
+      const audit = await testPrisma.auditLog.findFirst({
+        where: { entityId: camId },
+      });
+      expect(audit).toBeDefined();
+      expect(JSON.stringify(audit)).not.toContain(secret);
+    });
+
+    it('9. snapshot preserves stopped state and does not leave camera streaming', async () => {
+      const cam = await cameraService.createCamera({
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Snapshot Stopped State Cam',
+        sourceType: CameraSourceType.RTSP,
+        role: CameraRole.GENERAL,
+        configMetadata: {
+          testInputOverride: 'testsrc=size=320x240:rate=10',
+        },
+      });
+
+      // Verify camera is stopped
+      const beforeDiag = await cameraService.getDiagnostics(cam.id);
+      expect(beforeDiag.isActive).toBe(false);
+
+      // Capture snapshot from stopped camera
+      const snapshot = await cameraService.captureSnapshot(cam.id);
+      expect(snapshot.frameBuffer).toBeDefined();
+      expect(snapshot.frameBuffer!.length).toBeGreaterThan(0);
+
+      // Verify camera is STILL stopped after snapshot
+      const afterDiag = await cameraService.getDiagnostics(cam.id);
+      expect(afterDiag.isActive).toBe(false);
+
+      // Verify DB healthStatus remained OFFLINE
+      const dbRecord = await testPrisma.camera.findUnique({
+        where: { id: cam.id },
+      });
+      expect(dbRecord?.healthStatus).toBe(CameraHealthStatus.OFFLINE);
+      expect(dbRecord?.lastSeenAt).not.toBeNull();
+    });
+
+    it('10. webcam behavior unchanged', async () => {
+      const cam = await cameraService.createCamera({
+        organizationId: org.id,
+        hostelId: hostel1.id,
+        name: 'Webcam Regression Cam',
+        sourceType: CameraSourceType.WEBCAM,
+        role: CameraRole.GENERAL,
+        configMetadata: {
+          deviceIndex: 0,
+        },
+      });
+
+      const adapter = await cameraService.getOrCreateAdapter(cam.id);
+      expect(adapter.sourceType).toBe(CameraSourceType.WEBCAM);
+      const caps = adapter.getCapabilities();
+      expect(caps.supportsLiveStreaming).toBe(true);
+
+      const diag = await cameraService.getDiagnostics(cam.id);
+      expect(diag.sourceType).toBe(CameraSourceType.WEBCAM);
+      expect(diag.isActive).toBe(false);
+    });
+  });
 });
+
 

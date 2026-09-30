@@ -43,8 +43,11 @@ export function toSafeCameraDto(
     sourceType: camera.sourceType,
     role: camera.role,
     isEnabled: camera.isEnabled,
-    healthStatus: camera.healthStatus,
-    lastSeenAt: camera.lastSeenAt,
+    healthStatus: diagnostics?.healthStatus ?? camera.healthStatus,
+    lastSeenAt:
+      diagnostics?.lastSeenAt && (!camera.lastSeenAt || new Date(diagnostics.lastSeenAt) > new Date(camera.lastSeenAt))
+        ? diagnostics.lastSeenAt
+        : camera.lastSeenAt,
     createdAt: camera.createdAt,
     updatedAt: camera.updatedAt,
     location: camera.location,

@@ -69,8 +69,10 @@ export const CamerasPage: React.FC = () => {
   const [editCameraRole, setEditCameraRole] = useState<'GENERAL' | 'IN' | 'OUT' | 'ATTENDANCE'>('GENERAL');
   const [editCameraMovementAutomation, setEditCameraMovementAutomation] = useState(true);
   const [editCameraRtspUrl, setEditCameraRtspUrl] = useState('');
+  const [editConfiguredAddress, setEditConfiguredAddress] = useState('');
   const [editCameraTransport, setEditCameraTransport] = useState<'tcp' | 'udp'>('tcp');
   const [editCameraUsername, setEditCameraUsername] = useState('');
+  const [editHasExistingUsername, setEditHasExistingUsername] = useState(false);
   const [editCameraPassword, setEditCameraPassword] = useState('');
   const [editHasExistingPassword, setEditHasExistingPassword] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -262,10 +264,18 @@ export const CamerasPage: React.FC = () => {
         configMetadata.deviceIndex = parseInt(newCameraDeviceIndex, 10) || 0;
         configMetadata.fps = 15;
       } else if (newCameraSourceType === 'RTSP') {
-        configMetadata.rtspUrl = newCameraRtspUrl;
+        const trimmed = newCameraRtspUrl.trim();
+        const match = trimmed.match(/^(rtsp[s]?:\/\/)([^:@\s]+)(?::([^@\s]*))?@(.+)$/i);
+        if (match) {
+          configMetadata.rtspUrl = `${match[1]}${match[4]}`;
+          if (!newCameraUsername) configMetadata.username = decodeURIComponent(match[2]);
+          if (!newCameraPassword && match[3] !== undefined) configMetadata.password = decodeURIComponent(match[3]);
+        } else {
+          configMetadata.rtspUrl = trimmed;
+          if (newCameraUsername) configMetadata.username = newCameraUsername;
+          if (newCameraPassword) configMetadata.password = newCameraPassword;
+        }
         configMetadata.transport = newCameraTransport;
-        if (newCameraUsername) configMetadata.username = newCameraUsername;
-        if (newCameraPassword) configMetadata.password = newCameraPassword;
         configMetadata.fps = 15;
       }
 
@@ -297,9 +307,18 @@ export const CamerasPage: React.FC = () => {
     setEditCameraName(camera.name);
     setEditCameraRole(camera.role);
     setEditCameraMovementAutomation(camera.configMetadata?.movementAutomationEnabled !== false);
-    setEditCameraRtspUrl(camera.configMetadata?.rtspUrl || '');
+
+    const host = camera.configMetadata?.host;
+    const port = camera.configMetadata?.port ?? 554;
+    const path = camera.configMetadata?.path || '/';
+    const displayAddr = host ? `rtsp://${host}:${port}${path}` : '';
+    setEditConfiguredAddress(displayAddr);
+
+    // Keep editable fields clean without pre-populating "***"
+    setEditCameraRtspUrl('');
     setEditCameraTransport(camera.configMetadata?.transport || 'tcp');
-    setEditCameraUsername(camera.configMetadata?.username || '');
+    setEditCameraUsername('');
+    setEditHasExistingUsername(Boolean(camera.configMetadata?.username));
     setEditCameraPassword('');
     setEditHasExistingPassword(Boolean(camera.configMetadata?.credentialsConfigured));
     setIsEditModalOpen(true);
@@ -311,27 +330,35 @@ export const CamerasPage: React.FC = () => {
 
     try {
       setIsSavingEdit(true);
-      const configMetadata: Record<string, any> = {
-        ...selectedCamera.configMetadata,
-      };
+      // Delta-based update: send only fields explicitly changed by operator
+      const deltaConfig: Record<string, any> = {};
 
       if (editCameraRole === 'IN' || editCameraRole === 'OUT') {
-        configMetadata.movementAutomationEnabled = editCameraMovementAutomation;
+        deltaConfig.movementAutomationEnabled = editCameraMovementAutomation;
       }
 
       if (selectedCamera.sourceType === 'RTSP') {
-        configMetadata.rtspUrl = editCameraRtspUrl;
-        configMetadata.transport = editCameraTransport;
-        if (editCameraUsername) configMetadata.username = editCameraUsername;
+        deltaConfig.transport = editCameraTransport;
+
+        const trimmedUrl = editCameraRtspUrl.trim();
+        if (trimmedUrl && !trimmedUrl.includes('***')) {
+          deltaConfig.rtspUrl = trimmedUrl;
+        }
+
+        const trimmedUser = editCameraUsername.trim();
+        if (trimmedUser && trimmedUser !== '***') {
+          deltaConfig.username = trimmedUser;
+        }
+
         if (editCameraPassword) {
-          configMetadata.password = editCameraPassword;
+          deltaConfig.password = editCameraPassword;
         }
       }
 
       await camerasApi.updateCamera(selectedCamera.id, {
         name: editCameraName.trim(),
         role: editCameraRole,
-        configMetadata,
+        configMetadata: Object.keys(deltaConfig).length > 0 ? deltaConfig : undefined,
       });
 
       success('Camera updated successfully');
@@ -515,7 +542,14 @@ export const CamerasPage: React.FC = () => {
                 </div>
 
                 <div className="monitor-status-badges flex items-center gap-2">
-                  <Badge value={selectedCamera.healthStatus} size="md" />
+                  <Badge
+                    value={
+                      (selectedCamera.id === diagnostics?.cameraId && diagnostics?.healthStatus)
+                        ? diagnostics.healthStatus
+                        : selectedCamera.healthStatus
+                    }
+                    size="md"
+                  />
                   {canManageCameras && (
                     <button
                       type="button"
@@ -529,6 +563,18 @@ export const CamerasPage: React.FC = () => {
                   )}
                 </div>
               </div>
+
+              {/* Reconnection In-Progress Banner */}
+              {((selectedCamera.id === diagnostics?.cameraId && diagnostics?.healthStatus)
+                ? diagnostics.healthStatus
+                : selectedCamera.healthStatus) === 'DEGRADED' && (
+                <div className="p-3 rounded-lg border mb-3 flex items-center gap-2 bg-amber-950/40 border-amber-700/50 text-amber-200">
+                  <RefreshCw size={16} className="animate-spin text-amber-400 shrink-0" />
+                  <div className="text-sm">
+                    <strong>Connection issue:</strong> Reconnecting to camera stream...
+                  </div>
+                </div>
+              )}
 
               {/* Error Message Banner */}
               {streamError && (
@@ -1120,13 +1166,25 @@ export const CamerasPage: React.FC = () => {
                 {selectedCamera?.sourceType === 'RTSP' && (
                   <>
                     <div className="form-group">
-                      <label htmlFor="edit-rtsp" className="form-label">
-                        RTSP Stream Address
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label htmlFor="edit-rtsp" className="form-label mb-0">
+                          RTSP Stream Address
+                        </label>
+                        {editConfiguredAddress && (
+                          <span className="text-xs font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded">
+                            Current: {editConfiguredAddress}
+                          </span>
+                        )}
+                      </div>
                       <input
                         id="edit-rtsp"
                         type="text"
-                        className="form-control"
+                        className="form-control font-mono text-sm"
+                        placeholder={
+                          editConfiguredAddress
+                            ? `Leave blank to keep (${editConfiguredAddress})`
+                            : 'rtsp://192.168.1.50:554/stream'
+                        }
                         value={editCameraRtspUrl}
                         onChange={(e) => setEditCameraRtspUrl(e.target.value)}
                       />
@@ -1149,26 +1207,57 @@ export const CamerasPage: React.FC = () => {
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="form-group">
-                        <label htmlFor="edit-user" className="form-label">
-                          Username
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label htmlFor="edit-user" className="form-label mb-0">
+                            Username
+                          </label>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded ${
+                              editHasExistingUsername
+                                ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {editHasExistingUsername ? 'Configured' : 'Not set'}
+                          </span>
+                        </div>
                         <input
                           id="edit-user"
                           type="text"
                           className="form-control"
+                          placeholder={
+                            editHasExistingUsername
+                              ? 'Configured (leave blank to keep)'
+                              : 'admin'
+                          }
                           value={editCameraUsername}
                           onChange={(e) => setEditCameraUsername(e.target.value)}
                         />
                       </div>
                       <div className="form-group">
-                        <label htmlFor="edit-pass" className="form-label">
-                          Password
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label htmlFor="edit-pass" className="form-label mb-0">
+                            Password
+                          </label>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded ${
+                              editHasExistingPassword
+                                ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {editHasExistingPassword ? 'Configured' : 'Not set'}
+                          </span>
+                        </div>
                         <input
                           id="edit-pass"
                           type="password"
                           className="form-control"
-                          placeholder={editHasExistingPassword ? 'Password configured (leave blank to keep)' : '••••••••'}
+                          placeholder={
+                            editHasExistingPassword
+                              ? 'Configured (leave blank to keep)'
+                              : '••••••••'
+                          }
                           value={editCameraPassword}
                           onChange={(e) => setEditCameraPassword(e.target.value)}
                         />
