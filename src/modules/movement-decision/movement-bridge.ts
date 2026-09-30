@@ -4,7 +4,10 @@ import { MovementDecisionService } from './movement-decision.service';
 import { MovementDecisionResult } from './movement-decision.types';
 
 export class MovementRecognitionBridge extends EventEmitter {
-  private activeSubscriptions: Map<string, (obs: RecognitionObservation) => void> = new Map();
+  private activeSubscriptions: Map<
+    string,
+    { listener: (obs: RecognitionObservation) => void; emitter: EventEmitter }
+  > = new Map();
 
   constructor(private readonly decisionService: MovementDecisionService) {
     super();
@@ -45,7 +48,7 @@ export class MovementRecognitionBridge extends EventEmitter {
     };
 
     sessionEmitter.on('stableMatch', listener);
-    this.activeSubscriptions.set(cameraId, listener);
+    this.activeSubscriptions.set(cameraId, { listener, emitter: sessionEmitter });
 
     return () => {
       this.detachSession(cameraId, sessionEmitter);
@@ -56,17 +59,38 @@ export class MovementRecognitionBridge extends EventEmitter {
    * Detaches bridge listener from a camera session
    */
   public detachSession(cameraId: string, sessionEmitter?: EventEmitter): void {
-    const listener = this.activeSubscriptions.get(cameraId);
-    if (listener && sessionEmitter) {
-      sessionEmitter.off('stableMatch', listener);
+    const sub = this.activeSubscriptions.get(cameraId);
+    if (sub) {
+      const emitterToUse = sessionEmitter || sub.emitter;
+      emitterToUse.off('stableMatch', sub.listener);
+      if (sub.emitter && sub.emitter !== emitterToUse) {
+        sub.emitter.off('stableMatch', sub.listener);
+      }
+      this.activeSubscriptions.delete(cameraId);
     }
-    this.activeSubscriptions.delete(cameraId);
+  }
+
+  /**
+   * Returns current active subscription count
+   */
+  public getActiveSubscriptionCount(): number {
+    return this.activeSubscriptions.size;
+  }
+
+  /**
+   * Checks if camera has an active subscription
+   */
+  public hasSubscription(cameraId: string): boolean {
+    return this.activeSubscriptions.has(cameraId);
   }
 
   /**
    * Clean up all active subscriptions
    */
   public destroy(): void {
+    for (const [, sub] of this.activeSubscriptions.entries()) {
+      sub.emitter.off('stableMatch', sub.listener);
+    }
     this.activeSubscriptions.clear();
     this.removeAllListeners();
   }

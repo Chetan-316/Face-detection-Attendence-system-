@@ -69,7 +69,7 @@ When an attendance camera captures a resident face:
 5. **Bridge Routing**: The recognition bridge checks `camera.role === 'ATTENDANCE'`. If true, forwards to `AttendanceDecisionService.evaluateObservation()`.
 6. **Decision Processing**:
    - **Session Verification**: Searches for an active session assigned to this camera or generally for this hostel. If no active session exists, drops with `NO_ACTIVE_SESSION`.
-   - **Schedule Window Guard**: Verifies current time falls within `[startTime - 15m, endTime + 30m]`. If outside, drops with `OUTSIDE_SESSION_WINDOW`.
+   - **Schedule Window Guard**: Verifies current time satisfies strict configured window `startTime <= now <= endTime` with no hidden grace periods. If outside, drops with `SESSION_NOT_STARTED` or `SESSION_WINDOW_ENDED`.
    - **Scope Verification**: Ensures `resident.hostelId === session.hostelId` and `resident.organizationId === session.organizationId`.
    - **Status Verification**: Resident must have `status === 'ACTIVE'`.
    - **Idempotency & Duplicate Suppression**: If the resident already has an `AttendanceRecord` in this session, the event is immediately acknowledged as `ALREADY_MARKED` with zero database writes.

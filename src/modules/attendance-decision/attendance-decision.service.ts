@@ -135,7 +135,7 @@ export class AttendanceDecisionService {
       session: activeSession,
       residentId,
       camera,
-      observationId: obs.observationId,
+      observationId,
       timestamp,
     });
 
@@ -258,6 +258,7 @@ export class AttendanceDecisionService {
         attendanceStatus: existingRecord.status,
         markMethod: existingRecord.markMethod,
         markedAt: existingRecord.createdAt.toISOString(),
+        recognitionReference: existingRecord.recognitionReference || undefined,
         cameraId: camera.id,
         cameraRole: camera.role,
         timestamp,
@@ -301,6 +302,7 @@ export class AttendanceDecisionService {
         attendanceStatus: record.status,
         markMethod: record.markMethod,
         markedAt: record.createdAt.toISOString(),
+        recognitionReference: record.recognitionReference || undefined,
         cameraId: camera.id,
         cameraRole: camera.role,
         timestamp,
@@ -368,6 +370,7 @@ export class AttendanceDecisionService {
           attendanceStatus: raceRecord?.status || AttendanceRecordStatus.PRESENT,
           markMethod: raceRecord?.markMethod || AttendanceMarkMethod.FACE_RECOGNITION,
           markedAt: raceRecord?.createdAt.toISOString() || timestamp,
+          recognitionReference: raceRecord?.recognitionReference || undefined,
           cameraId: camera.id,
           cameraRole: camera.role,
           timestamp,

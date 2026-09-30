@@ -26,7 +26,7 @@ export interface AuthenticatedActor {
   hostelId?: string | null;
 }
 
-interface ActiveCameraSession {
+export interface ActiveCameraSession {
   sessionId: string;
   cameraId: string;
   hostelId: string;
@@ -99,6 +99,13 @@ export class RecognitionService {
   }
 
   /**
+   * Helper to retrieve active session for inspection & testing
+   */
+  public getActiveSession(cameraId: string): ActiveCameraSession | undefined {
+    return this.activeSessions.get(cameraId);
+  }
+
+  /**
    * Helper to verify actor scope and permissions on a camera
    */
   public async verifyActorScope(
@@ -159,8 +166,21 @@ export class RecognitionService {
 
     // Check if session already running (idempotent)
     const existing = this.activeSessions.get(cameraId);
-    if (existing && existing.state === 'RUNNING') {
-      return this.buildSessionStatus(existing);
+    if (existing) {
+      if (existing.state === 'RUNNING') {
+        return this.buildSessionStatus(existing);
+      }
+      // If inactive or error session existed, ensure old streams and listeners are completely detached
+      if (existing.unsubscribeStream) {
+        try {
+          existing.unsubscribeStream();
+        } catch (e) {}
+        existing.unsubscribeStream = undefined;
+      }
+      this.movementBridge?.detachSession(cameraId, existing.eventEmitter);
+      this.attendanceBridge?.detachSession(cameraId, existing.eventEmitter);
+      existing.eventEmitter.removeAllListeners();
+      this.activeSessions.delete(cameraId);
     }
 
     // Preload eligible templates for the camera's hostel
@@ -233,6 +253,7 @@ export class RecognitionService {
       session.unsubscribeStream = () => {
         if (originalUnsubscribe) originalUnsubscribe();
         this.movementBridge?.off('movementDecision', onMovementDecision);
+        this.movementBridge?.detachSession(camera.id, session.eventEmitter);
       };
     } else if (camera.role === CameraRole.ATTENDANCE && this.attendanceBridge) {
       this.attendanceBridge.attachSession(camera.id, camera.role, session.eventEmitter);
@@ -250,6 +271,7 @@ export class RecognitionService {
       session.unsubscribeStream = () => {
         if (originalUnsubscribe) originalUnsubscribe();
         this.attendanceBridge?.off('attendanceDecision', onAttendanceDecision);
+        this.attendanceBridge?.detachSession(camera.id, session.eventEmitter);
       };
     }
 
@@ -300,10 +322,16 @@ export class RecognitionService {
       this.movementBridge.detachSession(cameraId, session.eventEmitter);
     }
 
+    // Detach attendance bridge
+    if (this.attendanceBridge) {
+      this.attendanceBridge.detachSession(cameraId, session.eventEmitter);
+    }
+
     session.state = 'STOPPED';
     session.isProcessingFrame = false;
     session.stabilizer.clear();
     session.eventEmitter.emit('stopped');
+    session.eventEmitter.removeAllListeners();
 
     const status = this.buildSessionStatus(session);
     return status;

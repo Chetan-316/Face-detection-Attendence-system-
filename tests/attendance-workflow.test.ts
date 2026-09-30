@@ -24,6 +24,11 @@ import {
   Prisma,
 } from '@prisma/client';
 import { RecognitionObservation } from '../src/modules/recognition/recognition.types';
+import { RecognitionService } from '../src/modules/recognition/recognition.service';
+import { CameraService } from '../src/modules/cameras/camera.service';
+import { PythonWorkerClient } from '../src/modules/biometrics/python-worker-client';
+import { TemplateCache } from '../src/modules/recognition/template-cache';
+import { MovementRecognitionBridge } from '../src/modules/movement-decision/movement-bridge';
 
 describe('Step 08: Hostel Night Attendance Workflow & Decision Engine Tests', () => {
   let attendanceDecisionService: AttendanceDecisionService;
@@ -940,6 +945,202 @@ describe('Step 08: Hostel Night Attendance Workflow & Decision Engine Tests', ()
         });
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  // ==========================================
+  // STEP 08.1 HARDENING TESTS (Tests 87 - 90)
+  // ==========================================
+  describe('Step 08.1: Traceability, Window Policy & Lifecycle Hardening', () => {
+    // Test 87: Traceability
+    it('87: verifies RecognitionObservation.id -> AttendanceDecision -> AttendanceRecord.recognitionReference traceability', async () => {
+      const session = await createActiveSession();
+      const resident = await createTestResident('R_ATT_TRACE');
+
+      // Observation where observationId is undefined, but id is 'rec_123'
+      const obs = createObservation(attendanceCameraId, resident, 'MATCH');
+      obs.id = 'rec_123';
+      obs.observationId = undefined;
+
+      const decision = await attendanceDecisionService.evaluateObservation(obs);
+      expect(decision.status).toBe('ATTENDANCE_MARKED');
+      expect(decision.recognitionReference).toBe('rec_123');
+
+      const record = await testPrisma.attendanceRecord.findUnique({
+        where: {
+          attendanceSessionId_residentId: {
+            attendanceSessionId: session.id,
+            residentId: resident.id,
+          },
+        },
+      });
+
+      expect(record).not.toBeNull();
+      expect(record!.recognitionReference).toBe('rec_123');
+      expect(record!.status).toBe(AttendanceRecordStatus.PRESENT);
+      expect(record!.markMethod).toBe(AttendanceMarkMethod.FACE_RECOGNITION);
+
+      // Verify no biometric vector, image, or face crop is persisted in AttendanceRecord
+      const recordKeys = Object.keys(record!);
+      expect(recordKeys).not.toContain('vector');
+      expect(recordKeys).not.toContain('embedding');
+      expect(recordKeys).not.toContain('faceCrop');
+      expect(recordKeys).not.toContain('image');
+      expect(recordKeys).not.toContain('template');
+    });
+
+    // Test 88: Window Ended
+    it('88: rejects attendance when current time is after session endTime (SESSION_WINDOW_ENDED)', async () => {
+      const pastSession = await testPrisma.attendanceSession.create({
+        data: {
+          organizationId: orgId,
+          hostelId: hostelId,
+          title: 'Expired Night Attendance',
+          sessionType: AttendanceSessionType.NIGHT,
+          status: AttendanceSessionStatus.ACTIVE,
+          startTime: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+          endTime: new Date(Date.now() - 10 * 60 * 1000), // 10 minutes ago
+          createdByUserId: wardenUserId,
+        },
+      });
+
+      const resident = await createTestResident('R_ATT_EXPIRED');
+      const obs = createObservation(attendanceCameraId, resident, 'MATCH');
+
+      const decision = await attendanceDecisionService.evaluateObservation(obs);
+      expect(decision.status).toBe('SESSION_WINDOW_ENDED');
+      expect(decision.reason).toContain('time window has ended');
+
+      const recordCount = await testPrisma.attendanceRecord.count({
+        where: { attendanceSessionId: pastSession.id, residentId: resident.id },
+      });
+      expect(recordCount).toBe(0);
+    });
+
+    // Test 89: Restart Lifecycle
+    it('89: verifies start -> stop -> restart lifecycle on ATTENDANCE camera maintains single bridge listener and clean state', async () => {
+      await createActiveSession();
+      const resident = await createTestResident('R_ATT_RESTART');
+
+      const mockWorkerClient = new PythonWorkerClient({ mock: true });
+      const mockCameraService = new CameraService(testPrisma);
+      let streamListener: ((frame: any) => void) | null = null;
+      vi.spyOn(mockCameraService, 'subscribeToStream').mockImplementation(async (_cId: string, listener: any) => {
+        streamListener = listener;
+        return () => {
+          streamListener = null;
+        };
+      });
+
+      const mockTemplateCache = new TemplateCache(testPrisma);
+      const recService = new RecognitionService(testPrisma, mockCameraService, mockTemplateCache, mockWorkerClient, {
+        attendanceBridge,
+      });
+
+      const wardenActor = {
+        id: wardenUserId,
+        userId: wardenUserId,
+        role: StaffRole.WARDEN,
+        organizationId: orgId,
+        hostelId: hostelId,
+      };
+
+      // 1. Start recognition
+      await recService.startRecognition(attendanceCameraId, wardenActor);
+      const activeSession1 = recService.getActiveSession(attendanceCameraId);
+      expect(activeSession1).toBeDefined();
+      expect(attendanceBridge.getActiveSubscriptionCount()).toBe(1);
+      expect(attendanceBridge.hasSubscription(attendanceCameraId)).toBe(true);
+      expect(activeSession1!.eventEmitter.listenerCount('stableMatch')).toBe(1);
+
+      // 2. Stop recognition
+      await recService.stopRecognition(attendanceCameraId, wardenActor);
+      expect(attendanceBridge.getActiveSubscriptionCount()).toBe(0);
+      expect(attendanceBridge.hasSubscription(attendanceCameraId)).toBe(false);
+      expect(activeSession1!.eventEmitter.listenerCount('stableMatch')).toBe(0);
+      expect(streamListener).toBeNull();
+
+      // 3. Start recognition again (restart)
+      await recService.startRecognition(attendanceCameraId, wardenActor);
+      const activeSession2 = recService.getActiveSession(attendanceCameraId);
+      expect(activeSession2).toBeDefined();
+      expect(attendanceBridge.getActiveSubscriptionCount()).toBe(1);
+      expect(attendanceBridge.hasSubscription(attendanceCameraId)).toBe(true);
+      expect(activeSession2!.eventEmitter.listenerCount('stableMatch')).toBe(1);
+
+      // 4. Verify exactly one decision is generated when stableMatch fires
+      const decisions: any[] = [];
+      const onDecision = ({ decision }: any) => {
+        decisions.push(decision);
+      };
+      attendanceBridge.on('attendanceDecision', onDecision);
+
+      const obs = createObservation(attendanceCameraId, resident, 'MATCH', 'rec_restart_test_1');
+
+      activeSession2!.eventEmitter.emit('stableMatch', obs);
+
+      await new Promise((r) => setTimeout(r, 100));
+
+      expect(decisions.length).toBe(1);
+      expect(decisions[0].status).toBe('ATTENDANCE_MARKED');
+      expect(decisions[0].residentId).toBe(resident.id);
+
+      // Clean up
+      attendanceBridge.off('attendanceDecision', onDecision);
+      await recService.stopRecognition(attendanceCameraId, wardenActor);
+      expect(attendanceBridge.getActiveSubscriptionCount()).toBe(0);
+    });
+
+    // Test 90: Bridge Listener Cleanup
+    it('90: verifies complete cleanup of all bridge listeners and session emitters on stop', async () => {
+      const mockWorkerClient = new PythonWorkerClient({ mock: true });
+      const mockCameraService = new CameraService(testPrisma);
+      vi.spyOn(mockCameraService, 'subscribeToStream').mockImplementation(async () => {
+        return () => {};
+      });
+
+      const mockTemplateCache = new TemplateCache(testPrisma);
+      const movementBridge = new MovementRecognitionBridge(movementDecisionService);
+
+      const recService = new RecognitionService(testPrisma, mockCameraService, mockTemplateCache, mockWorkerClient, {
+        attendanceBridge,
+        movementBridge,
+      });
+
+      const wardenActor = {
+        id: wardenUserId,
+        userId: wardenUserId,
+        role: StaffRole.WARDEN,
+        organizationId: orgId,
+        hostelId: hostelId,
+      };
+
+      // Start ATTENDANCE camera recognition
+      await recService.startRecognition(attendanceCameraId, wardenActor);
+      const attSession = recService.getActiveSession(attendanceCameraId);
+      expect(attSession).toBeDefined();
+
+      // Start IN gate camera recognition
+      await recService.startRecognition(inCameraId, wardenActor);
+      const inSession = recService.getActiveSession(inCameraId);
+      expect(inSession).toBeDefined();
+
+      expect(attendanceBridge.getActiveSubscriptionCount()).toBe(1);
+      expect(movementBridge.getActiveSubscriptionCount()).toBe(1);
+      expect(attendanceBridge.listenerCount('attendanceDecision')).toBeGreaterThanOrEqual(1);
+      expect(movementBridge.listenerCount('movementDecision')).toBeGreaterThanOrEqual(1);
+
+      // Stop ATTENDANCE camera
+      await recService.stopRecognition(attendanceCameraId, wardenActor);
+      expect(attendanceBridge.getActiveSubscriptionCount()).toBe(0);
+      expect(attSession!.eventEmitter.listenerCount('stableMatch')).toBe(0);
+      expect(attendanceBridge.listenerCount('attendanceDecision')).toBe(0);
+
+      // Stop IN gate camera
+      await recService.stopRecognition(inCameraId, wardenActor);
+      expect(movementBridge.getActiveSubscriptionCount()).toBe(0);
+      expect(inSession!.eventEmitter.listenerCount('stableMatch')).toBe(0);
+      expect(movementBridge.listenerCount('movementDecision')).toBe(0);
     });
   });
 });

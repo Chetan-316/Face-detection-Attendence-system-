@@ -25,6 +25,7 @@ export interface AttendanceDecisionResult {
   attendanceStatus?: AttendanceRecordStatus;
   markMethod?: AttendanceMarkMethod;
   markedAt?: string;
+  recognitionReference?: string;
   cameraId: string;
   cameraRole?: CameraRole;
   timestamp: string;
