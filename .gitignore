@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+.env.*
+!.env.example
 *.log
 coverage/
 .DS_Store
@@ -15,3 +17,8 @@ models/*.onnx
 src/modules/biometrics/models/*.onnx
 *.onnx
 .pytest_cache/
+
+# Backups & Data Dumps
+*.dump
+*.sql
+*.csv

@@ -106,6 +106,67 @@ export class RecognitionService {
   }
 
   /**
+   * Deterministically handles camera role changes or camera deactivation (Req 18, 19).
+   * Prevents stale business listener routing and guarantees immediate cessation on disable.
+   */
+  public async handleCameraChange(
+    updatedCamera: { id: string; role: CameraRole; isEnabled: boolean },
+    previousRole?: CameraRole
+  ): Promise<void> {
+    const session = this.activeSessions.get(updatedCamera.id);
+    if (!session) return;
+
+    if (!updatedCamera.isEnabled) {
+      // Camera disabled: stop recognition immediately and detach bridges
+      if (session.unsubscribeStream) {
+        try {
+          session.unsubscribeStream();
+        } catch (e) {}
+        session.unsubscribeStream = undefined;
+      }
+      this.movementBridge?.detachSession(updatedCamera.id, session.eventEmitter);
+      this.attendanceBridge?.detachSession(updatedCamera.id, session.eventEmitter);
+      session.state = 'STOPPED';
+      session.isProcessingFrame = false;
+      session.stabilizer.clear();
+      session.eventEmitter.emit('stopped');
+      session.eventEmitter.removeAllListeners();
+      this.activeSessions.delete(updatedCamera.id);
+      return;
+    }
+
+    if (previousRole && previousRole !== updatedCamera.role) {
+      // Deterministic role change: safely detach old bridge listeners first
+      this.movementBridge?.detachSession(updatedCamera.id, session.eventEmitter);
+      this.attendanceBridge?.detachSession(updatedCamera.id, session.eventEmitter);
+
+      // Reattach to appropriate bridge according to new role
+      if ((updatedCamera.role === CameraRole.IN || updatedCamera.role === CameraRole.OUT) && this.movementBridge) {
+        this.movementBridge.attachSession(updatedCamera.id, session.eventEmitter);
+        const onMovementDecision = ({ observation, decision }: { observation: any; decision: any }) => {
+          const stored = session.recentObservations.find((o) => o.id === observation.id);
+          if (stored) {
+            stored.movementDecision = decision;
+          }
+          session.eventEmitter.emit('observation', { ...observation, movementDecision: decision });
+        };
+        this.movementBridge.on('movementDecision', onMovementDecision);
+      } else if (updatedCamera.role === CameraRole.ATTENDANCE && this.attendanceBridge) {
+        this.attendanceBridge.attachSession(updatedCamera.id, updatedCamera.role, session.eventEmitter);
+        const onAttendanceDecision = ({ observation, decision }: { observation: any; decision: any }) => {
+          const stored = session.recentObservations.find((o) => o.id === observation.id);
+          if (stored) {
+            stored.attendanceDecision = decision;
+          }
+          session.eventEmitter.emit('observation', { ...observation, attendanceDecision: decision });
+        };
+        this.attendanceBridge.on('attendanceDecision', onAttendanceDecision);
+      }
+    }
+  }
+
+
+  /**
    * Helper to verify actor scope and permissions on a camera
    */
   public async verifyActorScope(

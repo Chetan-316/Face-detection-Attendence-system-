@@ -62,6 +62,11 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
     recognitionService.setAttendanceBridge(attendanceBridge);
   }
 
+  const cameraService = options?.cameraService || new CameraService(db);
+  cameraService.onCameraChange((camera, previousRole) => {
+    recognitionService.handleCameraChange(camera, previousRole);
+  });
+
   const reportService = options?.reportService || new ReportService(db);
 
   // Basic Security & HTTP Headers
@@ -76,7 +81,7 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   // JSON Body Parser with 100kb limit
   app.use(express.json({ limit: '100kb' }));
 
-  // Health check endpoint (unversioned)
+  // Health check endpoint (unversioned - fast liveness probe)
   app.get('/health', async (_req: Request, res: Response) => {
     try {
       // Verify PostgreSQL connection
@@ -99,10 +104,30 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
     }
   });
 
+  // Readiness check endpoint (verifies critical service availability: db reachable & app initialized)
+  // Operational camera health is NOT a blocker for application readiness (Req 6)
+  app.get('/ready', async (_req: Request, res: Response) => {
+    try {
+      await db.$queryRaw`SELECT 1`;
+      res.json({
+        status: 'READY',
+        service: 'PRAVAHAx Face Recognition Hostel Attendance & Resident Movement System',
+        database: 'CONNECTED',
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      res.status(503).json({
+        status: 'NOT_READY',
+        database: 'DISCONNECTED',
+        error: error.message || 'Database unreachable',
+      });
+    }
+  });
+
   // Versioned API Routes (/api/v1)
   app.use('/api/v1/auth', createAuthRouter(db));
   app.use('/api/v1/residents', createResidentRouter(db, options?.enrollmentService));
-  app.use('/api/v1/cameras', createCameraRouter(db, options?.cameraService));
+  app.use('/api/v1/cameras', createCameraRouter(db, cameraService));
   app.use('/api/v1/cameras', createRecognitionRouter(db, recognitionService));
   app.use('/api/v1/biometrics', createBiometricRouter(db, options?.biometricService));
   app.use('/api/v1/movements', createMovementRouter(db, movementDecisionService));
@@ -117,7 +142,7 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   if (fs.existsSync(targetDistPath)) {
     app.use(express.static(targetDistPath));
     app.use((req: Request, res: Response, next: NextFunction) => {
-      if (req.path.startsWith('/api') || req.path === '/health') {
+      if (req.path.startsWith('/api') || req.path === '/health' || req.path === '/ready') {
         return next();
       }
       res.sendFile(path.join(targetDistPath, 'index.html'));

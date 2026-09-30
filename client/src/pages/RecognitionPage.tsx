@@ -56,6 +56,7 @@ export const RecognitionPage: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollIntervalRef = useRef<number | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
 
   const canControl = user?.role === 'ADMIN' || user?.role === 'WARDEN';
 
@@ -121,12 +122,17 @@ export const RecognitionPage: React.FC = () => {
   }, [selectedCameraId, selectedCamera?.hostelId, fetchStatusAndResults, fetchMovementData]);
 
   // 3. Connect to live SSE recognition stream using short-lived stream token
+  // Reconnects cleanly with fresh token on expiry rather than permanently degrading (Req 26)
   useEffect(() => {
     if (!selectedCameraId) return;
 
     let isMounted = true;
 
-    // Close previous SSE connection if any
+    // Close previous SSE connection and pending reconnect timer
+    if (reconnectTimerRef.current) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
@@ -137,7 +143,7 @@ export const RecognitionPage: React.FC = () => {
         // Fallback polling for environments without EventSource
         if (!pollIntervalRef.current) {
           pollIntervalRef.current = window.setInterval(() => {
-            if (selectedCameraId) {
+            if (selectedCameraId && isMounted) {
               fetchStatusAndResults(selectedCameraId);
             }
           }, 2000);
@@ -153,6 +159,14 @@ export const RecognitionPage: React.FC = () => {
         const streamUrl = recognitionApi.getEventsStreamUrl(selectedCameraId, streamToken);
         const es = new EventSource(streamUrl);
         eventSourceRef.current = es;
+
+        es.addEventListener('open', () => {
+          // Clean SSE connection active: clear temporary polling fallback
+          if (pollIntervalRef.current) {
+            window.clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+          }
+        });
 
         es.addEventListener('observation', (event: MessageEvent) => {
           try {
@@ -188,27 +202,51 @@ export const RecognitionPage: React.FC = () => {
         });
 
         es.onerror = () => {
-          // SSE fallback: poll status and results every 2 seconds
+          // Token expired or connection dropped: close old connection and schedule automatic reconnect with fresh stream token (Req 26)
           if (eventSourceRef.current) {
             eventSourceRef.current.close();
             eventSourceRef.current = null;
           }
+
+          // Polling fallback operates while reconnect is in-flight
           if (!pollIntervalRef.current) {
             pollIntervalRef.current = window.setInterval(() => {
-              if (selectedCameraId) {
+              if (selectedCameraId && isMounted) {
                 fetchStatusAndResults(selectedCameraId);
+              }
+            }, 2000);
+          }
+
+          if (isMounted && selectedCameraId) {
+            if (reconnectTimerRef.current) {
+              window.clearTimeout(reconnectTimerRef.current);
+            }
+            reconnectTimerRef.current = window.setTimeout(() => {
+              if (isMounted && selectedCameraId) {
+                connectSse();
               }
             }, 2000);
           }
         };
       } catch (err) {
-        console.warn('Failed to obtain stream token or initialize SSE, falling back to polling:', err);
+        console.warn('Failed to obtain stream token or initialize SSE, scheduling retry:', err);
         if (!pollIntervalRef.current) {
           pollIntervalRef.current = window.setInterval(() => {
-            if (selectedCameraId) {
+            if (selectedCameraId && isMounted) {
               fetchStatusAndResults(selectedCameraId);
             }
           }, 2000);
+        }
+
+        if (isMounted && selectedCameraId) {
+          if (reconnectTimerRef.current) {
+            window.clearTimeout(reconnectTimerRef.current);
+          }
+          reconnectTimerRef.current = window.setTimeout(() => {
+            if (isMounted && selectedCameraId) {
+              connectSse();
+            }
+          }, 3000);
         }
       }
     };
@@ -217,6 +255,10 @@ export const RecognitionPage: React.FC = () => {
 
     return () => {
       isMounted = false;
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -747,7 +789,7 @@ export const RecognitionPage: React.FC = () => {
                         </div>
                       )}
 
-                      {/* Movement Decision Status Banner (Step 07) */}
+                      {/* Movement Decision Status Banner */}
                       <div className="movement-decision-block mt-2 pt-2 border-t border-slate-700/50 text-xs">
                         {isMatch ? (
                           obs.movementDecision ? (

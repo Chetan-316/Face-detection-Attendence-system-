@@ -40,10 +40,19 @@ export interface UpdateCameraInput {
 export class CameraService {
   private auditService: AuditService;
   private activeAdapters: Map<string, ICameraAdapter> = new Map();
+  private onCameraChangeCallbacks: Array<(camera: Camera, previousRole?: CameraRole) => Promise<void> | void> = [];
 
   constructor(private readonly db: PrismaClient = defaultPrisma) {
     this.auditService = new AuditService(this.db);
   }
+
+  public onCameraChange(callback: (camera: Camera, previousRole?: CameraRole) => Promise<void> | void): () => void {
+    this.onCameraChangeCallbacks.push(callback);
+    return () => {
+      this.onCameraChangeCallbacks = this.onCameraChangeCallbacks.filter((cb) => cb !== callback);
+    };
+  }
+
 
   public async createCamera(input: CreateCameraInput): Promise<Camera> {
     if (!input.name || input.name.trim().length === 0) {
@@ -202,10 +211,22 @@ export class CameraService {
     if (adapter) {
       if (updated.isEnabled === false) {
         await adapter.stop();
+        await adapter.disconnect();
+        this.activeAdapters.delete(id);
       } else if (finalConfigMetadata) {
         await adapter.initialize(finalConfigMetadata);
       }
     }
+
+    // Notify registered listeners of camera role change or disable (Req 18, 19)
+    for (const callback of this.onCameraChangeCallbacks) {
+      try {
+        await callback(updated, existing.role);
+      } catch (err) {
+        console.error(`[CameraService] Error in onCameraChange callback:`, err);
+      }
+    }
+
 
     return updated;
   }
@@ -403,3 +424,6 @@ export class CameraService {
     this.activeAdapters.clear();
   }
 }
+
+export const defaultCameraService = new CameraService();
+

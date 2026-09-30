@@ -16,6 +16,7 @@ import {
 } from '../../modules/auth/permissions';
 import { toSafeCameraDto } from '../../modules/cameras/utils/camera-dto';
 import { testCameraConnection } from '../../modules/cameras/utils/camera-connection-test';
+import { config } from '../../config';
 
 const createCameraSchema = z.object({
   name: z.string().min(1, 'Camera name is required').max(100),
@@ -177,6 +178,9 @@ export function createCameraRouter(
         if (!parsed.success) {
           throw new ValidationError(parsed.error.issues[0].message);
         }
+        if (parsed.data.testInputOverride && (process.env.NODE_ENV === 'production' || config.appEnv === 'production')) {
+          throw new ValidationError('Synthetic camera testInputOverride is disabled in production environments');
+        }
         const result = await testCameraConnection(parsed.data as any);
         res.json({ data: result });
       } catch (err) {
@@ -195,6 +199,9 @@ export function createCameraRouter(
         const parsed = createCameraSchema.safeParse(req.body);
         if (!parsed.success) {
           throw new ValidationError(parsed.error.issues[0].message);
+        }
+        if (parsed.data.configMetadata?.testInputOverride && (process.env.NODE_ENV === 'production' || config.appEnv === 'production')) {
+          throw new ValidationError('Synthetic camera testInputOverride is disabled in production environments');
         }
 
         const user = req.user!;
@@ -262,6 +269,9 @@ export function createCameraRouter(
         const parsed = updateCameraSchema.safeParse(req.body);
         if (!parsed.success) {
           throw new ValidationError(parsed.error.issues[0].message);
+        }
+        if (parsed.data.configMetadata?.testInputOverride && (process.env.NODE_ENV === 'production' || config.appEnv === 'production')) {
+          throw new ValidationError('Synthetic camera testInputOverride is disabled in production environments');
         }
 
         const updated = await cameraService.updateCamera(camera.id, {

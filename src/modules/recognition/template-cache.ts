@@ -97,11 +97,27 @@ export class TemplateCache {
       const metadata = (activeProfile.metadata as Record<string, any>) || {};
       const templateVector = metadata.template;
 
-      // Dimension and corruption check
+      // Compatibility check: embeddingDimension & templateVersion (Req 23)
+      if (metadata.embeddingDimension !== undefined && metadata.embeddingDimension !== 128) {
+        console.warn(
+          `[Recognition TemplateCache] Incompatible embeddingDimension '${metadata.embeddingDimension}' for resident ${resident.id}. Expected 128.`
+        );
+        continue;
+      }
+
+      if (metadata.templateVersion !== undefined && metadata.templateVersion !== '1.0.0') {
+        console.warn(
+          `[Recognition TemplateCache] Incompatible templateVersion '${metadata.templateVersion}' for resident ${resident.id}. Expected '1.0.0'.`
+        );
+        continue;
+      }
+
+      // Dimension, finite numbers, non-zero norm check (Req 22)
       if (!TemplateMatcher.isValidVector(templateVector)) {
         console.warn(`[Recognition TemplateCache] Invalid biometric template for resident ${resident.id}`);
         continue;
       }
+
 
       eligibleTemplates.push({
         residentId: resident.id,

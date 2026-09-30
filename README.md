@@ -296,11 +296,47 @@ Camera Database Configuration
 - **Camera Connection Probing**: Server-side probe endpoints (`POST /api/v1/cameras/:id/test` and `POST /api/v1/cameras/test-connection`) allowing staff to verify camera reachability, codec, resolution, and latency prior to saving.
 - **LAN-First & Cloud-Independent**: All streams remain strictly on the local area network with zero cloud or Internet dependencies. No CCTV video recording or persistent video archives are retained.
 
-#### Explicitly Deferred (Future Steps):
-- Step 11: Production deployment, security audit & observability stack
-- Liveness detection / anti-spoofing verification
-- Leave management automation & multi-day absence inference
-- Hardware gate relay control & physical turnstile integration
-- ONVIF camera discovery automation
+### Production Hardening & System Acceptance (Step 11)
+- **Startup Reliability & Lifecycle Management**: Deterministic startup sequence via `LifecycleManager`. Validates PostgreSQL connectivity on boot and fails fast before opening HTTP ports if DB is unreachable. Decoupled camera initialization ensures dead/offline cameras never block backend readiness.
+- **System Readiness & Health Probes**: Dedicated `/ready` endpoint verifying critical database readiness, and fast, lightweight `/health` liveness probe.
+- **Idempotent Graceful Shutdown**: Handles `SIGTERM` / `SIGINT` signals by cleanly closing the HTTP server, disconnecting camera adapters, killing FFmpeg and Python worker processes, and disconnecting Prisma clients. Duplicate shutdown invocations are safely ignored.
+- **Camera Role & State Re-Routing**: Dynamic camera role changes (e.g. IN to ATTENDANCE) safely detach existing listeners and re-route to new business logic without stale bridge listeners. Disabling a camera cleanly terminates underlying adapters.
+- **Biometric Template Cache Hardening**: Strict verification of template compatibility (`embeddingDimension === 128` and `templateVersion === '1.0.0'`). Malformed, corrupted, or incompatible embeddings are safely rejected without crashing the service.
+- **Production Security Safeguards**: Rejects weak `JWT_SECRET` (< 32 characters), blocks `BIOMETRIC_MOCK` in production mode, and prevents test parameters (`testInputOverride`) from being used on camera endpoints in production.
+- **Privacy & Sanitization**: Redacts sensitive RTSP credentials in logs, errors, and responses. Enforces strict zero-raw-photo and zero-embedding-to-client privacy policies.
+
+---
+
+## 5. Deployment Readiness & Verification Status
+
+**Overall Status**: `DEVELOPMENT COMPLETE — PILOT READY WITH STATED LIMITATIONS`
+
+### Verification Summary
+| Subsystem / Feature | Status | Details |
+| :--- | :--- | :--- |
+| **Domain Logic & Movement Engine** | **VERIFIED** | Atomic IN/OUT movement transitions, duplicate suppression, and row-level locking verified. |
+| **Attendance Roll Call & Session Workflow** | **VERIFIED** | Auto-marking, single active session constraint, and transactional session closure verified. |
+| **Reporting & CSV Export** | **VERIFIED** | Server-side paginated queries, trend aggregations, and formula injection protection verified. |
+| **Local Biometrics (YuNet + SFace)** | **VERIFIED** | In-memory 128-dim embeddings, quality checks, and temporal stabilization verified. |
+| **Built-in / USB Webcams** | **VERIFIED** | OpenCV capture, MJPEG streaming, and disconnection handling verified. |
+| **Software RTSP Pipeline & Reconnect** | **VERIFIED** | FFmpeg child process management, multi-client MJPEG, and auto-reconnect verified. |
+| **Physical External IP Camera Hardware** | **PENDING** | Software pipeline verified; physical deployment on site network hardware remains pending field installation. |
+
+---
+
+## 6. Known Limitations & Security Disclaimers
+
+> [!CAUTION]
+> **CRITICAL SECURITY DISCLAIMER: Anti-Spoofing & Liveness**
+> PRAVAHAx facial recognition measures cosine similarity between facial embeddings. It **does NOT** implement active or passive liveness detection (blink detection, 3D depth, texture analysis, infrared flash).
+> - High-resolution printed photos or screen video replays can potentially fool the system.
+> - PRAVAHAx is designed for supervised hostel environments (wardens/guards present) and is **not spoof-proof**.
+
+### Additional Operational Limitations
+1. **Physical IP Camera Hardware Pending**: Final field sign-off requires physical on-site testing with target IP camera brands (Hikvision, Dahua, CP Plus).
+2. **Camera Credential Encryption**: RTSP passwords are masked in logs and APIs, but stored in standard database columns. Enterprise HSM/Vault integration is deferred.
+3. **No CCTV / NVR Continuous Recording**: The system captures frames purely for ephemeral recognition and does not function as a video surveillance recorder.
+4. **No ONVIF Auto-Discovery**: Cameras must be manually configured using their RTSP URLs.
+5. **No Leave / Gate Pass Integration**: Multi-day leave automation is deferred to future operational iterations.
 
 
