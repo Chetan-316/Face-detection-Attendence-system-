@@ -333,9 +333,11 @@ export class EnrollmentService {
           modelVersion: '2021dec',
           templateReference: `fptpl_${randomUUID().replace(/-/g, '')}`,
           metadata: {
-            embedding: templateVector,
+            template: templateVector,
             embeddingDimension: 128,
-            templateVersion: '1.0',
+            templateVersion: '1.0.0',
+            modelName: 'SFace',
+            modelVersion: '2021dec',
             samplesCount,
             consistencyScore,
             enrolledVia: 'WEBCAM_ENROLLMENT',
@@ -453,6 +455,7 @@ export class EnrollmentService {
         const existingMeta = (profile.metadata as Record<string, any>) || {};
         const sanitizedMeta = {
           ...existingMeta,
+          template: null,
           embedding: null,
           revocationReason: reason.trim(),
         };

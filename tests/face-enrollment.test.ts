@@ -506,8 +506,10 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       expect(dbProfile).toBeDefined();
       expect(dbProfile?.modelName).toBe('SFace');
       expect(dbProfile?.modelVersion).toBe('2021dec');
-      expect(dbProfile?.templateReference).toMatch(/^fptpl_/);
-      expect((dbProfile?.metadata as any).embedding).toBeDefined();
+      expect((dbProfile?.metadata as any).template).toBeDefined();
+      expect(Array.isArray((dbProfile?.metadata as any).template)).toBe(true);
+      expect((dbProfile?.metadata as any).template.length).toBe(128);
+      expect((dbProfile?.metadata as any).templateVersion).toBe('1.0.0');
       expect((dbProfile?.metadata as any).embeddingDimension).toBe(128);
 
       // Verify Audit log entry
@@ -517,7 +519,8 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       expect(audit).toBeDefined();
       expect(audit?.action).toBe('CREATE');
       expect((audit?.newValues as any)?.enrollmentStatus).toBe('ENROLLED');
-      expect((audit?.newValues as any)?.embedding).toBeUndefined(); // Biometric security rule: never in audit logs
+      expect((audit?.newValues as any)?.template).toBeUndefined(); // Biometric security rule: never in audit logs
+      expect((audit?.newValues as any)?.embedding).toBeUndefined();
     });
   });
 
@@ -623,7 +626,8 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       });
       expect(dbProfile?.enrollmentStatus).toBe(FaceEnrollmentStatus.REVOKED);
       expect(dbProfile?.revokedAt).toBeDefined();
-      expect((dbProfile?.metadata as any)?.embedding).toBeNull(); // Privacy rule: usable template purged
+      expect((dbProfile?.metadata as any)?.template).toBeNull(); // Canonical template vector purged
+      expect((dbProfile?.metadata as any)?.embedding).toBeNull(); // No alternate vector field retained
 
       // Verify Audit record
       const audit = await testPrisma.auditLog.findFirst({
@@ -631,6 +635,44 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       });
       expect(audit).toBeDefined();
       expect(audit?.action).toBe('UPDATE');
+    });
+
+    it('Regression: proves successful enrollment stores metadata.template, revoke removes it, and no other metadata field contains vector', async () => {
+      // 1. Verify fresh active profile has canonical template
+      const activeProfile = await testPrisma.faceProfile.findFirst({
+        where: { residentId: resident1.id, enrollmentStatus: FaceEnrollmentStatus.ENROLLED },
+      });
+      expect(activeProfile).toBeDefined();
+      const metaBefore = activeProfile?.metadata as Record<string, any>;
+      expect(metaBefore.template).toBeDefined();
+      expect(Array.isArray(metaBefore.template)).toBe(true);
+      expect(metaBefore.template.length).toBe(128);
+      expect(metaBefore.embeddingDimension).toBe(128);
+      expect(metaBefore.templateVersion).toBe('1.0.0');
+
+      // 2. Perform revocation
+      await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/revoke`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({ reason: 'Canonical revocation test' })
+        .expect(200);
+
+      // 3. Inspect database state post-revocation
+      const revokedProfile = await testPrisma.faceProfile.findUnique({
+        where: { id: activeProfile!.id },
+      });
+      expect(revokedProfile?.enrollmentStatus).toBe(FaceEnrollmentStatus.REVOKED);
+      expect(revokedProfile?.revokedAt).toBeDefined();
+
+      const metaAfter = revokedProfile?.metadata as Record<string, any>;
+      // Must explicitly be null
+      expect(metaAfter.template).toBeNull();
+      expect(metaAfter.embedding).toBeNull();
+
+      // Ensure no other metadata property contains an array or vector values
+      for (const [key, value] of Object.entries(metaAfter)) {
+        expect(Array.isArray(value)).toBe(false);
+      }
     });
   });
 

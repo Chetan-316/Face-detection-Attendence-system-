@@ -19,7 +19,7 @@ DETECTOR_INFO = {
     "filename": "face_detection_yunet_2023mar.onnx",
     "input_shape": "dynamic [1, 3, H, W]",
     "outputs": "bounding_box, confidence, 5_landmarks",
-    "runtime": "OpenCV DNN (CPU)",
+    "runtime": "OpenCV DNN using ONNX model files",
 }
 
 EMBEDDER_INFO = {
@@ -30,7 +30,7 @@ EMBEDDER_INFO = {
     "filename": "face_recognition_sface_2021dec.onnx",
     "input_shape": "[1, 3, 112, 112]",
     "embedding_dimension": 128,
-    "runtime": "OpenCV DNN / ONNX Runtime (CPU)",
+    "runtime": "OpenCV DNN using ONNX model files",
 }
 
 def get_models_dir() -> str:

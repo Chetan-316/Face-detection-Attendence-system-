@@ -26,8 +26,8 @@ The PRAVAHAx Biometric Subsystem provides localized, zero-cloud face enrollment 
 
 | Component | Model Name | Version | Source | License | Input Shape | Output / Dimension | Runtime |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Face Detector** | YuNet | `2023mar` | OpenCV Zoo / libfacedetection | **Apache-2.0** | Dynamic `[1, 3, H, W]` | Bounding box, confidence score, 5 facial landmarks | OpenCV DNN (CPU) |
-| **Face Embedder** | SFace | `2021dec` | OpenCV Zoo (SphereFace2) | **Apache-2.0** | `[1, 3, 112, 112]` | 128-d L2-normalized float vector | OpenCV DNN / ONNX Runtime (CPU) |
+| **Face Detector** | YuNet | `2023mar` | OpenCV Zoo / libfacedetection | **Apache-2.0** | Dynamic `[1, 3, H, W]` | Bounding box, confidence score, 5 facial landmarks | OpenCV DNN using ONNX model files |
+| **Face Embedder** | SFace | `2021dec` | OpenCV Zoo (SphereFace2) | **Apache-2.0** | `[1, 3, 112, 112]` | 128-d L2-normalized float vector | OpenCV DNN using ONNX model files |
 
 ### Landmark Alignment & Preprocessing
 1. Five facial landmarks are extracted: right eye, left eye, nose tip, right mouth corner, left mouth corner.
@@ -54,7 +54,7 @@ Biometric data is classified as highly sensitive personal data. PRAVAHAx enforce
    - Raw vector embeddings are **never** embedded in JWT tokens or accessible via client frontend state.
 
 4. **Biometric Revocation Safeguard**:
-   - When a resident's biometric profile is revoked by an authorized staff member, the stored template vector is permanently purged from the database record (`metadata.embedding = null`).
+   - When a resident's biometric profile is revoked by an authorized staff member, the stored template vector is permanently purged from the database record (`metadata.template = null`).
    - Revoked records cannot be utilized for active face matching.
 
 ---

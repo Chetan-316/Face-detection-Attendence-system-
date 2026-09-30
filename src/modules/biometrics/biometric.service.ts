@@ -129,7 +129,7 @@ export class BiometricService {
         data: {
           enrollmentStatus: FaceEnrollmentStatus.REVOKED,
           revokedAt: new Date(),
-          metadata: { ...existingMeta, embedding: null, revocationReason: reason },
+          metadata: { ...existingMeta, template: null, embedding: null, revocationReason: reason },
         },
       });
 
