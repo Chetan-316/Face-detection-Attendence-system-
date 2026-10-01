@@ -49,6 +49,14 @@ export class LifecycleManager {
           '[PRAVAHAx Security Guard] Production startup rejected: BIOMETRIC_MOCK cannot be enabled in production environment.'
         );
       }
+
+      // 3. CORS_ORIGIN must contain explicit trusted frontend origin(s) (cannot be missing, empty, or '*')
+      const corsOrigin = process.env.CORS_ORIGIN?.trim();
+      if (!corsOrigin || corsOrigin === '*' || corsOrigin.split(',').map((s) => s.trim()).includes('*')) {
+        throw new Error(
+          '[PRAVAHAx Security Guard] Production startup rejected: CORS_ORIGIN must contain explicit trusted frontend origin(s).'
+        );
+      }
     }
   }
 

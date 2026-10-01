@@ -101,17 +101,25 @@ npm start
 
 ## 4. Startup, Health & Shutdown Lifecycle
 
-### Startup Reliability
+### Startup Reliability & Production Guards
 PRAVAHAx initializes through `LifecycleManager`:
 1. **Database Startup Check**: Verifies PostgreSQL connection before launching HTTP listener. If PostgreSQL is unreachable, the process fails fast with code 1, preventing a half-running corrupted state.
-2. **Production Safeguards**: Enforces minimum secret length and ensures mock biometrics are disabled.
+2. **Production Guards**:
+   - `JWT_SECRET`: Must be explicitly configured with a secure random key of at least 32 characters in production.
+   - `BIOMETRIC_MOCK`: Must remain `false` in production; any attempt to run mock biometrics in production causes immediate startup failure.
+   - `CORS_ORIGIN`: Must be explicitly set with trusted frontend origin(s) in production; missing, empty, or wildcard `*` values cause immediate startup rejection.
+   - `testInputOverride`: Synthetic camera feed overrides are strictly forbidden in production on `/cameras` routes.
 3. **Decoupled Camera Startup**: Physical cameras are **lazy-loaded**. A dead or offline camera does **not** block backend startup or HTTP readiness.
 
 ### Endpoints
 - **Liveness Probe**: `GET /health`
-  - Extremely cheap (checks basic process uptime). Does not invoke camera adapters, FFmpeg, or biometric inference.
+  - Cheap, fast process liveness probe. Returns `200 { "status": "UP", "service": "PRAVAHAx", "timestamp": "..." }`.
+  - Must **NOT** access PostgreSQL, cameras, FFmpeg, Python worker, or recognition service.
+  - Returns 200 as long as the Node process is running.
 - **Readiness Probe**: `GET /ready`
-  - Validates critical database availability. Returns `200 { status: "READY", database: "CONNECTED" }` or `503 { status: "NOT_READY" }`. Operational camera status is reported separately and does not fail system readiness.
+  - Validates critical database availability. Returns `200 { status: "READY", service: "PRAVAHAx", database: "CONNECTED", timestamp: "..." }` or `503 { status: "NOT_READY", database: "DISCONNECTED" }`.
+  - Operational camera status does not control application readiness.
+  - Zero internal Prisma, PostgreSQL, or network error details are disclosed in failure responses.
 
 ### Graceful Shutdown
 PRAVAHAx catches `SIGTERM` and `SIGINT` signals:
@@ -205,7 +213,7 @@ Measured on reference development node (PostgreSQL local, 500 residents, 10,000 
 
 > [!CAUTION]
 > **CRITICAL SECURITY DISCLAIMER: Anti-Spoofing & Liveness**
-> PRAVAHAx facial recognition evaluates cosine similarity between facial embeddings. It **does NOT** implement active or passive liveness detection (blink detection, 3D depth, texture analysis, infrared flash).
+> Anti-spoofing/liveness is not implemented. Printed photographs or screen replay attacks are not guaranteed to be rejected.
 > - High-resolution printed photographs or screen replay videos presented to the camera can potentially trigger false matches.
 > - For high-security gates, facial recognition must be paired with physical turnstiles, guard verification, or secondary credentials.
 
@@ -213,9 +221,10 @@ Measured on reference development node (PostgreSQL local, 500 residents, 10,000 
 1. **Physical IP Camera Hardware Status**:
    - The software RTSP streaming pipeline, FFmpeg ingestion, credential redaction, and auto-reconnect logic are **VERIFIED**.
    - Deployment on physical external IP camera hardware remains **PENDING** site-specific network validation (RTSP URL formats vary across Dahua, Hikvision, CP Plus).
-2. **Credential Vault**:
-   - RTSP passwords are encrypted/masked in API responses and logs, but are stored in database configuration fields. A dedicated HSM/Vault is deferred to future enterprise iterations.
-3. **No CCTV / NVR Recording**:
+2. **Camera Credential Storage**:
+   - RTSP passwords are stored in PostgreSQL `Camera.configMetadata`. They are **NOT** vault-encrypted.
+   - Credentials are automatically redacted from API responses (`rtsp://***:***@...`) and stripped from application logs and error messages. Enterprise HSM/Vault integration is deferred.
+3. **No CCTV / NVR Continuous Recording**:
    - PRAVAHAx is an attendance and movement logging tool, not a continuous Network Video Recorder. No continuous video storage is provided.
 4. **No ONVIF Auto-Discovery**:
    - Cameras must be configured manually via IP/RTSP URL.

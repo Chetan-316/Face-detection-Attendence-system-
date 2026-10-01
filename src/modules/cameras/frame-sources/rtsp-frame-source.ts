@@ -93,6 +93,7 @@ export class RtspFrameSource implements IFrameSource {
   private state: FrameSourceState = 'OFFLINE';
   private stateListeners: Set<(state: FrameSourceState, error?: string | null) => void> = new Set();
   private lastError: string | null = null;
+  private isCapturingEphemeralSnapshot: boolean = false;
 
   private buffer: Buffer = Buffer.alloc(0);
   private latestFrame: CameraFrame | null = null;
@@ -124,7 +125,7 @@ export class RtspFrameSource implements IFrameSource {
     if (error !== undefined) {
       this.lastError = error;
     }
-    if (changed) {
+    if (changed && !this.isCapturingEphemeralSnapshot) {
       for (const listener of this.stateListeners) {
         try {
           listener(newState, this.lastError);
@@ -352,6 +353,7 @@ export class RtspFrameSource implements IFrameSource {
 
     // 2. If camera is not active, preserve operator state: start temporarily, capture frame, and stop
     if (!wasActive) {
+      this.isCapturingEphemeralSnapshot = true;
       try {
         await this.start();
         if (this.latestFrame) {
@@ -377,6 +379,8 @@ export class RtspFrameSource implements IFrameSource {
       } catch (err) {
         await this.stop().catch(() => {});
         throw err;
+      } finally {
+        this.isCapturingEphemeralSnapshot = false;
       }
     }
 

@@ -167,12 +167,41 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
       await db.camera.delete({ where: { id: offlineCam.id } });
     });
 
-    it('GET /health is fast and returns UP without running heavy scans', async () => {
-      const app = createApp(db);
+    it('GET /health is fast cheap liveness and returns 200 without accessing PostgreSQL (Req 1, 7)', async () => {
+      const mockQueryRaw = vi.fn().mockRejectedValue(new Error('PostgreSQL database unreachable'));
+      const mockFailingDb = {
+        $queryRaw: mockQueryRaw,
+      } as unknown as PrismaClient;
+
+      const app = createApp(mockFailingDb);
       const res = await request(app).get('/health');
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('UP');
-      expect(res.body.database).toBe('CONNECTED');
+      expect(res.body.service).toBe('PRAVAHAx');
+      expect(res.body.timestamp).toBeDefined();
+      expect(res.body.stage).toBeUndefined();
+      expect(res.body.database).toBeUndefined();
+      // Assert database query was NOT performed (Req 7)
+      expect(mockQueryRaw).not.toHaveBeenCalled();
+    });
+
+    it('GET /ready returns 503 NOT_READY with sanitized non-leaking payload when DB fails (Req 2, 8)', async () => {
+      const sensitiveDbError = 'Connection refused at postgresql://postgres:SuperSecretPassword123@10.0.0.1:5433/pravahax_db';
+      const mockFailingDb = {
+        $queryRaw: vi.fn().mockRejectedValue(new Error(sensitiveDbError)),
+      } as unknown as PrismaClient;
+
+      const app = createApp(mockFailingDb);
+      const res = await request(app).get('/ready');
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({
+        status: 'NOT_READY',
+        database: 'DISCONNECTED',
+      });
+      // Assert raw DB error string is NOT exposed in response (Req 8)
+      expect(JSON.stringify(res.body)).not.toContain('SuperSecretPassword123');
+      expect(JSON.stringify(res.body)).not.toContain('Connection refused');
+      expect(res.body.error).toBeUndefined();
     });
   });
 
@@ -248,11 +277,13 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
     it('rejects startup in production if BIOMETRIC_MOCK=true', () => {
       const origEnv = process.env.NODE_ENV;
       const origMock = process.env.BIOMETRIC_MOCK;
+      const origCors = process.env.CORS_ORIGIN;
       const origJwt = config.jwtSecret;
 
       try {
         process.env.NODE_ENV = 'production';
         process.env.BIOMETRIC_MOCK = 'true';
+        process.env.CORS_ORIGIN = 'https://attendance.example.com';
         config.jwtSecret = 'a_very_long_secure_custom_production_key_1234567890';
 
         const lifecycle = new LifecycleManager(db);
@@ -262,6 +293,87 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
       } finally {
         process.env.NODE_ENV = origEnv;
         process.env.BIOMETRIC_MOCK = origMock;
+        if (origCors !== undefined) process.env.CORS_ORIGIN = origCors;
+        config.jwtSecret = origJwt;
+      }
+    });
+
+    it('rejects startup in production if CORS_ORIGIN is missing (Req 4, 6)', () => {
+      const origEnv = process.env.NODE_ENV;
+      const origCors = process.env.CORS_ORIGIN;
+      const origJwt = config.jwtSecret;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        delete process.env.CORS_ORIGIN;
+        config.jwtSecret = 'a_very_long_secure_custom_production_key_1234567890';
+
+        const lifecycle = new LifecycleManager(db);
+        expect(() => lifecycle.validateEnvironment()).toThrow(
+          /CORS_ORIGIN must contain explicit trusted frontend origin\(s\)/i
+        );
+      } finally {
+        process.env.NODE_ENV = origEnv;
+        if (origCors !== undefined) process.env.CORS_ORIGIN = origCors;
+        config.jwtSecret = origJwt;
+      }
+    });
+
+    it('rejects startup in production if CORS_ORIGIN is wildcard "*" (Req 4, 6)', () => {
+      const origEnv = process.env.NODE_ENV;
+      const origCors = process.env.CORS_ORIGIN;
+      const origJwt = config.jwtSecret;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        process.env.CORS_ORIGIN = '*';
+        config.jwtSecret = 'a_very_long_secure_custom_production_key_1234567890';
+
+        const lifecycle = new LifecycleManager(db);
+        expect(() => lifecycle.validateEnvironment()).toThrow(
+          /CORS_ORIGIN must contain explicit trusted frontend origin\(s\)/i
+        );
+      } finally {
+        process.env.NODE_ENV = origEnv;
+        if (origCors !== undefined) process.env.CORS_ORIGIN = origCors;
+        config.jwtSecret = origJwt;
+      }
+    });
+
+    it('allows startup in production with explicit single origin (Req 6)', () => {
+      const origEnv = process.env.NODE_ENV;
+      const origCors = process.env.CORS_ORIGIN;
+      const origJwt = config.jwtSecret;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        process.env.CORS_ORIGIN = 'https://attendance.example.com';
+        config.jwtSecret = 'a_very_long_secure_custom_production_key_1234567890';
+
+        const lifecycle = new LifecycleManager(db);
+        expect(() => lifecycle.validateEnvironment()).not.toThrow();
+      } finally {
+        process.env.NODE_ENV = origEnv;
+        if (origCors !== undefined) process.env.CORS_ORIGIN = origCors;
+        config.jwtSecret = origJwt;
+      }
+    });
+
+    it('allows startup in production with multiple explicit origins (Req 6)', () => {
+      const origEnv = process.env.NODE_ENV;
+      const origCors = process.env.CORS_ORIGIN;
+      const origJwt = config.jwtSecret;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        process.env.CORS_ORIGIN = 'https://admin.example.com,https://warden.example.com';
+        config.jwtSecret = 'a_very_long_secure_custom_production_key_1234567890';
+
+        const lifecycle = new LifecycleManager(db);
+        expect(() => lifecycle.validateEnvironment()).not.toThrow();
+      } finally {
+        process.env.NODE_ENV = origEnv;
+        if (origCors !== undefined) process.env.CORS_ORIGIN = origCors;
         config.jwtSecret = origJwt;
       }
     });

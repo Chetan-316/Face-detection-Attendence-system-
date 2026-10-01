@@ -73,53 +73,44 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   app.use(helmet());
 
   // CORS configuration
-  const allowedOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
-    : '*';
+  const isProd = process.env.NODE_ENV === 'production' || config.appEnv === 'production';
+  let allowedOrigins: string | string[] = '*';
+  if (process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.trim().length > 0) {
+    allowedOrigins = process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
+  } else if (isProd) {
+    allowedOrigins = [];
+  }
   app.use(cors({ origin: allowedOrigins }));
 
   // JSON Body Parser with 100kb limit
   app.use(express.json({ limit: '100kb' }));
 
-  // Health check endpoint (unversioned - fast liveness probe)
-  app.get('/health', async (_req: Request, res: Response) => {
-    try {
-      // Verify PostgreSQL connection
-      await db.$queryRaw`SELECT 1`;
-      res.json({
-        status: 'UP',
-        service: 'PRAVAHAx Face Recognition Hostel Attendance & Resident Movement System',
-        stage: 'STEP_02_RESIDENT_API',
-        appEnv: config.appEnv,
-        timezone: config.timezone,
-        database: 'CONNECTED',
-        timestamp: new Date().toISOString(),
-      });
-    } catch (error: any) {
-      res.status(500).json({
-        status: 'DOWN',
-        database: 'DISCONNECTED',
-        error: error.message,
-      });
-    }
+  // Health check endpoint (unversioned - cheap liveness only)
+  // Must NOT access PostgreSQL, cameras, FFmpeg, Python worker, or recognition service
+  app.get('/health', (_req: Request, res: Response) => {
+    res.status(200).json({
+      status: 'UP',
+      service: 'PRAVAHAx',
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // Readiness check endpoint (verifies critical service availability: db reachable & app initialized)
-  // Operational camera health is NOT a blocker for application readiness (Req 6)
+  // Camera availability must NOT control application readiness
   app.get('/ready', async (_req: Request, res: Response) => {
     try {
       await db.$queryRaw`SELECT 1`;
-      res.json({
+      res.status(200).json({
         status: 'READY',
-        service: 'PRAVAHAx Face Recognition Hostel Attendance & Resident Movement System',
+        service: 'PRAVAHAx',
         database: 'CONNECTED',
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {
+      console.error('[Readiness Check] Database reachability check failed:', error?.message || error);
       res.status(503).json({
         status: 'NOT_READY',
         database: 'DISCONNECTED',
-        error: error.message || 'Database unreachable',
       });
     }
   });

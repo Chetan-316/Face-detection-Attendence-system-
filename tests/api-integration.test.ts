@@ -171,12 +171,13 @@ describe('Step 02 API Integration Test Suite', () => {
   // ----------------------------------------------------
   // HEALTH CHECK
   // ----------------------------------------------------
-  it('GET /health returns 200 with stage STEP_02_RESIDENT_API', async () => {
+  it('GET /health returns 200 UP without stage metadata or database dependency', async () => {
     const res = await request(app).get('/health');
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('UP');
-    expect(res.body.stage).toBe('STEP_02_RESIDENT_API');
-    expect(res.body.database).toBe('CONNECTED');
+    expect(res.body.service).toBe('PRAVAHAx');
+    expect(res.body.stage).toBeUndefined();
+    expect(res.body.database).toBeUndefined();
   });
 
   // ----------------------------------------------------
