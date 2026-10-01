@@ -15,8 +15,10 @@ import {
   startAttendanceSession,
   closeAttendanceSession,
   correctAttendanceRecord,
+  markAttendanceRecord,
 } from '../api/attendance.api';
 import { camerasApi } from '../api/cameras.api';
+import { recognitionApi } from '../api/recognition.api';
 import { residentsApi } from '../api/residents.api';
 import { CameraEntity } from '../types/camera.types';
 import {
@@ -114,6 +116,14 @@ export const AttendancePage: React.FC = () => {
     loadData();
   }, []);
 
+  const [currentResident, setCurrentResident] = useState<{
+    id: string;
+    fullName: string;
+    residentCode: string;
+    roomGroup: string;
+    markedTime?: string;
+  } | null>(null);
+
   // When selected session changes
   const handleSelectSession = async (sessionId: string) => {
     try {
@@ -129,6 +139,99 @@ export const AttendancePage: React.FC = () => {
       setIsRefreshing(false);
     }
   };
+
+  // Live Face Recognition connection during ACTIVE session (Section 30 & 31)
+  useEffect(() => {
+    if (!activeSessionData || activeSessionData.status !== 'ACTIVE') {
+      setCurrentResident(null);
+      return;
+    }
+
+    const camId = activeSessionData.camera?.id || (cameras.length > 0 ? cameras[0].id : '');
+    if (!camId) return;
+
+    let isMounted = true;
+    let eventSource: EventSource | null = null;
+
+    const connectLiveStream = async () => {
+      try {
+        const { streamToken } = await recognitionApi.getStreamToken(camId);
+        if (!isMounted) return;
+
+        const streamUrl = recognitionApi.getEventsStreamUrl(camId, streamToken);
+        const es = new EventSource(streamUrl);
+        eventSource = es;
+
+        es.addEventListener('observation', async (event: MessageEvent) => {
+          try {
+            const obs = JSON.parse(event.data);
+            if (obs.classification === 'MATCH' && obs.resident) {
+              const res = obs.resident;
+              const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              setCurrentResident({
+                id: res.id,
+                fullName: res.fullName,
+                residentCode: res.residentCode,
+                roomGroup: res.roomGroup || '—',
+                markedTime: timeStr,
+              });
+
+              // Mark attendance record idempotently with duplicate prevention
+              await markAttendanceRecord(activeSessionData.id, res.id, 'FACE_RECOGNITION');
+              const updated = await getAttendanceRoster(activeSessionData.id);
+              if (isMounted) {
+                setStats(updated.stats);
+                setRoster(updated.roster);
+              }
+            }
+          } catch (e) {}
+        });
+
+        es.onerror = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+        };
+      } catch (err) {}
+    };
+
+    connectLiveStream();
+
+    // Fallback polling for recognition events
+    const pollInterval = setInterval(async () => {
+      if (!isMounted) return;
+      try {
+        const res = await recognitionApi.getResults(camId, 1);
+        if (res.results && res.results.length > 0) {
+          const latest = res.results[0];
+          if (latest.classification === 'MATCH' && latest.resident) {
+            const resident = latest.resident;
+            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            setCurrentResident({
+              id: resident.id,
+              fullName: resident.fullName,
+              residentCode: resident.residentCode,
+              roomGroup: resident.roomGroup || '—',
+              markedTime: timeStr,
+            });
+            await markAttendanceRecord(activeSessionData.id, resident.id, 'FACE_RECOGNITION');
+            const updated = await getAttendanceRoster(activeSessionData.id);
+            if (isMounted) {
+              setStats(updated.stats);
+              setRoster(updated.roster);
+            }
+          }
+        }
+      } catch (e) {}
+    }, 2500);
+
+    return () => {
+      isMounted = false;
+      if (eventSource) eventSource.close();
+      clearInterval(pollInterval);
+    };
+  }, [activeSessionData?.id, activeSessionData?.status, cameras]);
 
   // Create session
   const handleCreateSession = async (e: React.FormEvent) => {
@@ -470,13 +573,6 @@ export const AttendancePage: React.FC = () => {
                         )}
                         {activeSessionData.status === 'ACTIVE' && (
                           <div className="flex items-center gap-2">
-                            <Link
-                              to="/recognition"
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition"
-                            >
-                              <CameraIcon size={15} />
-                              <span>Live Attendance</span>
-                            </Link>
                             <button
                               type="button"
                               onClick={() => setIsCloseConfirmOpen(true)}
@@ -530,6 +626,104 @@ export const AttendancePage: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Live Camera & Current Resident Display (Section 30) */}
+                {activeSessionData.status === 'ACTIVE' && (
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                    {/* Live Camera Card */}
+                    <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                      <div className="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-200 flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          Live Attendance Camera
+                        </span>
+                        <span className="text-slate-400 font-mono text-[11px]">
+                          {activeSessionData.camera?.name || (cameras.length > 0 ? cameras[0].name : 'Hostel Camera')}
+                        </span>
+                      </div>
+                      <div className="relative bg-black flex items-center justify-center overflow-hidden min-h-[300px]">
+                        {(activeSessionData.camera?.id || cameras[0]?.id) ? (
+                          <img
+                            src={
+                              typeof (camerasApi as any)?.getPreviewStreamUrl === 'function'
+                                ? (camerasApi as any).getPreviewStreamUrl(activeSessionData.camera?.id || cameras[0].id)
+                                : `/api/v1/cameras/${activeSessionData.camera?.id || cameras[0].id}/preview`
+                            }
+                            alt="Live Attendance Camera Feed"
+                            className="w-full h-full object-contain max-h-[340px]"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-slate-500 p-8 text-center gap-2">
+                            <CameraIcon size={36} className="opacity-40" />
+                            <p className="text-sm font-semibold text-slate-300">Camera Feed Active</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Current Resident Card */}
+                    <div className="lg:col-span-5 bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col justify-between min-h-[300px]">
+                      <div>
+                        <span className="text-xs uppercase tracking-wider font-bold text-blue-600 block mb-3">
+                          Current Resident
+                        </span>
+
+                        {currentResident ? (
+                          <div className="flex flex-col gap-4">
+                            <div className="flex items-center gap-4">
+                              <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 border-2 border-gray-200 shrink-0 flex items-center justify-center shadow-sm">
+                                <img
+                                  src={residentsApi.getProfilePhotoUrl(currentResident.id)}
+                                  alt={currentResident.fullName}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                                <Users size={32} className="text-gray-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h3 className="text-xl font-bold text-gray-900 truncate">
+                                  {currentResident.fullName}
+                                </h3>
+                                <p className="text-xs font-mono text-gray-500 mt-0.5">
+                                  {currentResident.residentCode} • {currentResident.roomGroup}
+                                </p>
+                                <div className="mt-2.5">
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                    <CheckCircle2 size={14} className="text-emerald-600" />
+                                    PRESENT
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-100 mt-2">
+                              Recognized and marked Present at {currentResident.markedTime || 'Just now'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="my-auto py-12 flex flex-col items-center justify-center text-center gap-3 text-gray-400">
+                            <div className="w-14 h-14 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center border border-gray-200">
+                              <Users size={28} />
+                            </div>
+                            <h4 className="text-sm font-semibold text-gray-700">Waiting for resident...</h4>
+                            <p className="text-xs text-gray-500 max-w-xs leading-relaxed">
+                              Residents standing before the camera will be identified and marked Present automatically.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                        <span>Roll call in progress</span>
+                        <span className="font-semibold text-emerald-600 flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          Live Face Marking Active
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Roster Controls */}
                 <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">

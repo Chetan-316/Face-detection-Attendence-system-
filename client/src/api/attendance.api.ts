@@ -82,3 +82,15 @@ export async function correctAttendanceRecord(
     body: JSON.stringify(data),
   });
 }
+
+export async function markAttendanceRecord(
+  sessionId: string,
+  residentId: string,
+  markMethod: string = 'FACE_RECOGNITION'
+): Promise<{ record: any; alreadyMarked?: boolean }> {
+  return apiClient<{ record: any; alreadyMarked?: boolean }>(`/attendance/sessions/${sessionId}/records`, {
+    method: 'POST',
+    body: JSON.stringify({ residentId, markMethod }),
+  });
+}
+

@@ -32,7 +32,7 @@ export const CamerasPage: React.FC = () => {
   const { success, error: toastError, info } = useToast();
 
   if (user?.role === 'GUARD') {
-    return <Navigate to="/recognition" replace />;
+    return <Navigate to="/gate" replace />;
   }
 
   const isAdmin = user?.role === 'ADMIN';

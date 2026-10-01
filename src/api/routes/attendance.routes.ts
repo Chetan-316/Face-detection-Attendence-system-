@@ -5,6 +5,7 @@ import {
   AttendanceSessionType,
   AttendanceSessionStatus,
   AttendanceRecordStatus,
+  AttendanceMarkMethod,
 } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
@@ -193,6 +194,55 @@ export function createAttendanceRouter(
       }
 
       res.status(200).json(data);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/v1/attendance/sessions/:id/records
+   * Mark attendance for an individual resident in an active session (Face recognition or manual)
+   * Prevents duplicates idempotently.
+   */
+  router.post('/sessions/:id/records', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = getActor(req);
+      if (actor.role === StaffRole.GUARD) {
+        throw new ForbiddenError('Guards cannot mark attendance records');
+      }
+
+      const sessionId = req.params.id as string;
+      const { residentId, markMethod } = req.body;
+
+      if (!residentId) {
+        throw new ValidationError('residentId is required');
+      }
+
+      // Check if already marked (duplicate prevention)
+      const existing = await db.attendanceRecord.findUnique({
+        where: {
+          attendanceSessionId_residentId: {
+            attendanceSessionId: sessionId,
+            residentId,
+          },
+        },
+      });
+
+      if (existing) {
+        res.status(200).json({ record: existing, alreadyMarked: true });
+        return;
+      }
+
+      const record = await service.markAttendance({
+        sessionId,
+        residentId,
+        status: AttendanceRecordStatus.PRESENT,
+        markMethod: (markMethod as AttendanceMarkMethod) || AttendanceMarkMethod.FACE_RECOGNITION,
+        markedByUserId: actor.id,
+        markedByRole: actor.role,
+      });
+
+      res.status(201).json({ record, alreadyMarked: false });
     } catch (err) {
       next(err);
     }

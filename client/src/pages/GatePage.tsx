@@ -384,7 +384,7 @@ export const GatePage: React.FC = () => {
                     disabled={isConfirming}
                     leftIcon={<LogOut size={20} />}
                   >
-                    MARK OUT (Exit)
+                    MARK OUT
                   </Button>
                 ) : (
                   <Button
@@ -397,7 +397,7 @@ export const GatePage: React.FC = () => {
                     disabled={isConfirming}
                     leftIcon={<LogIn size={20} />}
                   >
-                    MARK IN (Entry)
+                    MARK IN
                   </Button>
                 )}
                 <span className="text-[11px] text-slate-400 text-center">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { camerasApi } from '../api/cameras.api';
@@ -40,6 +41,7 @@ import {
 export const RecognitionPage: React.FC = () => {
   const { user } = useAuth();
   const { success, error: toastError, info } = useToast();
+
 
   const [cameras, setCameras] = useState<CameraEntity[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');

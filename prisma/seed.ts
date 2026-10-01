@@ -144,11 +144,11 @@ export async function runSeed() {
 
   // 6. Residents (R001 to R005) with predefined presence
   const residentsConfig = [
-    { code: 'R001', name: 'Alex Kumar', room: 'Room 101', presence: PresenceState.IN, moveType: MovementType.IN, moveTime: new Date('2026-09-29T08:30:00Z') },
-    { code: 'R002', name: 'Jordan Sharma', room: 'Room 102', presence: PresenceState.OUT, moveType: MovementType.OUT, moveTime: new Date('2026-09-29T07:30:00Z') },
-    { code: 'R003', name: 'Morgan Patel', room: 'Room 103', presence: PresenceState.IN, moveType: MovementType.IN, moveTime: new Date('2026-09-29T08:45:00Z') },
-    { code: 'R004', name: 'Taylor Singh', room: 'Room 104', presence: PresenceState.OUT, moveType: MovementType.OUT, moveTime: new Date('2026-09-29T18:00:00Z') },
-    { code: 'R005', name: 'Casey Verma', room: 'Room 105', presence: PresenceState.IN, moveType: MovementType.IN, moveTime: new Date('2026-09-29T09:15:00Z') },
+    { code: 'R001', name: 'Rahul Patil', room: 'Room 203', presence: PresenceState.IN, moveType: MovementType.IN, moveTime: new Date('2026-09-29T08:30:00Z') },
+    { code: 'R002', name: 'Amit Joshi', room: 'Room 107', presence: PresenceState.OUT, moveType: MovementType.OUT, moveTime: new Date('2026-09-29T07:30:00Z') },
+    { code: 'R003', name: 'Chetan Agrawal', room: 'Room 101', presence: PresenceState.IN, moveType: MovementType.IN, moveTime: new Date('2026-09-29T08:45:00Z') },
+    { code: 'R004', name: 'Rohan Sharma', room: 'Room 104', presence: PresenceState.OUT, moveType: MovementType.OUT, moveTime: new Date('2026-09-29T18:00:00Z') },
+    { code: 'R005', name: 'Priya Patel', room: 'Room 105', presence: PresenceState.IN, moveType: MovementType.IN, moveTime: new Date('2026-09-29T09:15:00Z') },
   ];
 
   for (const r of residentsConfig) {

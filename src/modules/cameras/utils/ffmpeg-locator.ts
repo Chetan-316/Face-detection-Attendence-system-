@@ -139,7 +139,7 @@ export function checkFfmpegDiagnostic(): FfmpegDiagnostics {
   try {
     const ffmpegOut = execSync(`"${ffmpegPath}" -version`, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 3000,
+      timeout: 8000,
     }).toString();
     const firstLine = ffmpegOut.split('\n')[0].trim();
     ffmpegVersion = firstLine;
@@ -150,7 +150,7 @@ export function checkFfmpegDiagnostic(): FfmpegDiagnostics {
   try {
     const ffprobeOut = execSync(`"${ffprobePath}" -version`, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 3000,
+      timeout: 8000,
     }).toString();
     const firstLine = ffprobeOut.split('\n')[0].trim();
     ffprobeVersion = firstLine;

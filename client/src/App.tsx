@@ -14,6 +14,16 @@ import { RecognitionPage } from './pages/RecognitionPage';
 import { AttendancePage } from './pages/AttendancePage';
 import { ReportsPage } from './pages/ReportsPage';
 
+import { useAuth } from './auth/AuthContext';
+
+const RecognitionRoute: React.FC = () => {
+  const { user } = useAuth();
+  if (user?.role === 'GUARD') {
+    return <Navigate to="/gate" replace />;
+  }
+  return <RecognitionPage />;
+};
+
 export const App: React.FC = () => {
   return (
     <BrowserRouter>
@@ -39,7 +49,7 @@ export const App: React.FC = () => {
               <Route path="reports" element={<ReportsPage />} />
               <Route path="cameras" element={<CamerasPage />} />
               <Route path="gate" element={<GatePage />} />
-              <Route path="recognition" element={<RecognitionPage />} />
+              <Route path="recognition" element={<RecognitionRoute />} />
             </Route>
 
             {/* Fallback */}
