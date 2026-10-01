@@ -66,4 +66,19 @@ export const movementsApi = {
   getResidentPresence: async (residentId: string): Promise<any> => {
     return apiClient<any>(`/residents/${residentId}/presence`);
   },
+
+  confirmMovement: async (payload: {
+    residentId: string;
+    cameraId: string;
+    direction: 'IN' | 'OUT';
+    overrideReason?: string;
+  }): Promise<{ success: boolean; data: MovementEventEntity; message: string }> => {
+    return apiClient<{ success: boolean; data: MovementEventEntity; message: string }>(
+      '/movements/confirm',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
 };

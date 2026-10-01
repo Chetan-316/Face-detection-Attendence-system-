@@ -578,6 +578,7 @@ export class ResidentService {
       roomGroup: resident.roomGroup,
       contactPhone: resident.contactPhone,
       contactEmail: resident.contactEmail,
+      profilePhotoPath: resident.profilePhotoPath || null,
       status: resident.status,
       faceEnrollmentStatus: resident.faceEnrollmentStatus,
       presence: resident.presence

@@ -153,9 +153,10 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
     it('API Redaction: GET /cameras, GET /cameras/:id never leak RTSP credentials to browser', async () => {
       const registered = await request(app)
         .post('/api/v1/cameras')
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Gate Turnstile RTSP',
+          hostelId: hostel1.id,
           sourceType: 'RTSP',
           role: 'IN',
           configMetadata: {
@@ -229,7 +230,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
       // Update camera name and role without passing password (e.g. from frontend edit form)
       const updateRes = await request(app)
         .put(`/api/v1/cameras/${created.id}`)
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Editable RTSP Cam (Updated)',
           role: 'OUT',
@@ -255,7 +256,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
       // Test synthetic lavfi source via testInputOverride to verify probe mechanics
       const res = await request(app)
         .post('/api/v1/cameras/test-connection')
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           sourceType: 'RTSP',
           testInputOverride: 'testsrc=size=640x480:rate=15',
@@ -284,7 +285,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
 
       const res = await request(app)
         .post(`/api/v1/cameras/${camera.id}/test`)
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
 
       expect(res.body.data.reachable).toBe(true);
@@ -295,7 +296,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
     it('Connection test returns friendly error for unreachable host without crashing or leaking secrets', async () => {
       const res = await request(app)
         .post('/api/v1/cameras/test-connection')
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           sourceType: 'RTSP',
           rtspUrl: 'rtsp://admin:SecretPass@192.0.2.1:554/nonexistent',
@@ -868,7 +869,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
       // Operator sends sanitized masked URL in edit
       await request(app)
         .put(`/api/v1/cameras/${cam.id}`)
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Updated Name',
           configMetadata: {
@@ -908,7 +909,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
       // Operator submits form where username is still "***"
       await request(app)
         .put(`/api/v1/cameras/${cam.id}`)
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Preserve Username Cam',
           configMetadata: {
@@ -941,7 +942,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
       // Operator leaves password blank
       await request(app)
         .put(`/api/v1/cameras/${cam.id}`)
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Preserve Password Cam Renamed',
           configMetadata: {
@@ -974,7 +975,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
       // Unrelated edit: change role to ATTENDANCE without passing configMetadata
       await request(app)
         .put(`/api/v1/cameras/${cam.id}`)
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           role: CameraRole.ATTENDANCE,
         })
@@ -994,9 +995,10 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
       const secret = 'MegaUltraSecret123!';
       const res = await request(app)
         .post('/api/v1/cameras')
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Mega Secret Cam',
+          hostelId: hostel1.id,
           sourceType: 'RTSP',
           role: 'GENERAL',
           configMetadata: {

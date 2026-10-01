@@ -8,7 +8,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional
 
 class FaceDetector:
-    def __init__(self, model_path: str, score_threshold: float = 0.6, nms_threshold: float = 0.3):
+    def __init__(self, model_path: str, score_threshold: float = 0.4, nms_threshold: float = 0.3):
         self.model_path = model_path
         self.score_threshold = score_threshold
         self.nms_threshold = nms_threshold

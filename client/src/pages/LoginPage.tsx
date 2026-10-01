@@ -45,7 +45,8 @@ export const LoginPage: React.FC = () => {
     try {
       const response = await authApi.login(username.trim(), password);
       login(response.token, response.user);
-      navigate(from, { replace: true });
+      const destination = response.user.role === 'GUARD' ? '/recognition' : from;
+      navigate(from !== '/' ? from : destination, { replace: true });
     } catch (err: any) {
       // Prompt requirement: display generic "Invalid username or password", do not expose server details
       if (err.status === 401) {

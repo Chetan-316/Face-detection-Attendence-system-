@@ -180,13 +180,18 @@ export class PythonWorkerClient {
     }
   }
 
-  public async processFrame(imageBufferOrBase64: Buffer | string): Promise<FrameProcessingResult> {
+  public async processFrame(
+    imageBufferOrBase64: Buffer | string,
+    options?: { expectedPose?: string; mockPose?: string }
+  ): Promise<FrameProcessingResult> {
     const b64 = typeof imageBufferOrBase64 === 'string'
       ? imageBufferOrBase64
       : imageBufferOrBase64.toString('base64');
 
     return this.sendCommand<FrameProcessingResult>('process_frame', {
       image_base64: b64,
+      expected_pose: options?.expectedPose,
+      mock_pose: options?.mockPose,
     });
   }
 

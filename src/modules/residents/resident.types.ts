@@ -9,6 +9,7 @@ export interface SafeResident {
   roomGroup: string;
   contactPhone: string | null;
   contactEmail: string | null;
+  profilePhotoPath?: string | null;
   status: ResidentStatus;
   faceEnrollmentStatus: FaceEnrollmentStatus;
   presence?: {

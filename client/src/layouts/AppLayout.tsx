@@ -91,77 +91,137 @@ export const AppLayout: React.FC = () => {
         <aside className={`app-sidebar ${isMobileMenuOpen ? 'is-open' : ''}`}>
           <div className="sidebar-section-title">Navigation</div>
           <nav className="sidebar-nav">
-            <NavLink
-              to="/"
-              end
-              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              <LayoutDashboard size={18} />
-              <span>Overview</span>
-            </NavLink>
+            {user?.role === 'GUARD' ? (
+              <>
+                <NavLink
+                  to="/recognition"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Eye size={18} />
+                  <span>Gate Monitor</span>
+                </NavLink>
 
-            <NavLink
-              to="/residents"
-              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              <Users size={18} />
-              <span>Residents</span>
-            </NavLink>
+                <NavLink
+                  to="/residents"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Users size={18} />
+                  <span>Resident Lookup</span>
+                </NavLink>
+              </>
+            ) : user?.role === 'WARDEN' ? (
+              <>
+                <NavLink
+                  to="/"
+                  end
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <LayoutDashboard size={18} />
+                  <span>Dashboard</span>
+                </NavLink>
 
-            <NavLink
-              to="/attendance"
-              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              <CalendarCheck size={18} />
-              <span>Attendance</span>
-            </NavLink>
+                <NavLink
+                  to="/recognition"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Eye size={18} />
+                  <span>Gate Monitor</span>
+                </NavLink>
 
-            <NavLink
-              to="/reports"
-              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              <FileText size={18} />
-              <span>Reports</span>
-            </NavLink>
+                <NavLink
+                  to="/residents"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Users size={18} />
+                  <span>Residents</span>
+                </NavLink>
 
-            <NavLink
-              to="/cameras"
-              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              <Video size={18} />
-              <span>Cameras</span>
-            </NavLink>
+                <NavLink
+                  to="/attendance"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <CalendarCheck size={18} />
+                  <span>Attendance</span>
+                </NavLink>
 
-            <NavLink
-              to="/recognition"
-              className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              <Eye size={18} />
-              <span>Recognition</span>
-            </NavLink>
+                <NavLink
+                  to="/reports"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <FileText size={18} />
+                  <span>Reports</span>
+                </NavLink>
+              </>
+            ) : (
+              <>
+                <NavLink
+                  to="/"
+                  end
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <LayoutDashboard size={18} />
+                  <span>Overview</span>
+                </NavLink>
+
+                <NavLink
+                  to="/residents"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Users size={18} />
+                  <span>Residents</span>
+                </NavLink>
+
+                <NavLink
+                  to="/cameras"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Video size={18} />
+                  <span>Cameras</span>
+                </NavLink>
+
+                <NavLink
+                  to="/attendance"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <CalendarCheck size={18} />
+                  <span>Attendance</span>
+                </NavLink>
+
+                <NavLink
+                  to="/reports"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <FileText size={18} />
+                  <span>Reports</span>
+                </NavLink>
+              </>
+            )}
           </nav>
 
           <div className="sidebar-system-info">
             <div className="system-scope-card">
               <div className="scope-row">
                 <Building2 size={14} className="scope-icon" />
-                <span className="scope-label">Hostel Node</span>
+                <span className="scope-label">Facility</span>
               </div>
-              <span className="scope-value">{user?.hostelId ? 'Assigned Facility' : 'Organization-Wide'}</span>
+              <span className="scope-value">{user?.hostelId ? 'Assigned Hostel' : 'All Facilities'}</span>
               <div className="scope-row mt-2">
                 <Shield size={14} className="scope-icon" />
-                <span className="scope-label">Access Level</span>
+                <span className="scope-label">Role</span>
               </div>
               <span className="scope-value">{user?.role}</span>
-            </div>
-            <div className="phase-indicator">
-              <span>System Operational</span>
             </div>
           </div>
         </aside>

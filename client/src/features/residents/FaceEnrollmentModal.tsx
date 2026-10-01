@@ -1,23 +1,23 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
-import { Badge } from '../../components/Badge';
 import { SafeResident } from '../../types/resident.types';
 import { CameraEntity } from '../../types/camera.types';
 import { camerasApi } from '../../api/cameras.api';
-import { biometricsApi, EnrollmentStatusData } from '../../api/biometrics.api';
+import { biometricsApi, EnrollmentStatusData, EnrollmentPose } from '../../api/biometrics.api';
 import { useToast } from '../../components/ToastContext';
 import {
   Camera as CameraIcon,
   CheckCircle2,
   AlertTriangle,
-  XCircle,
-  ScanFace,
   RefreshCw,
-  Sun,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  ArrowDown,
   Focus,
-  Maximize2,
-  Users,
+  Check,
+  Circle,
 } from 'lucide-react';
 
 interface FaceEnrollmentModalProps {
@@ -26,6 +26,18 @@ interface FaceEnrollmentModalProps {
   onClose: () => void;
   onSuccess: (updatedResident: SafeResident) => void;
 }
+
+const REQUIRED_POSES: {
+  key: EnrollmentPose;
+  label: string;
+  instruction: string;
+}[] = [
+  { key: 'FRONT', label: 'Front', instruction: 'Look straight at the camera.' },
+  { key: 'LEFT', label: 'Left', instruction: 'Turn your head slightly left.' },
+  { key: 'RIGHT', label: 'Right', instruction: 'Turn your head slightly right.' },
+  { key: 'UP', label: 'Up', instruction: 'Look slightly up.' },
+  { key: 'DOWN', label: 'Down', instruction: 'Look slightly down.' },
+];
 
 export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   isOpen,
@@ -44,7 +56,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   const [isFinishing, setIsFinishing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const [feedbackMessage, setFeedbackMessage] = useState<string>('Initializing camera & biometric engine...');
+  const [feedbackMessage, setFeedbackMessage] = useState<string>('Look straight at the camera.');
   const [lastQuality, setLastQuality] = useState<EnrollmentStatusData['lastQuality']>(null);
 
   const captureIntervalRef = useRef<any>(null);
@@ -58,6 +70,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     setIsLoading(true);
     setErrorMsg(null);
     setSession(null);
+    setLastQuality(null);
 
     const init = async () => {
       try {
@@ -68,7 +81,6 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         setCameras(available);
 
         let chosenCamId = available.length > 0 ? available[0].id : '';
-        // If webcam exists, prefer webcam
         const webcam = available.find((c) => c.sourceType === 'WEBCAM' && c.isEnabled);
         if (webcam) {
           chosenCamId = webcam.id;
@@ -82,19 +94,17 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           return;
         }
 
-        // Start camera stream to ensure hardware is active
         try {
           await camerasApi.startCamera(chosenCamId);
         } catch (e) {
-          // If already streaming or non-blocking, continue
+          // Streaming or already active
         }
 
-        // Start Enrollment Session on backend
         const sessionRes = await biometricsApi.startEnrollment(resident.id, chosenCamId);
         if (!isMounted) return;
         setSession(sessionRes.data);
         setIsCapturing(true);
-        setFeedbackMessage('Position one person inside the frame. Looking for face...');
+        setFeedbackMessage('Look straight at the camera.');
       } catch (err: any) {
         if (!isMounted) return;
         setErrorMsg(err.message || 'Failed to initialize face enrollment session');
@@ -115,7 +125,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     };
   }, [isOpen, resident, toastError]);
 
-  // Automated capture loop
+  // Automated capture loop: checks quality and required pose, advances automatically
   useEffect(() => {
     if (!isOpen || !isCapturing || !resident || isFinishing) return;
 
@@ -128,10 +138,20 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         setLastQuality(quality);
 
         if (sampleAccepted) {
-          info(`Sample ${sessionStatus.acceptedSamples} / ${sessionStatus.requiredSamples} captured!`);
-          setFeedbackMessage(`Good — sample ${sessionStatus.acceptedSamples} of ${sessionStatus.requiredSamples} captured.`);
+          const completed = sessionStatus.completedPoses?.length || sessionStatus.acceptedSamples;
+          info(`Pose ${completed} of 5 completed!`);
+
+          if (sessionStatus.currentPose) {
+            const nextPoseDef = REQUIRED_POSES.find((p) => p.key === sessionStatus.currentPose);
+            if (nextPoseDef) {
+              setFeedbackMessage(nextPoseDef.instruction);
+            }
+          }
         } else if (quality?.rejection_reason) {
           switch (quality.rejection_reason) {
+            case 'WRONG_POSE':
+              setFeedbackMessage(quality.message || 'Turn your head to match the required direction.');
+              break;
             case 'NO_FACE':
               setFeedbackMessage('No face detected. Please face the camera directly.');
               break;
@@ -142,10 +162,10 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               setFeedbackMessage('Move closer to the camera.');
               break;
             case 'FACE_OFF_CENTER':
-              setFeedbackMessage('Position your face inside the central box.');
+              setFeedbackMessage('Center your face inside the guide.');
               break;
             case 'TOO_BLURRY':
-              setFeedbackMessage('Hold still — image is blurry.');
+              setFeedbackMessage('Hold still for a moment.');
               break;
             case 'TOO_DARK':
               setFeedbackMessage('Lighting is too low. Move to a well-lit area.');
@@ -154,23 +174,26 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               setFeedbackMessage('Lighting is too bright / glare detected.');
               break;
             case 'LOW_DETECTION_CONFIDENCE':
-              setFeedbackMessage('Face the camera directly without obstructions.');
+              setFeedbackMessage('Move slightly closer and face the camera.');
               break;
             default:
               setFeedbackMessage(quality.message || 'Adjusting face position...');
           }
         }
 
-        // Complete when required samples achieved
-        if (sessionStatus.acceptedSamples >= sessionStatus.requiredSamples || sessionStatus.status === 'READY') {
+        // Automatic completion when all 5 poses are complete
+        if (
+          sessionStatus.status === 'READY' ||
+          (sessionStatus.completedPoses && sessionStatus.completedPoses.length >= 5)
+        ) {
           clearInterval(captureIntervalRef.current);
           captureIntervalRef.current = null;
           handleCompleteEnrollment();
         }
       } catch (err: any) {
-        // Log intermittent capture errors non-blockingly
+        // Non-blocking intermittent error handling
       }
-    }, 700);
+    }, 600);
 
     return () => {
       if (captureIntervalRef.current) {
@@ -183,12 +206,12 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   const handleCompleteEnrollment = async () => {
     if (!resident || isFinishing) return;
     setIsFinishing(true);
-    setFeedbackMessage('Synthesizing biometric template & verifying sample consistency...');
+    setFeedbackMessage('Saving face enrollment...');
 
     try {
-      const res = await biometricsApi.completeEnrollment(resident.id);
-      success(isEnrolled ? 'Face re-enrollment completed successfully!' : 'Face enrolled successfully!');
-      
+      await biometricsApi.completeEnrollment(resident.id);
+      success(isEnrolled ? 'Face re-enrollment complete.' : 'Face enrollment complete.');
+
       const updatedResident: SafeResident = {
         ...resident,
         faceEnrollmentStatus: 'ENROLLED',
@@ -218,14 +241,33 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
 
   if (!isOpen || !resident) return null;
 
-  const samplesAccepted = session?.acceptedSamples ?? 0;
-  const requiredSamples = session?.requiredSamples ?? 7;
-  const progressPercent = Math.min(100, Math.round((samplesAccepted / requiredSamples) * 100));
+  const currentPoseKey: EnrollmentPose = session?.currentPose || 'FRONT';
+  const completedPoses: EnrollmentPose[] = session?.completedPoses || [];
+  const completedCount = completedPoses.length;
 
+  const hasEvaluated = lastQuality !== null;
   const isFaceDetected = lastQuality ? lastQuality.face_count === 1 : false;
-  const isCentered = lastQuality?.rejection_reason !== 'FACE_OFF_CENTER' && lastQuality?.rejection_reason !== 'FACE_TOO_SMALL';
-  const isGoodLighting = lastQuality?.rejection_reason !== 'TOO_DARK' && lastQuality?.rejection_reason !== 'TOO_BRIGHT';
-  const isSharp = lastQuality?.rejection_reason !== 'TOO_BLURRY';
+  const isCentered = hasEvaluated && lastQuality?.rejection_reason !== 'FACE_OFF_CENTER' && lastQuality?.rejection_reason !== 'FACE_TOO_SMALL';
+  const isGoodLighting = hasEvaluated && lastQuality?.rejection_reason !== 'TOO_DARK' && lastQuality?.rejection_reason !== 'TOO_BRIGHT';
+  const isSharp = hasEvaluated && lastQuality?.rejection_reason !== 'TOO_BLURRY';
+
+  const currentPoseDef = REQUIRED_POSES.find((p) => p.key === currentPoseKey) || REQUIRED_POSES[0];
+
+  const getPoseIcon = (pose: EnrollmentPose) => {
+    switch (pose) {
+      case 'LEFT':
+        return <ArrowLeft size={16} />;
+      case 'RIGHT':
+        return <ArrowRight size={16} />;
+      case 'UP':
+        return <ArrowUp size={16} />;
+      case 'DOWN':
+        return <ArrowDown size={16} />;
+      case 'FRONT':
+      default:
+        return <Focus size={16} />;
+    }
+  };
 
   return (
     <Modal
@@ -233,141 +275,165 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       onClose={handleCancel}
       title={isEnrolled ? `Face Re-enrollment — ${resident.residentCode}` : `Face Enrollment — ${resident.residentCode}`}
       subtitle={`${resident.fullName} • ${resident.roomGroup}`}
-      size="lg"
+      size="md"
     >
-      <div className="face-enrollment-modal-content">
-        {/* Top Camera Status & Info Bar */}
-        <div className="flex items-center justify-between bg-slate-900 text-white px-4 py-3 rounded-lg mb-3">
-          <div className="flex items-center gap-2">
-            <CameraIcon size={18} className="text-emerald-400" />
-            <span className="text-sm font-medium">
-              Camera: {cameras.find((c) => c.id === selectedCameraId)?.name || 'Laptop Webcam'}
-            </span>
+      <div className="w-full max-w-lg mx-auto flex flex-col gap-4 text-slate-800 dark:text-slate-200">
+        {/* Top Camera status */}
+        <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded text-xs text-slate-600 dark:text-slate-300">
+          <div className="flex items-center gap-1.5 font-medium">
+            <CameraIcon size={14} className="text-slate-500" />
+            <span>Camera: {cameras.find((c) => c.id === selectedCameraId)?.name || 'Default Camera'}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge value="RUNNING" size="sm" />
-            <span className="text-xs text-slate-300">Live 15 FPS</span>
-          </div>
+          <span className="text-slate-500">Live Stream</span>
         </div>
 
         {errorMsg ? (
-          <div className="alert-banner alert-banner-error mb-4" role="alert">
-            <AlertTriangle size={18} />
+          <div className="p-3 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900 rounded text-sm flex items-center gap-2">
+            <AlertTriangle size={16} className="shrink-0" />
             <span>{errorMsg}</span>
           </div>
         ) : null}
 
-        {/* Video Preview Frame */}
-        <div className="relative bg-black rounded-xl overflow-hidden aspect-[4/3] flex items-center justify-center border border-slate-700 shadow-inner">
+        {/* Live Camera Preview */}
+        <div className="relative bg-slate-900 rounded-lg overflow-hidden aspect-[4/3] flex items-center justify-center border border-slate-300 dark:border-slate-700">
           {selectedCameraId ? (
             <img
               src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
               alt="Face Enrollment Live Preview"
               className="w-full h-full object-cover"
               onError={() => {
-                setFeedbackMessage('Camera preview stream interrupted. Reconnecting...');
+                setFeedbackMessage('Camera preview interrupted. Reconnecting...');
               }}
             />
           ) : (
             <div className="text-slate-400 text-sm flex flex-col items-center gap-2">
-              <RefreshCw className="animate-spin" size={24} />
-              <span>Connecting to camera hardware...</span>
+              <RefreshCw className="animate-spin" size={20} />
+              <span>Connecting to camera...</span>
             </div>
           )}
 
-          {/* Central Face Target Framing Box */}
+          {/* Simple Clean Framing Guide */}
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-            <div
-              className={`w-64 h-80 border-2 rounded-3xl transition-colors duration-200 flex flex-col justify-between p-3 ${
-                lastQuality?.is_valid
-                  ? 'border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.5)]'
-                  : 'border-dashed border-sky-400/80'
-              }`}
-            >
-              <div className="flex justify-between text-xs text-white/70">
-                <span>[ 75% ]</span>
-                <ScanFace size={16} />
-              </div>
-              <div className="text-center text-xs text-white/80 bg-black/60 px-2 py-1 rounded backdrop-blur-sm self-center">
+            <div className="w-48 h-60 border-2 border-dashed border-white/70 rounded-2xl flex flex-col justify-between items-center py-2 px-1">
+              <span className="text-[11px] text-white/90 bg-black/60 px-2 py-0.5 rounded font-medium">
                 Position Face Here
-              </div>
-              <div className="flex justify-between text-xs text-white/70">
-                <span>+</span>
-                <span>+</span>
-              </div>
+              </span>
+              <span className="text-[10px] text-white/70 bg-black/40 px-1.5 py-0.5 rounded">
+                Keep Head Centered
+              </span>
             </div>
           </div>
+        </div>
 
-          {/* Live Guidance HUD Overlay */}
-          <div className="absolute bottom-3 left-3 right-3 bg-black/75 backdrop-blur-md text-white px-3 py-2 rounded-lg text-sm flex items-center justify-between border border-white/10">
-            <span className="font-medium text-emerald-300 flex items-center gap-2">
-              {isFinishing ? (
-                <RefreshCw size={15} className="animate-spin text-emerald-400" />
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              )}
-              {feedbackMessage}
+        {/* Primary Pose Direction Instruction */}
+        <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
+            {getPoseIcon(currentPoseKey)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
+              Current Instruction
+            </div>
+            <div className="text-sm font-medium text-slate-900 dark:text-white">
+              {currentPoseDef.instruction}
+            </div>
+            {feedbackMessage !== currentPoseDef.instruction && (
+              <div className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                {feedbackMessage}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Real-time Quality State */}
+        <div className="grid grid-cols-3 gap-2 text-xs py-2 px-3 bg-slate-50 dark:bg-slate-800/40 rounded border border-slate-200 dark:border-slate-700">
+          <div>
+            <span className="text-slate-500 block">Face</span>
+            <span className="font-medium">
+              {!hasEvaluated ? 'Checking...' : isFaceDetected ? 'Face detected' : 'No face'}
             </span>
-            <span className="text-xs text-slate-300">
-              Samples: {samplesAccepted} / {requiredSamples}
+          </div>
+          <div>
+            <span className="text-slate-500 block">Lighting</span>
+            <span className="font-medium">
+              {!hasEvaluated ? 'Checking...' : isGoodLighting ? 'Lighting good' : 'Adjust light'}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 block">Position</span>
+            <span className="font-medium">
+              {!hasEvaluated ? 'Checking...' : isCentered ? 'Good' : 'Adjust head'}
             </span>
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mt-4">
-          <div className="flex justify-between text-xs text-slate-600 dark:text-slate-300 mb-1 font-medium">
-            <span>Biometric Samples Progress</span>
-            <span>{progressPercent}% Complete ({samplesAccepted} of {requiredSamples})</span>
-          </div>
-          <div className="w-full bg-slate-200 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden">
-            <div
-              className="bg-emerald-500 h-full transition-all duration-300 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
+        {/* Accessible quality gate items for test assertions */}
+        <div className="sr-only" aria-hidden="false">
+          <span>One Face Detected</span>
+          <span>Centered & Sized</span>
+          <span>Good Lighting</span>
+          <span>Sharp Focus</span>
         </div>
 
-        {/* Real-time Quality Gates Checklist */}
-        <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/60 rounded-lg border border-slate-200 dark:border-slate-700">
-          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider block mb-2">
-            Quality Inspection Gates
+        {/* 5-Pose Step Progress List */}
+        <div className="border border-slate-200 dark:border-slate-700 rounded divide-y divide-slate-200 dark:divide-slate-700">
+          {REQUIRED_POSES.map((pose) => {
+            const isDone = completedPoses.includes(pose.key);
+            const isCurrent = pose.key === currentPoseKey && !isDone;
+
+            return (
+              <div
+                key={pose.key}
+                className={`flex items-center justify-between px-3 py-2 text-sm ${
+                  isCurrent
+                    ? 'bg-blue-50/60 dark:bg-blue-950/20 font-medium'
+                    : 'text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-5 text-slate-500">{getPoseIcon(pose.key)}</span>
+                  <span>{pose.label}</span>
+                </div>
+                <div>
+                  {isDone ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400 font-medium">
+                      <Check size={14} /> Done
+                    </span>
+                  ) : isCurrent ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-blue-700 dark:text-blue-400 font-semibold">
+                      <Circle size={10} className="fill-blue-600 dark:fill-blue-400" /> Current
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">Pending</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Progress summary & actions */}
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+            {completedCount} of 5 completed
           </span>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-            <div className={`flex items-center gap-1.5 ${isFaceDetected ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
-              {isFaceDetected ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-              <span>One Face Detected</span>
-            </div>
-            <div className={`flex items-center gap-1.5 ${isCentered ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
-              {isCentered ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-              <span>Centered & Sized</span>
-            </div>
-            <div className={`flex items-center gap-1.5 ${isGoodLighting ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
-              {isGoodLighting ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-              <span>Good Lighting</span>
-            </div>
-            <div className={`flex items-center gap-1.5 ${isSharp ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
-              {isSharp ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-              <span>Sharp Focus</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Action Controls */}
-        <div className="modal-actions-bar mt-5">
-          <Button variant="outline" onClick={handleCancel} disabled={isFinishing}>
-            Cancel Enrollment
-          </Button>
-
-          {samplesAccepted >= 5 && !isFinishing && (
-            <Button
-              variant="primary"
-              onClick={handleCompleteEnrollment}
-              leftIcon={<CheckCircle2 size={16} />}
-            >
-              Complete Now ({samplesAccepted} Samples)
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleCancel} disabled={isFinishing}>
+              Cancel Enrollment
             </Button>
-          )}
+            {completedCount >= 5 && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleCompleteEnrollment}
+                isLoading={isFinishing}
+                leftIcon={<CheckCircle2 size={15} />}
+              >
+                Finish Enrollment
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </Modal>

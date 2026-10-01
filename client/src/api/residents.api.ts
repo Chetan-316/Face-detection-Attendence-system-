@@ -69,4 +69,32 @@ export const residentsApi = {
       body: JSON.stringify({ reason }),
     });
   },
+
+  getProfilePhotoUrl(id: string): string {
+    return `/api/v1/residents/${encodeURIComponent(id)}/profile-photo`;
+  },
+
+  async uploadProfilePhoto(id: string, imageBase64: string): Promise<{ success: boolean; profilePhotoUrl: string }> {
+    return apiClient<{ success: boolean; profilePhotoUrl: string }>(`/residents/${encodeURIComponent(id)}/profile-photo`, {
+      method: 'POST',
+      body: JSON.stringify({ imageBase64 }),
+    });
+  },
+
+  async captureProfilePhoto(id: string, cameraId: string): Promise<{ success: boolean; profilePhotoUrl: string }> {
+    return apiClient<{ success: boolean; profilePhotoUrl: string }>(`/residents/${encodeURIComponent(id)}/profile-photo`, {
+      method: 'POST',
+      body: JSON.stringify({ cameraId }),
+    });
+  },
+
+  async deleteProfilePhoto(id: string): Promise<{ success: boolean; message: string }> {
+    return apiClient<{ success: boolean; message: string }>(`/residents/${encodeURIComponent(id)}/profile-photo`, {
+      method: 'DELETE',
+    });
+  },
+
+  async listHostels(): Promise<{ data: Array<{ id: string; code: string; name: string }> }> {
+    return apiClient<{ data: Array<{ id: string; code: string; name: string }> }>('/residents/hostels');
+  },
 };

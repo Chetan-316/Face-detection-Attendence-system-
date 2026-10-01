@@ -324,7 +324,7 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       expect(res.body.data.residentId).toBe(resident1.id);
       expect(res.body.data.cameraId).toBe(testCamera.id);
       expect(res.body.data.status).toBe('CAPTURING');
-      expect(res.body.data.requiredSamples).toBe(7);
+      expect(res.body.data.requiredSamples).toBe(5);
       expect(res.body.data.acceptedSamples).toBe(0);
       expect(res.body.data.embedding).toBeUndefined(); // NEVER exposes raw embedding
     });
@@ -447,7 +447,7 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
 
       expect(res.body.data.status).toBe('CAPTURING');
       expect(res.body.data.acceptedSamples).toBe(0);
-      expect(res.body.data.requiredSamples).toBe(7);
+      expect(res.body.data.requiredSamples).toBe(5);
       expect(res.body.data.progressPercentage).toBe(0);
       expect(res.body.data.embedding).toBeUndefined();
       expect(res.body.data.template).toBeUndefined();
@@ -644,6 +644,240 @@ describe('Step 05: Face Enrollment Pipeline Tests', () => {
       expect(res.body.data.sampleAccepted).toBe(true);
       expect(res.body.data.sessionStatus.acceptedSamples).toBe(1);
       expect(res.body.data.embedding).toBeUndefined(); // Never returned
+    });
+  });
+
+  describe('3b. Pose Diversity & Validation Rules (FRONT, LEFT, RIGHT, UP, DOWN)', () => {
+    it('enforces sequential guided poses and prevents incorrect or duplicate pose progression', async () => {
+      // 1. Start session -> initial required pose is FRONT
+      const startRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/start`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .expect(201);
+
+      expect(startRes.body.data.currentPose).toBe('FRONT');
+      expect(startRes.body.data.completedPoses).toEqual([]);
+
+      // 2. Bad-quality frame does not advance
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: false,
+          rejection_reason: 'TOO_BLURRY',
+          message: 'Hold still for a moment.',
+          face_count: 1,
+          detected_pose: 'FRONT',
+        },
+        embedding: null,
+      });
+
+      const badRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(badRes.body.data.sampleAccepted).toBe(false);
+      expect(badRes.body.data.sessionStatus.currentPose).toBe('FRONT');
+      expect(badRes.body.data.sessionStatus.completedPoses).toEqual([]);
+
+      // 3. Pose mismatch: sending LEFT when FRONT is required does NOT advance
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          detected_pose: 'LEFT',
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
+      const mismatchRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(mismatchRes.body.data.sampleAccepted).toBe(false);
+      expect(mismatchRes.body.data.quality.rejection_reason).toBe('WRONG_POSE');
+      expect(mismatchRes.body.data.sessionStatus.currentPose).toBe('FRONT');
+
+      // 4. Capture valid FRONT sample -> advances to LEFT
+      await new Promise((r) => setTimeout(r, 410));
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          detected_pose: 'FRONT',
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
+      const frontRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(frontRes.body.data.sampleAccepted).toBe(true);
+      expect(frontRes.body.data.sessionStatus.currentPose).toBe('LEFT');
+      expect(frontRes.body.data.sessionStatus.completedPoses).toEqual(['FRONT']);
+
+      // 5. Duplicate pose: sending FRONT when LEFT is required does NOT satisfy LEFT
+      await new Promise((r) => setTimeout(r, 410));
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          detected_pose: 'FRONT',
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
+      const dupFrontRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(dupFrontRes.body.data.sampleAccepted).toBe(false);
+      expect(dupFrontRes.body.data.quality.rejection_reason).toBe('WRONG_POSE');
+      expect(dupFrontRes.body.data.sessionStatus.currentPose).toBe('LEFT');
+
+      // 6. Capture LEFT -> advances to RIGHT
+      await new Promise((r) => setTimeout(r, 410));
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          detected_pose: 'LEFT',
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
+      const leftRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(leftRes.body.data.sampleAccepted).toBe(true);
+      expect(leftRes.body.data.sessionStatus.currentPose).toBe('RIGHT');
+      expect(leftRes.body.data.sessionStatus.completedPoses).toEqual(['FRONT', 'LEFT']);
+
+      // 7. LEFT cannot satisfy RIGHT
+      await new Promise((r) => setTimeout(r, 410));
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          detected_pose: 'LEFT',
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
+      const wrongRightRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(wrongRightRes.body.data.sampleAccepted).toBe(false);
+      expect(wrongRightRes.body.data.quality.rejection_reason).toBe('WRONG_POSE');
+      expect(wrongRightRes.body.data.sessionStatus.currentPose).toBe('RIGHT');
+
+      // 8. Capture RIGHT -> advances to UP
+      await new Promise((r) => setTimeout(r, 410));
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          detected_pose: 'RIGHT',
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
+      const rightRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(rightRes.body.data.sampleAccepted).toBe(true);
+      expect(rightRes.body.data.sessionStatus.currentPose).toBe('UP');
+
+      // 9. Capture UP -> advances to DOWN
+      await new Promise((r) => setTimeout(r, 410));
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          detected_pose: 'UP',
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
+      const upRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(upRes.body.data.sampleAccepted).toBe(true);
+      expect(upRes.body.data.sessionStatus.currentPose).toBe('DOWN');
+
+      // 10. Capture DOWN -> all 5 complete, status READY
+      await new Promise((r) => setTimeout(r, 410));
+      vi.spyOn(mockWorkerClient, 'processFrame').mockResolvedValueOnce({
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Good quality face sample detected',
+          face_count: 1,
+          detected_pose: 'DOWN',
+        },
+        embedding: Array(128).fill(0.088),
+      });
+
+      const downRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/capture`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .send({})
+        .expect(200);
+
+      expect(downRes.body.data.sampleAccepted).toBe(true);
+      expect(downRes.body.data.sessionStatus.isReady).toBe(true);
+      expect(downRes.body.data.sessionStatus.status).toBe('READY');
+      expect(downRes.body.data.sessionStatus.completedPoses).toEqual(['FRONT', 'LEFT', 'RIGHT', 'UP', 'DOWN']);
+
+      // 11. Complete enrollment succeeds
+      const completeRes = await request(app)
+        .post(`/api/v1/residents/${resident1.id}/face-enrollment/complete`)
+        .set('Authorization', `Bearer ${warden1Token}`)
+        .expect(200);
+
+      expect(completeRes.body.data.enrollmentStatus).toBe('ENROLLED');
     });
   });
 

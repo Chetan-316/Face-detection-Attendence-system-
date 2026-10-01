@@ -266,4 +266,106 @@ describe('Movement & Presence Domain Tests', () => {
     });
     expect(presence?.currentState).toBe(PresenceState.OUT);
   });
+
+  describe('Supervised Movement Confirmation (POST /api/v1/movements/confirm)', () => {
+    it('allows Warden to confirm supervised entry and exit', async () => {
+      const { createApp } = await import('../src/api/app');
+      const { tokenService } = await import('../src/api/auth/token.service');
+      const request = (await import('supertest')).default;
+
+      const app = createApp(testPrisma);
+
+      const wardenUser = await testPrisma.user.create({
+        data: {
+          organizationId: orgId,
+          hostelId: hostelId,
+          username: 'warden_mov',
+          fullName: 'Warden Mov',
+          passwordHash: 'dummy',
+          role: StaffRole.WARDEN,
+        },
+      });
+
+      const token = tokenService.generateToken({
+        sub: wardenUser.id,
+        organizationId: orgId,
+        hostelId: hostelId,
+        role: StaffRole.WARDEN,
+      }).token;
+
+      const camera = await testPrisma.camera.create({
+        data: {
+          organizationId: orgId,
+          hostelId: hostelId,
+          name: 'Main Gate IN',
+          sourceType: 'WEBCAM',
+          role: 'IN',
+          isEnabled: true,
+          configMetadata: { backend: 'synthetic' },
+        },
+      });
+
+      const resident = await residentService.createResident({
+        organizationId: orgId,
+        hostelId: hostelId,
+        residentCode: 'R_SUP_1',
+        fullName: 'Supervised Resident',
+        roomGroup: '107',
+        initialPresence: PresenceState.OUT,
+      });
+
+      // Confirm Entry (aligned with camera role ENTRY -> IN)
+      const res = await request(app)
+        .post('/api/v1/movements/confirm')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          residentId: resident.id,
+          cameraId: camera.id,
+          direction: 'IN',
+        })
+        .expect(201);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.movementType).toBe('IN');
+
+      const presenceAfter = await testPrisma.residentPresence.findUnique({
+        where: { residentId: resident.id },
+      });
+      expect(presenceAfter?.currentState).toBe(PresenceState.IN);
+
+      // Overriding direction (camera is ENTRY, but confirming OUT) without reason -> 400
+      const overrideFail = await request(app)
+        .post('/api/v1/movements/confirm')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          residentId: resident.id,
+          cameraId: camera.id,
+          direction: 'OUT',
+        })
+        .expect(400);
+
+      expect(overrideFail.body.error.message).toMatch(/override reason is required/i);
+
+      // Overriding direction with reason -> 201
+      const overrideSuccess = await request(app)
+        .post('/api/v1/movements/confirm')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          residentId: resident.id,
+          cameraId: camera.id,
+          direction: 'OUT',
+          overrideReason: 'Resident physically walked out through the in-gate',
+        })
+        .expect(201);
+
+      expect(overrideSuccess.body.success).toBe(true);
+      expect(overrideSuccess.body.data.movementType).toBe('OUT');
+      expect(overrideSuccess.body.data.notes).toMatch(/Direction overridden/i);
+
+      const presenceFinal = await testPrisma.residentPresence.findUnique({
+        where: { residentId: resident.id },
+      });
+      expect(presenceFinal?.currentState).toBe(PresenceState.OUT);
+    });
+  });
 });

@@ -13,6 +13,7 @@ import {
   EnrollmentSession,
   EnrollmentStatusResponse,
   BiometricQualityResult,
+  EnrollmentPose,
 } from './biometric.types';
 import {
   EnrollmentSessionError,
@@ -137,9 +138,13 @@ export class EnrollmentService {
       startedAt: now,
       expiresAt,
       status: 'CAPTURING',
-      requiredSamples: 7,
+      requiredSamples: 5,
       samplesAccepted: 0,
       samplesRejected: 0,
+      requiredPoses: ['FRONT', 'LEFT', 'RIGHT', 'UP', 'DOWN'],
+      currentPoseIndex: 0,
+      completedPoses: [],
+      acceptedPoseEmbeddings: {},
       lastQuality: null,
       lastCaptureTime: 0,
       acceptedEmbeddings: [],
@@ -148,6 +153,23 @@ export class EnrollmentService {
     this.sessions.set(residentId, session);
 
     return this.buildStatusResponse(session);
+  }
+
+  public getPoseInstruction(pose: EnrollmentPose): string {
+    switch (pose) {
+      case 'FRONT':
+        return 'Look straight at the camera.';
+      case 'LEFT':
+        return 'Turn slightly left.';
+      case 'RIGHT':
+        return 'Turn slightly right.';
+      case 'UP':
+        return 'Look slightly up.';
+      case 'DOWN':
+        return 'Look slightly down.';
+      default:
+        return 'Face the camera directly.';
+    }
   }
 
   /**
@@ -211,8 +233,14 @@ export class EnrollmentService {
       throw new ValidationError('Camera failed to deliver snapshot frame');
     }
 
+    const requiredPose = session.currentPoseIndex < session.requiredPoses.length
+      ? session.requiredPoses[session.currentPoseIndex]
+      : null;
+
     // Run server frame through Python worker
-    const processResult = await this.workerClient.processFrame(snapshot.frameBuffer);
+    const processResult = await this.workerClient.processFrame(snapshot.frameBuffer, {
+      expectedPose: requiredPose || undefined,
+    });
     const quality: BiometricQualityResult = processResult?.quality || {
       is_valid: false,
       rejection_reason: 'NO_FACE',
@@ -222,19 +250,38 @@ export class EnrollmentService {
 
     let sampleAccepted = false;
 
-    if (quality.is_valid && processResult?.embedding) {
-      // Enforce capture interval pacing (at least 400ms between accepted samples)
-      const now = Date.now();
-      const timeSinceLast = now - session.lastCaptureTime;
+    const detectedPose = quality.detected_pose !== undefined
+      ? quality.detected_pose
+      : (quality.metrics as any)?.detected_pose !== undefined
+      ? (quality.metrics as any)?.detected_pose
+      : (quality.is_valid ? requiredPose : null);
 
-      if (timeSinceLast >= 400 && session.samplesAccepted < session.requiredSamples) {
-        session.acceptedEmbeddings.push(processResult.embedding);
-        session.samplesAccepted += 1;
-        session.lastCaptureTime = now;
-        sampleAccepted = true;
+    if (quality.is_valid && processResult?.embedding && requiredPose) {
+      if (detectedPose !== requiredPose) {
+        session.samplesRejected += 1;
+        quality.is_valid = false;
+        quality.rejection_reason = 'WRONG_POSE';
+        quality.message = this.getPoseInstruction(requiredPose);
+      } else {
+        // Enforce capture interval pacing (at least 400ms between accepted samples)
+        const now = Date.now();
+        const timeSinceLast = now - session.lastCaptureTime;
 
-        if (session.samplesAccepted >= session.requiredSamples) {
-          session.status = 'READY';
+        if (timeSinceLast >= 400 && session.samplesAccepted < session.requiredSamples) {
+          session.acceptedEmbeddings.push(processResult.embedding);
+          session.acceptedPoseEmbeddings[requiredPose] = processResult.embedding;
+          session.completedPoses.push(requiredPose);
+          session.currentPoseIndex += 1;
+          session.samplesAccepted += 1;
+          session.lastCaptureTime = now;
+          sampleAccepted = true;
+
+          if (
+            session.completedPoses.length >= session.requiredPoses.length &&
+            session.samplesAccepted >= session.requiredSamples
+          ) {
+            session.status = 'READY';
+          }
         }
       }
     } else {
@@ -280,11 +327,11 @@ export class EnrollmentService {
       throw new EnrollmentSessionError('Enrollment session has expired', 410);
     }
 
-    // Minimum 5 samples required for robust multi-sample template
+    // Minimum 5 samples required and all 5 poses completed
     const minRequired = 5;
-    if (session.samplesAccepted < minRequired) {
+    if (session.samplesAccepted < minRequired || session.completedPoses.length < session.requiredPoses.length) {
       throw new ValidationError(
-        `Insufficient samples accepted (${session.samplesAccepted}/${minRequired} required). Please capture more samples.`
+        `Insufficient samples or poses completed (${session.completedPoses.length}/${session.requiredPoses.length} poses, ${session.samplesAccepted}/${minRequired} samples required). Please complete all required poses.`
       );
     }
 
@@ -338,6 +385,7 @@ export class EnrollmentService {
             modelVersion: '2021dec',
             samplesCount,
             consistencyScore,
+            posesCompleted: session.completedPoses.join(','),
             enrolledVia: 'WEBCAM_ENROLLMENT',
           },
           enrolledByUserId: actor.id,
@@ -568,6 +616,10 @@ export class EnrollmentService {
       Math.round((session.samplesAccepted / session.requiredSamples) * 100)
     );
 
+    const currentPose = session.currentPoseIndex < session.requiredPoses.length
+      ? session.requiredPoses[session.currentPoseIndex]
+      : null;
+
     return {
       sessionId: session.sessionId,
       residentId: session.residentId,
@@ -576,8 +628,11 @@ export class EnrollmentService {
       requiredSamples: session.requiredSamples,
       acceptedSamples: session.samplesAccepted,
       rejectedSamples: session.samplesRejected,
+      currentPose,
+      completedPoses: [...session.completedPoses],
+      requiredPoses: [...session.requiredPoses],
       progressPercentage: progress,
-      isReady: session.samplesAccepted >= 5,
+      isReady: session.completedPoses.length >= session.requiredPoses.length && session.samplesAccepted >= 5,
       lastQuality: session.lastQuality,
       expiresAt: session.expiresAt.toISOString(),
     };

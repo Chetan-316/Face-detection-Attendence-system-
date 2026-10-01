@@ -386,7 +386,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
 
         const res = await request(app)
           .post('/api/v1/cameras/test-connection')
-          .set('Authorization', `Bearer ${wardenToken}`)
+          .set('Authorization', `Bearer ${adminToken}`)
           .send({
             sourceType: 'RTSP',
             testInputOverride: 'testsrc=size=640x480:rate=15',
@@ -407,7 +407,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
 
         const res = await request(app)
           .post('/api/v1/cameras')
-          .set('Authorization', `Bearer ${wardenToken}`)
+          .set('Authorization', `Bearer ${adminToken}`)
           .send({
             name: 'Malicious Synthetic Cam',
             sourceType: 'RTSP',

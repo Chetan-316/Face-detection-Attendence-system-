@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { camerasApi } from '../api/cameras.api';
 import { recognitionApi } from '../api/recognition.api';
+import { residentsApi } from '../api/residents.api';
 import { CameraEntity } from '../types/camera.types';
 import {
   RecognitionObservation,
@@ -14,6 +15,8 @@ import {
   PresenceCounts,
   AutomationStatus,
 } from '../types/movement.types';
+import { Modal } from '../components/Modal';
+import { Button } from '../components/Button';
 import {
   Play,
   Square,
@@ -29,6 +32,9 @@ import {
   AlertCircle,
   Eye,
   Camera as CameraIcon,
+  LogIn,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
 
 export const RecognitionPage: React.FC = () => {
@@ -51,6 +57,12 @@ export const RecognitionPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isActionPending, setIsActionPending] = useState<boolean>(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [isConfirmingMovement, setIsConfirmingMovement] = useState<boolean>(false);
+  const [overrideModalOpen, setOverrideModalOpen] = useState<boolean>(false);
+  const [overrideDirection, setOverrideDirection] = useState<'IN' | 'OUT'>('IN');
+  const [overrideReason, setOverrideReason] = useState<string>('');
+  const [overrideResident, setOverrideResident] = useState<any>(null);
+  const [overrideError, setOverrideError] = useState<string | null>(null);
 
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -377,6 +389,56 @@ export const RecognitionPage: React.FC = () => {
     setStreamError(null);
   };
 
+  const handleInitiateConfirm = (resident: any, direction: 'IN' | 'OUT') => {
+    if (!resident || !selectedCamera) return;
+    const cameraRole = selectedCamera.role;
+    const isOverride =
+      (cameraRole === 'IN' && direction === 'OUT') ||
+      (cameraRole === 'OUT' && direction === 'IN');
+
+    if (isOverride) {
+      setOverrideResident(resident);
+      setOverrideDirection(direction);
+      setOverrideReason('');
+      setOverrideError(null);
+      setOverrideModalOpen(true);
+    } else {
+      executeConfirmMovement(resident, direction);
+    }
+  };
+
+  const executeConfirmMovement = async (resident: any, direction: 'IN' | 'OUT', reason?: string) => {
+    if (!resident || !selectedCamera) return;
+    try {
+      setIsConfirmingMovement(true);
+      await movementsApi.confirmMovement({
+        residentId: resident.id,
+        cameraId: selectedCamera.id,
+        direction,
+        overrideReason: reason,
+      });
+      success(`Confirmed ${direction === 'IN' ? 'Entry' : 'Exit'} for ${resident.fullName}`);
+      setOverrideModalOpen(false);
+      if (selectedCamera?.hostelId) {
+        fetchMovementData(selectedCamera.hostelId);
+      }
+    } catch (err: any) {
+      toastError(err.message || 'Failed to confirm resident movement');
+    } finally {
+      setIsConfirmingMovement(false);
+    }
+  };
+
+  const handleOverrideSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!overrideReason.trim()) {
+      setOverrideError('An override reason is mandatory when altering camera direction');
+      return;
+    }
+    executeConfirmMovement(overrideResident, overrideDirection, overrideReason.trim());
+  };
+
+  const latestResidentMatch = observations.find((o) => o.classification === 'MATCH' && o.resident);
   const isRunning = sessionStatus?.state === 'RUNNING';
 
   return (
@@ -386,10 +448,11 @@ export const RecognitionPage: React.FC = () => {
         <div>
           <h1 className="page-title text-2xl font-bold flex items-center gap-2">
             <Eye className="text-primary-500" size={24} />
-            Face Recognition Monitor
+            Gate Monitor
+            <span className="text-slate-400 text-sm font-normal">| Face Recognition Monitor</span>
           </h1>
           <p className="page-subtitle text-slate-400 text-sm mt-1">
-            Continuous local face recognition & classification (MATCH / UNCERTAIN / UNKNOWN) — Observation Mode
+            Supervised resident entry and exit monitoring — Observation Mode
           </p>
         </div>
 
@@ -606,7 +669,7 @@ export const RecognitionPage: React.FC = () => {
                   </span>
                   <span className="flex items-center gap-1 font-mono">
                     <UserCheck size={13} className="text-indigo-400" />
-                    Eligible Templates: {sessionStatus?.eligibleTemplates || 0}
+                    Enrolled Residents: {sessionStatus?.eligibleTemplates || 0}
                   </span>
                 </div>
 
@@ -774,18 +837,55 @@ export const RecognitionPage: React.FC = () => {
 
                       {/* Content based on Classification */}
                       {isMatch && obs.resident && (
-                        <div className="resident-match-info mt-1">
-                          <div className="font-semibold text-sm text-slate-200">
-                            {obs.resident.fullName}
+                        <div className="resident-match-info mt-1 flex items-start gap-2.5">
+                          <div className="w-10 h-10 rounded overflow-hidden border border-slate-700 bg-slate-800 shrink-0 flex items-center justify-center">
+                            <img
+                              src={residentsApi.getProfilePhotoUrl(obs.resident.id)}
+                              alt=""
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                            <UserIcon size={18} className="text-slate-500" />
                           </div>
-                          <div className="text-xs text-slate-400 flex items-center justify-between mt-0.5">
-                            <span>Code: {obs.resident.residentCode}</span>
-                            {typeof obs.similarity === 'number' && (
-                              <span className="text-emerald-400 font-mono">
-                                sim: {(obs.similarity * 100).toFixed(1)}%
-                              </span>
-                            )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-slate-200">
+                              {obs.resident.fullName}
+                            </div>
+                            <div className="text-xs text-slate-400 flex items-center justify-between mt-0.5">
+                              <span>Code: {obs.resident.residentCode}</span>
+                              {typeof obs.similarity === 'number' && (
+                                <span className="text-emerald-400 font-mono">
+                                  sim: {(obs.similarity * 100).toFixed(1)}%
+                                </span>
+                              )}
+                            </div>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Supervised Movement Confirm Buttons */}
+                      {isMatch && obs.resident && canControl && (
+                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/50">
+                          <button
+                            type="button"
+                            onClick={() => handleInitiateConfirm(obs.resident, 'IN')}
+                            disabled={isConfirmingMovement}
+                            className="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1"
+                          >
+                            <LogIn size={12} />
+                            <span>Confirm Entry</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleInitiateConfirm(obs.resident, 'OUT')}
+                            disabled={isConfirmingMovement}
+                            className="px-2.5 py-1 text-xs font-semibold rounded bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1"
+                          >
+                            <LogOut size={12} />
+                            <span>Confirm Exit</span>
+                          </button>
                         </div>
                       )}
 
@@ -873,6 +973,53 @@ export const RecognitionPage: React.FC = () => {
         </div>
       </div>
     </div>
+
+      {/* Override Reason Modal */}
+      {overrideModalOpen && (
+        <Modal
+          isOpen={overrideModalOpen}
+          onClose={() => setOverrideModalOpen(false)}
+          title="Direction Override Reason"
+          subtitle={`Overriding default direction to ${overrideDirection}`}
+          size="md"
+        >
+          <form onSubmit={handleOverrideSubmit} className="space-y-4">
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 rounded border border-amber-200 dark:border-amber-900 text-xs">
+              The camera role is set for the opposite direction. An audit reason is mandatory to record this movement override.
+            </div>
+
+            {overrideError && (
+              <div className="p-3 bg-rose-50 text-rose-700 text-xs rounded border border-rose-200">
+                {overrideError}
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="gateOverrideReason" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                Override Reason <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                id="gateOverrideReason"
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                placeholder="e.g. Resident permitted to exit through entrance turnstile"
+                className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-primary focus:outline-none dark:bg-slate-800"
+                rows={3}
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+              <Button type="button" variant="outline" onClick={() => setOverrideModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" isLoading={isConfirmingMovement}>
+                Confirm Override {overrideDirection}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 };

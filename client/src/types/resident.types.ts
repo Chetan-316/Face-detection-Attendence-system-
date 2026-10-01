@@ -13,6 +13,7 @@ export interface SafeResident {
   contactEmail: string | null;
   status: ResidentStatus;
   faceEnrollmentStatus: FaceEnrollmentStatus;
+  profilePhotoPath?: string | null;
   presence?: {
     currentState: PresenceState;
     lastMovementType: string | null;

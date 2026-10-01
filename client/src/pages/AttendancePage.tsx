@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import {
@@ -16,6 +17,7 @@ import {
   correctAttendanceRecord,
 } from '../api/attendance.api';
 import { camerasApi } from '../api/cameras.api';
+import { residentsApi } from '../api/residents.api';
 import { CameraEntity } from '../types/camera.types';
 import {
   Calendar,
@@ -328,6 +330,28 @@ export const AttendancePage: React.FC = () => {
           <RefreshCw size={32} className="animate-spin text-blue-600 mx-auto mb-3" />
           <p className="text-gray-500 text-sm">Loading attendance sessions...</p>
         </div>
+      ) : sessions.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center max-w-lg mx-auto my-8 shadow-sm">
+          <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+            <CheckSquare size={24} />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Hostel Attendance</h2>
+          <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+            No attendance session is active.
+            <br />
+            Start a session when you are ready to conduct roll call.
+          </p>
+          {canManage && (
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
+            >
+              <Play size={16} />
+              <span>Start Attendance</span>
+            </button>
+          )}
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Left Column: Sessions Sidebar */}
@@ -445,15 +469,24 @@ export const AttendancePage: React.FC = () => {
                           </button>
                         )}
                         {activeSessionData.status === 'ACTIVE' && (
-                          <button
-                            type="button"
-                            onClick={() => setIsCloseConfirmOpen(true)}
-                            disabled={isSubmitting}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition"
-                          >
-                            <CheckSquare size={15} />
-                            <span>Close Attendance</span>
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              to="/recognition"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition"
+                            >
+                              <CameraIcon size={15} />
+                              <span>Live Attendance</span>
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => setIsCloseConfirmOpen(true)}
+                              disabled={isSubmitting}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition"
+                            >
+                              <CheckSquare size={15} />
+                              <span>Close Attendance</span>
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}
@@ -564,8 +597,23 @@ export const AttendancePage: React.FC = () => {
                         filteredRoster.map((item) => (
                           <tr key={item.residentId} className="hover:bg-gray-50/60 transition">
                             <td className="px-4 py-3">
-                              <div className="font-semibold text-gray-900">{item.fullName}</div>
-                              <div className="text-xs text-gray-500 font-mono">{item.residentCode}</div>
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-gray-100 border border-gray-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                  <img
+                                    src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(item.residentId) : `/api/v1/residents/${item.residentId}/profile-photo`}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      (e.currentTarget as HTMLElement).style.display = 'none';
+                                    }}
+                                  />
+                                  <Users size={16} className="text-gray-400" />
+                                </div>
+                                <div>
+                                  <div className="font-semibold text-gray-900">{item.fullName}</div>
+                                  <div className="text-xs text-gray-500 font-mono">{item.residentCode}</div>
+                                </div>
+                              </div>
                             </td>
                             <td className="px-4 py-3 text-gray-700 font-medium">{item.roomGroup}</td>
                             <td className="px-4 py-3">{renderStatusBadge(item.status)}</td>
@@ -613,8 +661,26 @@ export const AttendancePage: React.FC = () => {
                 </div>
               </>
             ) : (
-              <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500">
-                Please select or create an attendance session to view records.
+              <div className="bg-white border border-gray-200 rounded-xl p-12 text-center max-w-lg mx-auto my-8 shadow-sm">
+                <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+                  <CheckSquare size={24} />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Hostel Attendance</h2>
+                <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+                  No attendance session is active.
+                  <br />
+                  Start a session when you are ready to conduct roll call.
+                </p>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateModalOpen(true)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
+                  >
+                    <Play size={16} />
+                    <span>Start Attendance</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

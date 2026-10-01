@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { residentsApi } from '../api/residents.api';
 import { SafeResident } from '../types/resident.types';
 import { useAuth } from '../auth/AuthContext';
@@ -26,11 +26,12 @@ import {
   UserMinus,
   UserCheck,
   AlertCircle,
+  CheckCircle2,
+  XCircle,
 } from 'lucide-react';
 
 export const ResidentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { user } = useAuth();
 
   const [resident, setResident] = useState<SafeResident | null>(null);
@@ -88,12 +89,14 @@ export const ResidentDetailPage: React.FC = () => {
   }
 
   const isCurrentlyIn = resident.presence?.currentState === 'IN';
+  const hasProfilePhoto = Boolean(resident.profilePhotoPath);
+  const isFaceEnrolled = resident.faceEnrollmentStatus === 'ENROLLED';
 
   return (
-    <div className="resident-detail-page">
+    <div className="resident-detail-page space-y-6">
       <PageHeader
         breadcrumb={
-          <Link to="/residents" className="btn-back">
+          <Link to="/residents" className="btn-back flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
             <ArrowLeft size={14} /> Back to Resident Roster
           </Link>
         }
@@ -152,40 +155,97 @@ export const ResidentDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="overview-details-grid mt-6">
+      {/* Onboarding Checklist Summary */}
+      <div className="p-4 bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-700">
+        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">
+          Resident Onboarding Checklist
+        </span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+            <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+            <div>
+              <span className="font-semibold block text-slate-800 dark:text-slate-200">Personal Details</span>
+              <span className="text-emerald-600 dark:text-emerald-400">Complete</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+            {hasProfilePhoto ? (
+              <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+            ) : (
+              <XCircle size={18} className="text-amber-500 shrink-0" />
+            )}
+            <div>
+              <span className="font-semibold block text-slate-800 dark:text-slate-200">Staff Profile Photo</span>
+              <span className={hasProfilePhoto ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+                {hasProfilePhoto ? 'Photo Attached' : 'Missing Photo'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+            {isFaceEnrolled ? (
+              <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+            ) : (
+              <XCircle size={18} className="text-slate-400 shrink-0" />
+            )}
+            <div>
+              <span className="font-semibold block text-slate-800 dark:text-slate-200">Face Biometrics</span>
+              <span className={isFaceEnrolled ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'}>
+                {isFaceEnrolled ? '5-Pose Enrolled' : 'Not Enrolled'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="overview-details-grid grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Profile Card */}
         <Card title="Resident Information" subtitle="Primary identity and facility allocation">
-          <div className="detail-dl">
-            <div className="detail-row">
-              <span className="detail-dt">Full Name</span>
-              <span className="detail-dd font-semibold">{resident.fullName}</span>
+          <div className="flex items-start gap-4 mb-4">
+            <div className="w-20 h-20 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shrink-0 flex items-center justify-center">
+              <img
+                src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
+                alt={resident.fullName}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+              <User size={32} className="text-slate-400" />
             </div>
-            <div className="detail-row">
-              <span className="detail-dt">Resident Code</span>
-              <span className="detail-dd font-mono">{resident.residentCode}</span>
+
+            <div className="flex-1 min-w-0">
+              <span className="text-xs text-slate-500 block">Full Name</span>
+              <h3 className="font-bold text-base text-slate-900 dark:text-white truncate">
+                {resident.fullName}
+              </h3>
+              <span className="text-xs font-mono text-primary font-medium block mt-0.5">
+                {resident.residentCode}
+              </span>
+              <div className="mt-1">
+                <Badge type="status" value={resident.status} />
+              </div>
             </div>
-            <div className="detail-row">
-              <span className="detail-dt">Room / Group</span>
-              <span className="detail-dd">{resident.roomGroup}</span>
+          </div>
+
+          <div className="detail-dl space-y-2 text-sm">
+            <div className="detail-row flex justify-between py-1 border-t border-slate-100 dark:border-slate-800">
+              <span className="detail-dt text-slate-500">Room / Group</span>
+              <span className="detail-dd font-medium">{resident.roomGroup}</span>
             </div>
-            <div className="detail-row">
-              <span className="detail-dt">Facility Assigned</span>
+            <div className="detail-row flex justify-between py-1 border-t border-slate-100 dark:border-slate-800">
+              <span className="detail-dt text-slate-500">Facility Assigned</span>
               <span className="detail-dd">
                 {resident.hostel?.name ? `${resident.hostel.name} (${resident.hostel.code})` : 'Assigned Hostel'}
               </span>
             </div>
-            <div className="detail-row">
-              <span className="detail-dt">Account Status</span>
-              <span className="detail-dd">
-                <Badge type="status" value={resident.status} />
-              </span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-dt">Contact Phone</span>
+            <div className="detail-row flex justify-between py-1 border-t border-slate-100 dark:border-slate-800">
+              <span className="detail-dt text-slate-500">Contact Phone</span>
               <span className="detail-dd">{resident.contactPhone || '—'}</span>
             </div>
-            <div className="detail-row">
-              <span className="detail-dt">Contact Email</span>
+            <div className="detail-row flex justify-between py-1 border-t border-slate-100 dark:border-slate-800">
+              <span className="detail-dt text-slate-500">Contact Email</span>
               <span className="detail-dd">{resident.contactEmail || '—'}</span>
             </div>
           </div>
@@ -194,7 +254,7 @@ export const ResidentDetailPage: React.FC = () => {
         {/* Biometrics and Security Scope */}
         <Card title="Biometrics & Enrollment" subtitle="Face recognition capability tracking">
           <div className="biometric-status-card">
-            <div className="biometric-status-header">
+            <div className="biometric-status-header flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ScanFace size={18} className="text-purple-600" />
                 <span className="font-semibold text-sm">Face Recognition Status</span>
@@ -223,17 +283,14 @@ export const ResidentDetailPage: React.FC = () => {
                 )}
               </div>
             )}
-            <p className="biometric-deferral-notice mt-3">
-              Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.
-            </p>
           </div>
 
-          <div className="detail-timestamp-bar mt-6">
-            <div className="flex items-center gap-1 text-xs text-muted">
+          <div className="detail-timestamp-bar mt-6 pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs text-muted">
+            <div className="flex items-center gap-1">
               <Clock size={13} />
               <span>Created: {formatDateTime(resident.createdAt)}</span>
             </div>
-            <div className="flex items-center gap-1 text-xs text-muted">
+            <div className="flex items-center gap-1">
               <Shield size={13} />
               <span>Updated: {formatDateTime(resident.updatedAt)}</span>
             </div>
@@ -279,3 +336,5 @@ export const ResidentDetailPage: React.FC = () => {
     </div>
   );
 };
+
+export default ResidentDetailPage;

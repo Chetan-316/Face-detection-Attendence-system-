@@ -1,5 +1,7 @@
 import { apiClient } from './client';
 
+export type EnrollmentPose = 'FRONT' | 'LEFT' | 'RIGHT' | 'UP' | 'DOWN';
+
 export interface EnrollmentStatusData {
   sessionId: string;
   residentId: string;
@@ -8,6 +10,9 @@ export interface EnrollmentStatusData {
   requiredSamples: number;
   acceptedSamples: number;
   rejectedSamples: number;
+  currentPose?: EnrollmentPose | null;
+  completedPoses?: EnrollmentPose[];
+  requiredPoses?: EnrollmentPose[];
   progressPercentage: number;
   isReady: boolean;
   lastQuality: {
@@ -15,11 +20,13 @@ export interface EnrollmentStatusData {
     rejection_reason: string | null;
     message: string;
     face_count?: number;
+    detected_pose?: EnrollmentPose | null;
     metrics?: {
       face_count: number;
       confidence: number;
       blur_score: number;
       brightness: number;
+      detected_pose?: EnrollmentPose | null;
       bbox: { x: number; y: number; width: number; height: number };
     } | null;
   } | null;

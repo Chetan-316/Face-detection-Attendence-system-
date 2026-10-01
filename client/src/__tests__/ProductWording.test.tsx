@@ -9,6 +9,9 @@ import { AppLayout } from '../layouts/AppLayout';
 import { AuthProvider } from '../auth/AuthContext';
 import { ToastProvider } from '../components/ToastContext';
 import { residentsApi } from '../api/residents.api';
+import { camerasApi } from '../api/cameras.api';
+import { movementsApi } from '../api/movements.api';
+import { reportsApi } from '../api/reports.api';
 import { authApi } from '../api/auth.api';
 import { SafeResident } from '../types/resident.types';
 
@@ -17,6 +20,28 @@ vi.mock('../api/residents.api', () => ({
     getSummary: vi.fn(),
     getResident: vi.fn(),
     listResidents: vi.fn(),
+    listHostels: vi.fn(),
+    getProfilePhotoUrl: vi.fn((id: string) => `/api/v1/residents/${id}/profile-photo`),
+  },
+}));
+
+vi.mock('../api/cameras.api', () => ({
+  camerasApi: {
+    listCameras: vi.fn(),
+    getPreviewStreamUrl: vi.fn((id: string) => `/api/v1/cameras/${id}/preview`),
+  },
+}));
+
+vi.mock('../api/movements.api', () => ({
+  movementsApi: {
+    getPresenceCounts: vi.fn(),
+  },
+}));
+
+vi.mock('../api/reports.api', () => ({
+  reportsApi: {
+    getAttendanceSessions: vi.fn(),
+    getMovements: vi.fn(),
   },
 }));
 
@@ -48,7 +73,7 @@ const mockResident: SafeResident = {
   updatedAt: '2026-09-29T10:00:00Z',
 };
 
-describe('Product Wording and Phase Verification', () => {
+describe('Product Wording and Clean Operational Interface Verification', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
@@ -74,10 +99,35 @@ describe('Product Wording and Phase Verification', () => {
       needsReEnrollment: 0,
     });
 
+    (movementsApi.getPresenceCounts as any).mockResolvedValue({
+      currentlyIn: 35,
+      currentlyOut: 15,
+      totalTracked: 50,
+    });
+
+    (reportsApi.getAttendanceSessions as any).mockResolvedValue({
+      data: [],
+      count: 0,
+    });
+
+    (reportsApi.getMovements as any).mockResolvedValue({
+      data: [],
+      count: 0,
+    });
+
+    (camerasApi.listCameras as any).mockResolvedValue({
+      data: [],
+      count: 0,
+    });
+
+    (residentsApi.listHostels as any).mockResolvedValue([
+      { id: 'hostel-1', name: 'Main Hostel', code: 'H1' },
+    ]);
+
     (residentsApi.getResident as any).mockResolvedValue(mockResident);
   });
 
-  it('renders OverviewPage with product-clean wording and future-safe pipeline status', async () => {
+  it('renders OverviewPage with product-clean wording and no stale deferral notices', async () => {
     render(
       <MemoryRouter>
         <AuthProvider>
@@ -99,27 +149,20 @@ describe('Product Wording and Phase Verification', () => {
     expect(screen.queryByText(/Phase 04/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Verified platform foundation/i)).not.toBeInTheDocument();
 
-    // Verify updated pipeline card & status note
-    expect(screen.getByText('Camera & Biometric Pipeline')).toBeInTheDocument();
-    expect(screen.getByText('PLANNED FOR UPCOMING PHASES')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.'
-      )
-    ).toBeInTheDocument();
+    // Verify stale deferral notices are NOT present
+    expect(screen.queryByText(/PLANNED FOR UPCOMING PHASES/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/intentionally deferred/i)).not.toBeInTheDocument();
 
-    // Verify Face Enrollment metric footer
-    expect(screen.getByText('Pending biometric enrollment setup')).toBeInTheDocument();
+    // Verify active operational capabilities are displayed
+    expect(screen.getByText('Gate Recognition & Cameras')).toBeInTheDocument();
+    expect(screen.getByText('Biometric Engine')).toBeInTheDocument();
+    expect(screen.getAllByText('OPERATIONAL').length).toBeGreaterThanOrEqual(1);
+
+    // Verify metrics
     expect(screen.getByText('Face Enrolled')).toBeInTheDocument();
-    expect(screen.getByText('Not Enrolled')).toBeInTheDocument();
-
-    // Verify no fake action buttons exist
-    expect(screen.queryByText(/scan face/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/start recognition/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/enroll now/i)).not.toBeInTheDocument();
   });
 
-  it('renders AppLayout sidebar with product operational indicator', async () => {
+  it('renders AppLayout sidebar with product operational navigation and no development milestones', async () => {
     render(
       <MemoryRouter>
         <AuthProvider>
@@ -131,14 +174,19 @@ describe('Product Wording and Phase Verification', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('System Operational')).toBeInTheDocument();
+      expect(screen.getByText('PRAVAHAx')).toBeInTheDocument();
     });
+
+    expect(screen.getByText('Residents')).toBeInTheDocument();
+    expect(screen.getByText('Cameras')).toBeInTheDocument();
+    expect(screen.getByText('Attendance')).toBeInTheDocument();
+    expect(screen.getByText('Reports')).toBeInTheDocument();
 
     expect(screen.queryByText(/Step 03 UI Verified/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Phase:/i)).not.toBeInTheDocument();
   });
 
-  it('renders ResidentDetailModal with future-safe deferral notice and no fake controls', () => {
+  it('renders ResidentDetailModal with clean operational status and no stale deferral notice', () => {
     render(
       <MemoryRouter>
         <AuthProvider>
@@ -155,20 +203,16 @@ describe('Product Wording and Phase Verification', () => {
 
     expect(screen.getByText('Face Recognition Status')).toBeInTheDocument();
     expect(screen.getByText('NOT ENROLLED')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        'Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.'
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByText('Onboarding Checklist')).toBeInTheDocument();
 
+    // Verify stale deferral notices are NOT present
+    expect(screen.queryByText(/intentionally deferred/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/PLANNED FOR UPCOMING PHASES/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Step 04/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Phase 04/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/scan face/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/start recognition/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/enroll now/i)).not.toBeInTheDocument();
   });
 
-  it('renders ResidentDetailPage with future-safe deferral notice', async () => {
+  it('renders ResidentDetailPage with clean operational status and no stale deferral notice', async () => {
     render(
       <MemoryRouter initialEntries={['/residents/res-test-1']}>
         <AuthProvider>
@@ -185,12 +229,12 @@ describe('Product Wording and Phase Verification', () => {
       expect(screen.getAllByText('Morgan Patel').length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(
-      screen.getByText(
-        'Camera integration, face enrollment, and face recognition are intentionally deferred to upcoming implementation phases.'
-      )
-    ).toBeInTheDocument();
+    expect(screen.getByText('Face Recognition Status')).toBeInTheDocument();
+    expect(screen.getByText('Resident Onboarding Checklist')).toBeInTheDocument();
 
+    // Verify stale deferral notices are NOT present
+    expect(screen.queryByText(/intentionally deferred/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/PLANNED FOR UPCOMING PHASES/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Step 04/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Phase 04/i)).not.toBeInTheDocument();
   });

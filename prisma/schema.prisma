@@ -229,6 +229,7 @@ model Resident {
   roomGroup            String
   contactPhone         String?
   contactEmail         String?
+  profilePhotoPath     String?
   status               ResidentStatus       @default(ACTIVE)
   faceEnrollmentStatus FaceEnrollmentStatus @default(NOT_ENROLLED)
   createdAt            DateTime             @default(now())

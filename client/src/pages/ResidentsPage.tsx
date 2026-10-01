@@ -220,6 +220,10 @@ export const ResidentsPage: React.FC = () => {
             setSelectedResident(resident);
             setIsReactivateOpen(true);
           }}
+          onEnrollFace={(resident: SafeResident) => {
+            setSelectedResident(resident);
+            setIsFaceEnrollOpen(true);
+          }}
           canManage={canManage}
           hasActiveFilters={isFiltered}
           onOpenAdd={() => setIsCreateOpen(true)}

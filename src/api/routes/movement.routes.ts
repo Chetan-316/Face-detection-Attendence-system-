@@ -4,6 +4,7 @@ import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
 import { MovementDecisionService } from '../../modules/movement-decision/movement-decision.service';
 import { PresenceService } from '../../modules/presence/presence.service';
+import { MovementService } from '../../modules/movements/movement.service';
 import {
   AuthenticationError,
   ForbiddenError,
@@ -14,12 +15,14 @@ import {
 export function createMovementRouter(
   db: PrismaClient = defaultPrisma,
   movementDecisionService?: MovementDecisionService,
-  presenceService?: PresenceService
+  presenceService?: PresenceService,
+  movementService?: MovementService
 ): Router {
   const router = Router();
   const { requireAuth } = createAuthMiddleware(db);
   const decisionService = movementDecisionService || new MovementDecisionService(db);
   const presService = presenceService || new PresenceService(db);
+  const movService = movementService || new MovementService(db);
 
   router.use(requireAuth);
 
@@ -74,6 +77,86 @@ export function createMovementRouter(
       res.status(200).json({
         globalAutomationEnabled: decisionService.isGlobalAutomationEnabled(),
         minTransitionIntervalMs: decisionService.getMinTransitionIntervalMs(),
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/v1/movements/confirm
+   * Supervised movement confirmation by operator (Warden, Guard, Admin).
+   * Supports direction override with mandatory audit reason.
+   */
+  router.post('/confirm', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = getActor(req);
+      const { residentId, cameraId, movementType, direction, overrideReason } = req.body;
+
+      if (!residentId) {
+        throw new ValidationError('residentId is required');
+      }
+      if (!cameraId) {
+        throw new ValidationError('cameraId is required');
+      }
+
+      const finalType = ((movementType || direction || '') as string).toUpperCase();
+      if (finalType !== 'IN' && finalType !== 'OUT') {
+        throw new ValidationError("movementType must be either 'IN' or 'OUT'");
+      }
+
+      // Check resident
+      const resident = await db.resident.findUnique({
+        where: { id: residentId },
+        include: { presence: true },
+      });
+      if (!resident || resident.organizationId !== actor.organizationId) {
+        throw new NotFoundError('Resident', residentId);
+      }
+
+      // Scoping: Warden and Guard must match resident hostel
+      if (
+        (actor.role === StaffRole.WARDEN || actor.role === StaffRole.GUARD) &&
+        actor.hostelId &&
+        resident.hostelId !== actor.hostelId
+      ) {
+        throw new ForbiddenError('Cannot confirm movement for resident of another hostel');
+      }
+
+      // Check camera
+      const camera = await db.camera.findUnique({ where: { id: cameraId } });
+      if (!camera || camera.organizationId !== actor.organizationId) {
+        throw new NotFoundError('Camera', cameraId);
+      }
+
+      // Check if camera role suggests a direction
+      const suggestedDir = camera.role === 'IN' ? 'IN' : camera.role === 'OUT' ? 'OUT' : null;
+      const isOverridden = suggestedDir && suggestedDir !== finalType;
+
+      if (isOverridden && (!overrideReason || overrideReason.trim().length === 0)) {
+        throw new ValidationError('An override reason is required when confirming movement against camera direction');
+      }
+
+      const notes = isOverridden
+        ? `Supervised confirmation: Direction overridden (Camera role: ${camera.role}) - ${overrideReason.trim()}`
+        : 'Supervised movement confirmed by operator';
+
+      const movementEvent = await movService.recordNormalMovement({
+        residentId: resident.id,
+        movementType: finalType as MovementType,
+        hostelId: resident.hostelId,
+        cameraId: camera.id,
+        locationId: camera.locationId,
+        source: MovementSource.GUARD_CONFIRMATION,
+        performedByUserId: actor.id,
+        performedByRole: actor.role,
+        notes,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: movementEvent,
+        message: `Movement confirmed: ${resident.fullName} marked ${finalType}`,
       });
     } catch (err) {
       next(err);

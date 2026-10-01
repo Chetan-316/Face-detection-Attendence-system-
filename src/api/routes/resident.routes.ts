@@ -15,11 +15,20 @@ import { prisma as defaultPrisma } from '../../database/client';
 import { createFaceEnrollmentRouter } from './face-enrollment.routes';
 import { EnrollmentService } from '../../modules/biometrics/enrollment.service';
 import { PresenceService } from '../../modules/presence/presence.service';
+import { CameraService } from '../../modules/cameras/camera.service';
+import { ProfilePhotoService } from '../../modules/residents/profile-photo.service';
 
-export function createResidentRouter(db = defaultPrisma, enrollmentService?: EnrollmentService) {
+export function createResidentRouter(
+  db = defaultPrisma,
+  enrollmentService?: EnrollmentService,
+  cameraService?: CameraService,
+  profilePhotoService?: ProfilePhotoService
+) {
   const router = Router();
   const residentService = new ResidentService(db);
   const presenceService = new PresenceService(db);
+  const camService = cameraService || new CameraService(db);
+  const photoService = profilePhotoService || new ProfilePhotoService(db);
   const { requireAuth, requirePermission } = createAuthMiddleware(db);
 
   // All resident routes require authentication
@@ -165,6 +174,30 @@ export function createResidentRouter(db = defaultPrisma, enrollmentService?: Enr
       res.status(200).json(summary);
     } catch (error) {
       next(error);
+    }
+  });
+
+  /**
+   * GET /api/v1/residents/hostels
+   * List accessible hostels for selection dropdown
+   */
+  router.get('/hostels', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const where: any = { organizationId: user.organizationId, isActive: true };
+      if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
+        if (user.hostelId) {
+          where.id = user.hostelId;
+        }
+      }
+      const hostels = await db.hostel.findMany({
+        where,
+        select: { id: true, code: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      res.status(200).json({ data: hostels });
+    } catch (err) {
+      next(err);
     }
   });
 
@@ -329,6 +362,93 @@ export function createResidentRouter(db = defaultPrisma, enrollmentService?: Enr
       next(error);
     }
   });
+
+  /**
+   * POST /api/v1/residents/:id/profile-photo
+   * Upload or capture resident profile photo (visual identification only).
+   */
+  router.post(
+    '/:id/profile-photo',
+    requirePermission('RESIDENT_MANAGE'),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const user = req.user!;
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+        let imageBuffer: Buffer | null = null;
+
+        if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+          imageBuffer = req.body;
+        } else if (req.body && req.body.cameraId) {
+          // Capture from camera hardware snapshot
+          const snapshot = await camService.captureSnapshot(req.body.cameraId);
+          if (!snapshot || !snapshot.frameBuffer) {
+            throw new ValidationError('Failed to capture snapshot from camera hardware');
+          }
+          imageBuffer = snapshot.frameBuffer;
+        } else if (req.body && req.body.imageBase64) {
+          let b64 = req.body.imageBase64;
+          if (typeof b64 === 'string') {
+            if (b64.includes(',')) {
+              b64 = b64.split(',', 2)[1];
+            }
+            imageBuffer = Buffer.from(b64, 'base64');
+          }
+        }
+
+        if (!imageBuffer || imageBuffer.length === 0) {
+          throw new ValidationError('Valid image data is required (cameraId, imageBase64, or binary image)');
+        }
+
+        const result = await photoService.saveProfilePhoto(id, imageBuffer, user);
+        res.status(200).json({
+          message: 'Profile photo updated successfully',
+          data: result,
+        });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  /**
+   * GET /api/v1/residents/:id/profile-photo
+   * Serve resident profile photo
+   */
+  router.get('/:id/profile-photo', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const user = req.user!;
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+      const photoInfo = await photoService.getProfilePhoto(id, user);
+
+      res.setHeader('Content-Type', photoInfo.mimeType);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.status(200).end(photoInfo.buffer);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /**
+   * DELETE /api/v1/residents/:id/profile-photo
+   * Delete resident profile photo
+   */
+  router.delete(
+    '/:id/profile-photo',
+    requirePermission('RESIDENT_MANAGE'),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const user = req.user!;
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+        const result = await photoService.deleteProfilePhoto(id, user);
+        res.status(200).json(result);
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   // Mount face enrollment routes under /:id/face-enrollment
   router.use('/:id/face-enrollment', createFaceEnrollmentRouter(db, enrollmentService));

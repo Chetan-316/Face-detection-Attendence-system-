@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Badge } from '../components/Badge';
@@ -21,11 +22,21 @@ import {
   CheckCircle2,
   Wifi,
   Edit2,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
 } from 'lucide-react';
 
 export const CamerasPage: React.FC = () => {
   const { user } = useAuth();
   const { success, error: toastError, info } = useToast();
+
+  if (user?.role === 'GUARD') {
+    return <Navigate to="/recognition" replace />;
+  }
+
+  const isAdmin = user?.role === 'ADMIN';
+  const isWarden = user?.role === 'WARDEN';
 
   const [cameras, setCameras] = useState<CameraEntity[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
@@ -62,6 +73,7 @@ export const CamerasPage: React.FC = () => {
   const [isSubmittingCamera, setIsSubmittingCamera] = useState(false);
   const [modalTestResult, setModalTestResult] = useState<CameraTestResult | null>(null);
   const [isModalTesting, setIsModalTesting] = useState(false);
+  const [showAdvancedRegister, setShowAdvancedRegister] = useState(false);
 
   // Edit camera modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
@@ -76,6 +88,7 @@ export const CamerasPage: React.FC = () => {
   const [editCameraPassword, setEditCameraPassword] = useState('');
   const [editHasExistingPassword, setEditHasExistingPassword] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [showAdvancedEdit, setShowAdvancedEdit] = useState(false);
 
   const pollIntervalRef = useRef<number | null>(null);
 
@@ -394,7 +407,7 @@ export const CamerasPage: React.FC = () => {
             <span>Refresh</span>
           </button>
 
-          {canManageCameras && (
+          {isAdmin && (
             <button
               type="button"
               className="btn btn-primary"
@@ -487,7 +500,9 @@ export const CamerasPage: React.FC = () => {
 
                     <div className="camera-item-footer">
                       <span className="device-hint">
-                        {camera.sourceType === 'RTSP'
+                        {isWarden
+                          ? 'Hostel Gate Camera'
+                          : camera.sourceType === 'RTSP'
                           ? camera.configMetadata?.host || 'RTSP Stream'
                           : camera.sourceType === 'WEBCAM'
                           ? `Device #${camera.configMetadata?.deviceIndex ?? 0}`
@@ -495,6 +510,18 @@ export const CamerasPage: React.FC = () => {
                       </span>
                       {isSelected && <span className="active-view-label">Selected</span>}
                     </div>
+
+                    {isWarden && (camera.role === 'IN' || camera.role === 'OUT' || camera.role === 'GENERAL') && (
+                      <div className="mt-2 pt-2 border-t border-slate-700/50 flex justify-end">
+                        <Link
+                          to="/recognition"
+                          className="text-xs text-primary font-medium hover:underline flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Open Live View <ArrowRight size={12} />
+                        </Link>
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -550,7 +577,7 @@ export const CamerasPage: React.FC = () => {
                     }
                     size="md"
                   />
-                  {canManageCameras && (
+                  {isAdmin && (
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
@@ -727,16 +754,18 @@ export const CamerasPage: React.FC = () => {
                     <span>Capture Snapshot</span>
                   </button>
 
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={handleTestConnection}
-                    disabled={isTestingConnection}
-                    title="Probe camera address and verify connectivity"
-                  >
-                    <Wifi size={16} className={isTestingConnection ? 'animate-spin' : ''} />
-                    <span>{isTestingConnection ? 'Testing...' : 'Test Connection'}</span>
-                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleTestConnection}
+                      disabled={isTestingConnection}
+                      title="Probe camera address and verify connectivity"
+                    >
+                      <Wifi size={16} className={isTestingConnection ? 'animate-spin' : ''} />
+                      <span>{isTestingConnection ? 'Testing...' : 'Test Connection'}</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="controls-right">
@@ -980,19 +1009,34 @@ export const CamerasPage: React.FC = () => {
                       </small>
                     </div>
 
-                    <div className="form-group">
-                      <label htmlFor="cam-transport" className="form-label">
-                        RTSP Transport Protocol
-                      </label>
-                      <select
-                        id="cam-transport"
-                        className="form-control"
-                        value={newCameraTransport}
-                        onChange={(e) => setNewCameraTransport(e.target.value as any)}
+                    <div className="border border-slate-700/60 rounded-lg p-3 my-2 bg-slate-800/30">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedRegister(!showAdvancedRegister)}
+                        className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
                       >
-                        <option value="tcp">TCP (Recommended — reliable packet ordering)</option>
-                        <option value="udp">UDP (Low overhead)</option>
-                      </select>
+                        <span>Advanced Settings (Transport Protocol, Frame Rate)</span>
+                        {showAdvancedRegister ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
+
+                      {showAdvancedRegister && (
+                        <div className="mt-3 pt-3 border-t border-slate-700/60 space-y-3">
+                          <div className="form-group mb-0">
+                            <label htmlFor="cam-transport" className="form-label text-xs">
+                              RTSP Transport Protocol
+                            </label>
+                            <select
+                              id="cam-transport"
+                              className="form-control text-sm"
+                              value={newCameraTransport}
+                              onChange={(e) => setNewCameraTransport(e.target.value as any)}
+                            >
+                              <option value="tcp">TCP (Recommended — reliable packet ordering)</option>
+                              <option value="udp">UDP (Low overhead)</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
@@ -1190,19 +1234,34 @@ export const CamerasPage: React.FC = () => {
                       />
                     </div>
 
-                    <div className="form-group">
-                      <label htmlFor="edit-transport" className="form-label">
-                        Transport Protocol
-                      </label>
-                      <select
-                        id="edit-transport"
-                        className="form-control"
-                        value={editCameraTransport}
-                        onChange={(e) => setEditCameraTransport(e.target.value as any)}
+                    <div className="border border-slate-700/60 rounded-lg p-3 my-2 bg-slate-800/30">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedEdit(!showAdvancedEdit)}
+                        className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
                       >
-                        <option value="tcp">TCP (Recommended)</option>
-                        <option value="udp">UDP</option>
-                      </select>
+                        <span>Advanced Settings (Transport Protocol)</span>
+                        {showAdvancedEdit ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
+
+                      {showAdvancedEdit && (
+                        <div className="mt-3 pt-3 border-t border-slate-700/60 space-y-3">
+                          <div className="form-group mb-0">
+                            <label htmlFor="edit-transport" className="form-label text-xs">
+                              Transport Protocol
+                            </label>
+                            <select
+                              id="edit-transport"
+                              className="form-control text-sm"
+                              value={editCameraTransport}
+                              onChange={(e) => setEditCameraTransport(e.target.value as any)}
+                            >
+                              <option value="tcp">TCP (Recommended)</option>
+                              <option value="udp">UDP</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">

@@ -1,5 +1,7 @@
 import { FaceEnrollmentStatus } from '@prisma/client';
 
+export type EnrollmentPose = 'FRONT' | 'LEFT' | 'RIGHT' | 'UP' | 'DOWN';
+
 export type BiometricQualityReason =
   | 'NO_FACE'
   | 'MULTIPLE_FACES'
@@ -8,7 +10,8 @@ export type BiometricQualityReason =
   | 'TOO_BLURRY'
   | 'TOO_DARK'
   | 'TOO_BRIGHT'
-  | 'LOW_DETECTION_CONFIDENCE';
+  | 'LOW_DETECTION_CONFIDENCE'
+  | 'WRONG_POSE';
 
 export interface BoundingBox {
   x: number;
@@ -25,6 +28,7 @@ export interface BiometricQualityMetrics {
   bbox: BoundingBox;
   frame_width: number;
   frame_height: number;
+  detected_pose?: EnrollmentPose | null;
 }
 
 export interface BiometricQualityResult {
@@ -32,6 +36,7 @@ export interface BiometricQualityResult {
   rejection_reason: BiometricQualityReason | null;
   message: string;
   face_count?: number;
+  detected_pose?: EnrollmentPose | null;
   metrics?: BiometricQualityMetrics | null;
 }
 
@@ -75,6 +80,10 @@ export interface EnrollmentSession {
   requiredSamples: number;
   samplesAccepted: number;
   samplesRejected: number;
+  requiredPoses: EnrollmentPose[];
+  currentPoseIndex: number;
+  completedPoses: EnrollmentPose[];
+  acceptedPoseEmbeddings: Record<string, number[]>;
   lastQuality: BiometricQualityResult | null;
   lastCaptureTime: number;
   // In-memory embeddings (never persisted outside transaction, never returned in API)
@@ -89,6 +98,9 @@ export interface EnrollmentStatusResponse {
   requiredSamples: number;
   acceptedSamples: number;
   rejectedSamples: number;
+  currentPose: EnrollmentPose | null;
+  completedPoses: EnrollmentPose[];
+  requiredPoses: EnrollmentPose[];
   progressPercentage: number;
   isReady: boolean;
   lastQuality: BiometricQualityResult | null;

@@ -435,9 +435,10 @@ describe('Step 04: Real Camera Abstraction Layer Tests', () => {
     it('POST /api/v1/cameras registers camera with validated schema', async () => {
       const res = await request(app)
         .post('/api/v1/cameras')
-        .set('Authorization', `Bearer ${wardenToken}`)
+        .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'Turnstile A',
+          hostelId: hostel1.id,
           sourceType: 'WEBCAM',
           role: 'IN',
           configMetadata: {

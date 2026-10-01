@@ -18,6 +18,7 @@ vi.mock('../api/residents.api', () => ({
     reactivateResident: vi.fn(),
     getResident: vi.fn(),
     getSummary: vi.fn(),
+    getProfilePhotoUrl: vi.fn((id: string) => `/api/v1/residents/${id}/profile-photo`),
   },
 }));
 

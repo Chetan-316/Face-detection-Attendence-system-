@@ -18,13 +18,13 @@ from typing import Dict, Any, List, Optional
 class QualityChecker:
     def __init__(
         self,
-        min_face_size: int = 80,
-        min_size_ratio: float = 0.12,
-        min_blur_score: float = 50.0,
-        min_brightness: float = 40.0,
-        max_brightness: float = 220.0,
-        min_confidence: float = 0.65,
-        center_margin_ratio: float = 0.20
+        min_face_size: int = 60,
+        min_size_ratio: float = 0.10,
+        min_blur_score: float = 40.0,
+        min_brightness: float = 35.0,
+        max_brightness: float = 230.0,
+        min_confidence: float = 0.50,
+        center_margin_ratio: float = 0.12
     ):
         self.min_face_size = min_face_size
         self.min_size_ratio = min_size_ratio
@@ -33,6 +33,70 @@ class QualityChecker:
         self.max_brightness = max_brightness
         self.min_confidence = min_confidence
         self.center_margin_ratio = center_margin_ratio
+
+    def classify_pose(self, landmarks: List[Dict[str, float]], bbox: Dict[str, int]) -> str:
+        """
+        Classifies head pose into FRONT, LEFT, RIGHT, UP, DOWN
+        using YuNet facial landmark geometry.
+        Landmark indices:
+        0: right_eye (subject's right eye, image left)
+        1: left_eye (subject's left eye, image right)
+        2: nose_tip
+        3: right_mouth
+        4: left_mouth
+        """
+        if not landmarks or len(landmarks) < 5:
+            return "FRONT"
+
+        import math
+        r_eye = landmarks[0]
+        l_eye = landmarks[1]
+        nose = landmarks[2]
+        r_mouth = landmarks[3]
+        l_mouth = landmarks[4]
+
+        d_right_eye = math.hypot(nose["x"] - r_eye["x"], nose["y"] - r_eye["y"])
+        d_left_eye = math.hypot(nose["x"] - l_eye["x"], nose["y"] - l_eye["y"])
+        total_eye_dist = d_right_eye + d_left_eye
+
+        if total_eye_dist <= 0:
+            return "FRONT"
+
+        # Eye asymmetry:
+        # Turning to subject's left (nose closer to left eye): d_left_eye < d_right_eye -> asymmetry > 0
+        # Turning to subject's right (nose closer to right eye): d_right_eye < d_left_eye -> asymmetry < 0
+        eye_asymmetry = (d_right_eye - d_left_eye) / total_eye_dist
+
+        # Vertical ratio: nose relative to eye-line and mouth-line
+        eye_mid_y = (r_eye["y"] + l_eye["y"]) / 2.0
+        mouth_mid_y = (r_mouth["y"] + l_mouth["y"]) / 2.0
+        vert_span = mouth_mid_y - eye_mid_y
+
+        if vert_span > 0:
+            vert_ratio = (nose["y"] - eye_mid_y) / vert_span
+        else:
+            vert_ratio = 0.55
+
+        # Check vertical pitch if horizontal yaw is relatively centered
+        if abs(eye_asymmetry) < 0.22:
+            if vert_ratio < 0.44:
+                return "UP"
+            elif vert_ratio > 0.68:
+                return "DOWN"
+
+        # Check horizontal yaw
+        if eye_asymmetry > 0.15:
+            return "LEFT"
+        elif eye_asymmetry < -0.15:
+            return "RIGHT"
+
+        # Check vertical pitch if not strongly turned
+        if vert_ratio < 0.44:
+            return "UP"
+        elif vert_ratio > 0.68:
+            return "DOWN"
+
+        return "FRONT"
 
     def evaluate(self, img: np.ndarray, detected_faces: List[Dict[str, Any]]) -> Dict[str, Any]:
         h, w = img.shape[:2]
@@ -43,8 +107,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "NO_FACE",
-                "message": "No face detected. Please position yourself in front of the camera.",
+                "message": "Position your face in front of the camera.",
                 "face_count": 0,
+                "detected_pose": None,
                 "metrics": None
             }
 
@@ -52,8 +117,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "MULTIPLE_FACES",
-                "message": "Multiple faces detected. Only one person must be visible during enrollment.",
+                "message": "Only one person should be in the frame.",
                 "face_count": face_count,
+                "detected_pose": None,
                 "metrics": None
             }
 
@@ -61,6 +127,9 @@ class QualityChecker:
         bbox = face["bbox"]
         bx, by, bw, bh = bbox["x"], bbox["y"], bbox["width"], bbox["height"]
         confidence = face["score"]
+        landmarks = face.get("landmarks", [])
+
+        detected_pose = self.classify_pose(landmarks, bbox)
 
         # Crop face region safely for blur and lighting analysis
         y1 = max(0, by)
@@ -73,8 +142,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "FACE_OFF_CENTER",
-                "message": "Face is outside the capture frame.",
+                "message": "Center your face inside the guide.",
                 "face_count": 1,
+                "detected_pose": detected_pose,
                 "metrics": None
             }
 
@@ -95,6 +165,7 @@ class QualityChecker:
             "confidence": round(confidence, 3),
             "blur_score": round(blur_score, 1),
             "brightness": round(brightness, 1),
+            "detected_pose": detected_pose,
             "bbox": bbox,
             "frame_width": w,
             "frame_height": h,
@@ -105,7 +176,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "LOW_DETECTION_CONFIDENCE",
-                "message": "Detection confidence is low. Please face the camera directly.",
+                "message": "Move slightly closer and face the camera.",
+                "face_count": 1,
+                "detected_pose": detected_pose,
                 "metrics": metrics
             }
 
@@ -114,7 +187,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "FACE_TOO_SMALL",
-                "message": "Please move closer to the camera.",
+                "message": "Move slightly closer to the camera.",
+                "face_count": 1,
+                "detected_pose": detected_pose,
                 "metrics": metrics
             }
 
@@ -123,7 +198,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "FACE_OFF_CENTER",
-                "message": "Please center your face inside the capture region.",
+                "message": "Center your face inside the guide.",
+                "face_count": 1,
+                "detected_pose": detected_pose,
                 "metrics": metrics
             }
 
@@ -132,7 +209,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "TOO_BLURRY",
-                "message": "Image is blurry. Please hold still.",
+                "message": "Hold still for a moment.",
+                "face_count": 1,
+                "detected_pose": detected_pose,
                 "metrics": metrics
             }
 
@@ -141,7 +220,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "TOO_DARK",
-                "message": "Lighting is too low. Please improve illumination.",
+                "message": "Move to a brighter area.",
+                "face_count": 1,
+                "detected_pose": detected_pose,
                 "metrics": metrics
             }
 
@@ -149,7 +230,9 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "TOO_BRIGHT",
-                "message": "Image is overexposed. Please adjust lighting or avoid direct glare.",
+                "message": "Move away from direct glare.",
+                "face_count": 1,
+                "detected_pose": detected_pose,
                 "metrics": metrics
             }
 
@@ -158,5 +241,7 @@ class QualityChecker:
             "is_valid": True,
             "rejection_reason": None,
             "message": "Good quality face sample detected.",
+            "face_count": 1,
+            "detected_pose": detected_pose,
             "metrics": metrics
         }

@@ -82,8 +82,9 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   }
   app.use(cors({ origin: allowedOrigins }));
 
-  // JSON Body Parser with 100kb limit
-  app.use(express.json({ limit: '100kb' }));
+  // Body parsers: JSON up to 10mb (supports profile photos) and raw image streams
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.raw({ type: ['image/*', 'application/octet-stream'], limit: '10mb' }));
 
   // Health check endpoint (unversioned - cheap liveness only)
   // Must NOT access PostgreSQL, cameras, FFmpeg, Python worker, or recognition service
@@ -117,7 +118,7 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
 
   // Versioned API Routes (/api/v1)
   app.use('/api/v1/auth', createAuthRouter(db));
-  app.use('/api/v1/residents', createResidentRouter(db, options?.enrollmentService));
+  app.use('/api/v1/residents', createResidentRouter(db, options?.enrollmentService, cameraService));
   app.use('/api/v1/cameras', createCameraRouter(db, cameraService));
   app.use('/api/v1/cameras', createRecognitionRouter(db, recognitionService));
   app.use('/api/v1/biometrics', createBiometricRouter(db, options?.biometricService));

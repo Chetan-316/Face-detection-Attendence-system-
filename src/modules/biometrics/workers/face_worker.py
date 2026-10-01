@@ -110,7 +110,7 @@ def main():
 
             try:
                 if is_mock:
-
+                    mock_pose = cmd_data.get("mock_pose") or cmd_data.get("expected_pose") or "FRONT"
                     # Generate deterministic synthetic sample for mock mode
                     send_response({
                         "success": True,
@@ -119,11 +119,13 @@ def main():
                             "rejection_reason": None,
                             "message": "Good quality face sample detected (mock)",
                             "face_count": 1,
+                            "detected_pose": mock_pose,
                             "metrics": {
                                 "face_count": 1,
                                 "confidence": 0.95,
                                 "blur_score": 120.0,
                                 "brightness": 128.0,
+                                "detected_pose": mock_pose,
                                 "bbox": {"x": 200, "y": 140, "width": 240, "height": 260},
                                 "frame_width": 640,
                                 "frame_height": 480

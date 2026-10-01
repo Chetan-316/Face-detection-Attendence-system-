@@ -13,6 +13,8 @@ export interface RecognitionResident {
   id: string;
   residentCode: string;
   fullName: string;
+  roomGroup?: string;
+  profilePhotoUrl?: string | null;
 }
 
 export interface RecognitionObservation {

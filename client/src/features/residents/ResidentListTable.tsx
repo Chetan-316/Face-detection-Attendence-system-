@@ -2,15 +2,16 @@ import React from 'react';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { SafeResident } from '../../types/resident.types';
+import { residentsApi } from '../../api/residents.api';
 import {
   Edit2,
   UserMinus,
   UserCheck,
   Eye,
   UserX,
-  Phone,
-  Mail,
+  ScanFace,
   PlusCircle,
+  User as UserIcon,
 } from 'lucide-react';
 
 interface ResidentListTableProps {
@@ -20,6 +21,7 @@ interface ResidentListTableProps {
   onEdit: (resident: SafeResident) => void;
   onDeactivate: (resident: SafeResident) => void;
   onReactivate: (resident: SafeResident) => void;
+  onEnrollFace?: (resident: SafeResident) => void;
   canManage: boolean;
   hasActiveFilters: boolean;
   onOpenAdd?: () => void;
@@ -32,6 +34,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
   onEdit,
   onDeactivate,
   onReactivate,
+  onEnrollFace,
   canManage,
   hasActiveFilters,
   onOpenAdd,
@@ -42,27 +45,27 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
         <table className="data-table">
           <thead>
             <tr>
-              <th>Resident Code</th>
+              <th className="w-12">Photo</th>
               <th>Full Name</th>
+              <th>Resident Code</th>
               <th>Room / Group</th>
-              <th>Current Status</th>
-              <th>Face Enrollment</th>
-              <th>Account Status</th>
-              <th>Contact</th>
+              <th>Presence</th>
+              <th>Face Biometrics</th>
+              <th>Status</th>
               <th className="text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {[...Array(6)].map((_, i) => (
               <tr key={i} className="skeleton-row">
-                <td><span className="skeleton-cell w-20" /></td>
+                <td><span className="skeleton-cell w-9 h-9 rounded-full" /></td>
                 <td><span className="skeleton-cell w-36" /></td>
+                <td><span className="skeleton-cell w-20" /></td>
                 <td><span className="skeleton-cell w-24" /></td>
                 <td><span className="skeleton-cell w-20" /></td>
                 <td><span className="skeleton-cell w-28" /></td>
                 <td><span className="skeleton-cell w-16" /></td>
-                <td><span className="skeleton-cell w-32" /></td>
-                <td className="text-right"><span className="skeleton-cell w-20 ml-auto" /></td>
+                <td className="text-right"><span className="skeleton-cell w-24 ml-auto" /></td>
               </tr>
             ))}
           </tbody>
@@ -106,35 +109,44 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
       <table className="data-table">
         <thead>
           <tr>
-            <th scope="col">Resident Code</th>
+            <th scope="col" className="w-12">Photo</th>
             <th scope="col">Full Name</th>
+            <th scope="col">Resident Code</th>
             <th scope="col">Room / Group</th>
-            <th scope="col">Current Status</th>
-            <th scope="col">Face Enrollment</th>
-            <th scope="col">Account Status</th>
-            <th scope="col">Contact</th>
+            <th scope="col">Presence</th>
+            <th scope="col">Face Biometrics</th>
+            <th scope="col">Status</th>
             <th scope="col" className="text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
           {residents.map((resident) => {
-            const isCurrentlyIn = resident.presence?.currentState === 'IN';
             return (
               <tr
                 key={resident.id}
                 className="table-row-interactive"
                 onClick={() => onSelect(resident)}
               >
-                {/* Resident Code */}
-                <td className="font-mono font-medium text-primary">
-                  {resident.residentCode}
+                {/* Photo Thumbnail */}
+                <td className="py-2" onClick={(e) => e.stopPropagation()}>
+                  <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                    <img
+                      src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
+                      alt={resident.fullName}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <UserIcon size={16} className="text-slate-400" />
+                  </div>
                 </td>
 
                 {/* Full Name */}
-                <td>
+                <td className="font-semibold text-slate-900 dark:text-white">
                   <button
                     type="button"
-                    className="table-link-btn"
+                    className="table-link-btn font-semibold text-left"
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelect(resident);
@@ -142,6 +154,11 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                   >
                     {resident.fullName}
                   </button>
+                </td>
+
+                {/* Resident Code */}
+                <td className="font-mono font-medium text-primary">
+                  {resident.residentCode}
                 </td>
 
                 {/* Room / Group */}
@@ -171,34 +188,12 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                   />
                 </td>
 
-                {/* Contact */}
-                <td className="text-xs text-secondary">
-                  {resident.contactPhone || resident.contactEmail ? (
-                    <div className="contact-cell">
-                      {resident.contactPhone && (
-                        <span className="flex items-center gap-1">
-                          <Phone size={11} className="text-muted" />
-                          <span>{resident.contactPhone}</span>
-                        </span>
-                      )}
-                      {resident.contactEmail && (
-                        <span className="flex items-center gap-1 text-muted">
-                          <Mail size={11} />
-                          <span>{resident.contactEmail}</span>
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-muted">—</span>
-                  )}
-                </td>
-
                 {/* Actions */}
                 <td
                   className="table-actions-cell text-right"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="table-actions-group">
+                  <div className="table-actions-group flex items-center justify-end gap-1">
                     <button
                       type="button"
                       className="btn-icon-table"
@@ -220,6 +215,16 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                           aria-label={`Edit ${resident.fullName}`}
                         >
                           <Edit2 size={15} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-icon-table text-purple-600 hover:text-purple-700"
+                          title="Enroll Face Biometrics"
+                          onClick={() => onEnrollFace?.(resident)}
+                          aria-label={`Enroll face for ${resident.fullName}`}
+                        >
+                          <ScanFace size={15} />
                         </button>
 
                         {resident.status === 'ACTIVE' ? (
@@ -255,3 +260,5 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
     </div>
   );
 };
+
+export default ResidentListTable;

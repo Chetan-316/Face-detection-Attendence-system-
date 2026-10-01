@@ -167,11 +167,11 @@ export function createCameraRouter(
     }
   });
 
-  // 1.1 POST /api/v1/cameras/test-connection - Test camera connection before registration
+  // 1.1 POST /api/v1/cameras/test-connection - Test camera connection before registration (ADMIN only)
   router.post(
     '/test-connection',
     requireAuth,
-    requireRole(StaffRole.ADMIN, StaffRole.WARDEN),
+    requireRole(StaffRole.ADMIN),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const parsed = testConnectionSchema.safeParse(req.body);
@@ -189,11 +189,11 @@ export function createCameraRouter(
     }
   );
 
-  // 2. POST /api/v1/cameras - Register a camera (Admin or Warden)
+  // 2. POST /api/v1/cameras - Register a camera (ADMIN only)
   router.post(
     '/',
     requireAuth,
-    requireRole(StaffRole.ADMIN, StaffRole.WARDEN),
+    requireRole(StaffRole.ADMIN),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const parsed = createCameraSchema.safeParse(req.body);
@@ -258,11 +258,11 @@ export function createCameraRouter(
     }
   });
 
-  // 4. PUT /api/v1/cameras/:id - Update camera configuration
+  // 4. PUT /api/v1/cameras/:id - Update camera configuration (ADMIN only)
   router.put(
     '/:id',
     requireAuth,
-    requireRole(StaffRole.ADMIN, StaffRole.WARDEN),
+    requireRole(StaffRole.ADMIN),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const camera = await resolveAndAuthorizeCamera(req, req.params.id);
@@ -295,8 +295,12 @@ export function createCameraRouter(
     }
   );
 
-  // 4.1 POST /api/v1/cameras/:id/test - Test connection to configured camera
-  router.post('/:id/test', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  // 4.1 POST /api/v1/cameras/:id/test - Test connection to configured camera (ADMIN only)
+  router.post(
+    '/:id/test',
+    requireAuth,
+    requireRole(StaffRole.ADMIN),
+    async (req: Request, res: Response, next: NextFunction) => {
     try {
       const camera = await resolveAndAuthorizeCamera(req, req.params.id);
       const result = await cameraService.testCameraConnection(camera.id);
@@ -306,8 +310,12 @@ export function createCameraRouter(
     }
   });
 
-  // 5. POST /api/v1/cameras/:id/start - Start streaming
-  router.post('/:id/start', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  // 5. POST /api/v1/cameras/:id/start - Start streaming (ADMIN or WARDEN)
+  router.post(
+    '/:id/start',
+    requireAuth,
+    requireRole(StaffRole.ADMIN, StaffRole.WARDEN),
+    async (req: Request, res: Response, next: NextFunction) => {
     try {
       const camera = await resolveAndAuthorizeCamera(req, req.params.id);
       const diagnostics = await cameraService.startCamera(camera.id);
@@ -321,8 +329,12 @@ export function createCameraRouter(
     }
   });
 
-  // 6. POST /api/v1/cameras/:id/stop - Stop streaming
-  router.post('/:id/stop', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  // 6. POST /api/v1/cameras/:id/stop - Stop streaming (ADMIN or WARDEN)
+  router.post(
+    '/:id/stop',
+    requireAuth,
+    requireRole(StaffRole.ADMIN, StaffRole.WARDEN),
+    async (req: Request, res: Response, next: NextFunction) => {
     try {
       const camera = await resolveAndAuthorizeCamera(req, req.params.id);
       const diagnostics = await cameraService.stopCamera(camera.id);
