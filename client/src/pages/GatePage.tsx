@@ -18,7 +18,6 @@ import {
   User as UserIcon,
   Check,
   Eye,
-  RefreshCw,
 } from 'lucide-react';
 
 export const GatePage: React.FC = () => {
@@ -106,14 +105,12 @@ export const GatePage: React.FC = () => {
           try {
             const obs: RecognitionObservation = JSON.parse(event.data);
 
-            // Never process if an action is currently pending
             if (isConfirming) return;
 
             setActiveObservation(obs);
             setLastActionSuccessMsg(null);
 
             if (obs.classification === 'MATCH' && obs.resident) {
-              // Fetch latest live locked presence state
               movementsApi.getResidentPresence(obs.resident.id).then((pres) => {
                 if (isMounted && pres?.currentState) {
                   setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
@@ -195,10 +192,8 @@ export const GatePage: React.FC = () => {
       setLastActionSuccessMsg(successText);
       success(successText);
 
-      // Refresh recent movements & presence counts
       fetchMovementData();
 
-      // Hold card for 2.5s to show success state, then smoothly return to waiting
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
       resetTimerRef.current = setTimeout(() => {
         setActiveObservation(null);
@@ -218,30 +213,24 @@ export const GatePage: React.FC = () => {
   return (
     <div className="gate-page flex flex-col gap-6 max-w-7xl mx-auto w-full">
       {/* Top Header: Gate Name, Online Indicator, Presence Counters */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800 text-white shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-blue-400">
-            <CameraIcon size={20} />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
+        <div>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gate</h1>
+            <span className="text-slate-400 font-light">|</span>
+            <span className="text-lg font-semibold text-slate-700">{selectedCamera?.name || 'Main Gate'}</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              Online
+            </span>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-slate-100">
-                {selectedCamera?.name || 'Main Gate'}
-              </h1>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Online
-              </span>
-            </div>
-            <p className="text-xs text-slate-400">Hostel Entry & Exit Operations</p>
-          </div>
+          <p className="text-sm text-slate-500 mt-0.5">Hostel resident entrance and exit point</p>
         </div>
 
-        {/* Occupancy Counters & Simple Camera Selector if multiple exist */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-5">
           {cameras.length > 1 && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium">Gate:</span>
+              <span className="text-sm text-slate-600 font-medium">Gate Camera:</span>
               <select
                 value={selectedCameraId}
                 onChange={(e) => {
@@ -252,7 +241,7 @@ export const GatePage: React.FC = () => {
                   setActiveObservation(null);
                   setLastActionSuccessMsg(null);
                 }}
-                className="bg-slate-800 border border-slate-700 text-white rounded px-2.5 py-1 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="bg-white border border-slate-300 text-slate-900 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {cameras.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -263,16 +252,16 @@ export const GatePage: React.FC = () => {
             </div>
           )}
 
-          <div className="flex items-center gap-3 border-l border-slate-800 pl-4">
-            <div className="text-center">
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">Inside</span>
-              <span className="text-base font-extrabold text-emerald-400 font-mono">
+          <div className="flex items-center gap-4 border-l border-slate-200 pl-5 text-sm">
+            <div>
+              <span className="text-slate-500 block text-xs font-medium">Inside</span>
+              <span className="text-lg font-bold text-emerald-700">
                 {presenceCounts?.currentlyIn ?? '—'}
               </span>
             </div>
-            <div className="text-center">
-              <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">Outside</span>
-              <span className="text-base font-extrabold text-amber-400 font-mono">
+            <div>
+              <span className="text-slate-500 block text-xs font-medium">Outside</span>
+              <span className="text-lg font-bold text-amber-700">
                 {presenceCounts?.currentlyOut ?? '—'}
               </span>
             </div>
@@ -282,31 +271,21 @@ export const GatePage: React.FC = () => {
 
       {/* 2-Column Gate Operations Grid: Live Camera Stream + Recognition Action Card */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Live Camera Video Stream (7 cols) */}
-        <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
-          <div className="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between text-xs">
-            <span className="font-semibold text-slate-200 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              Live Camera Feed
-            </span>
-            <span className="text-slate-400 font-mono text-[11px]">
-              {selectedCamera?.sourceType || 'WEBCAM'}
-            </span>
-          </div>
-
-          <div className="relative bg-black flex items-center justify-center overflow-hidden min-h-[360px] sm:min-h-[420px]">
+        {/* Left Column: Live Camera Video Stream (7 cols, 440-480px dominant height) */}
+        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+          <div className="relative bg-slate-100 flex items-center justify-center overflow-hidden min-h-[420px] sm:min-h-[460px] h-full">
             {selectedCameraId && !streamError ? (
               <img
                 src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
                 alt="Gate Live Feed"
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover"
                 onError={() => setStreamError('Stream interrupted')}
               />
             ) : (
-              <div className="flex flex-col items-center justify-center text-slate-500 p-8 text-center gap-2">
-                <CameraIcon size={44} className="opacity-40" />
-                <p className="text-sm font-semibold text-slate-300">Camera Feed Connecting</p>
-                <p className="text-xs text-slate-500 max-w-xs">
+              <div className="flex flex-col items-center justify-center text-slate-400 p-8 text-center gap-3">
+                <CameraIcon size={48} className="text-slate-300" />
+                <p className="text-base font-semibold text-slate-700">Camera Feed Connecting</p>
+                <p className="text-sm text-slate-500 max-w-xs">
                   {cameras.length === 0
                     ? 'No camera configured for this gate.'
                     : 'Awaiting video frames from camera service...'}
@@ -317,27 +296,30 @@ export const GatePage: React.FC = () => {
         </div>
 
         {/* Right Column: Resident Recognition & 1-Click Action Card (5 cols) */}
-        <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between min-h-[360px]">
-          {/* Action Success Confirmation Banner */}
+        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between min-h-[420px] sm:min-h-[460px]">
+          {/* Action Success Confirmation */}
           {lastActionSuccessMsg ? (
-            <div className="my-auto py-10 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
-                <Check size={28} />
+            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
+              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200">
+                <Check size={32} />
               </div>
-              <h3 className="text-lg font-bold text-slate-100">{lastActionSuccessMsg}</h3>
-              <p className="text-xs text-slate-400">Gate movement recorded successfully.</p>
+              <h3 className="text-xl font-bold text-slate-900">{lastActionSuccessMsg}</h3>
+              <p className="text-sm text-slate-500">Gate movement recorded successfully.</p>
             </div>
           ) : isMatch && activeObservation?.resident ? (
-            /* State 2: Resident Recognized */
-            <div className="flex flex-col gap-5 flex-1 justify-between">
+            /* Recognized Resident Card */
+            <div className="flex flex-col gap-6 flex-1 justify-between">
               <div>
-                <span className="text-xs uppercase tracking-wider font-bold text-emerald-400 block mb-3">
-                  Resident Recognized
-                </span>
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  <span className="text-sm font-semibold text-emerald-800">
+                    Resident identified
+                  </span>
+                </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-start gap-4">
                   {/* Profile Photo */}
-                  <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-800 border-2 border-slate-700 shrink-0 flex items-center justify-center shadow">
+                  <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
                     <img
                       src={residentsApi.getProfilePhotoUrl(activeObservation.resident.id)}
                       alt={activeObservation.resident.fullName}
@@ -346,39 +328,39 @@ export const GatePage: React.FC = () => {
                         (e.target as HTMLElement).style.display = 'none';
                       }}
                     />
-                    <UserIcon size={32} className="text-slate-500" />
+                    <UserIcon size={32} className="text-slate-400" />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-xl font-bold text-slate-100 truncate">
+                    <h2 className="text-22px sm:text-24px font-bold text-slate-900 truncate leading-snug">
                       {activeObservation.resident.fullName}
                     </h2>
-                    <p className="text-xs font-mono text-slate-400 mt-0.5">
+                    <p className="text-15px text-slate-600 mt-1 font-medium">
                       {activeObservation.resident.residentCode} • {activeObservation.resident.roomGroup || 'Room 101'}
                     </p>
-                    <div className="mt-2">
+                    <div className="mt-3">
                       <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold ${
+                        className={`inline-block px-3 py-1 rounded-md text-15px font-semibold ${
                           activeResidentPresence === 'IN'
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
                         }`}
                       >
-                        {activeResidentPresence === 'IN' ? '● Currently Inside' : '○ Currently Outside'}
+                        {activeResidentPresence === 'IN' ? 'Currently Inside' : 'Currently Outside'}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Exactly ONE Action Button based on Presence (Requirements 20, 21) */}
-              <div className="pt-4 border-t border-slate-800 flex flex-col gap-2">
+              {/* Single Action Button (Height 48-52px) */}
+              <div className="pt-5 border-t border-slate-200">
                 {activeResidentPresence === 'IN' ? (
                   <Button
                     type="button"
                     variant="primary"
                     size="lg"
-                    className="w-full text-base font-bold bg-amber-600 hover:bg-amber-500 text-white shadow-lg py-3.5"
+                    className="w-full h-13 text-base font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-lg shadow-sm"
                     onClick={handleMarkMovement}
                     isLoading={isConfirming}
                     disabled={isConfirming}
@@ -391,7 +373,7 @@ export const GatePage: React.FC = () => {
                     type="button"
                     variant="primary"
                     size="lg"
-                    className="w-full text-base font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg py-3.5"
+                    className="w-full h-13 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm"
                     onClick={handleMarkMovement}
                     isLoading={isConfirming}
                     disabled={isConfirming}
@@ -400,71 +382,67 @@ export const GatePage: React.FC = () => {
                     MARK IN
                   </Button>
                 )}
-                <span className="text-[11px] text-slate-400 text-center">
-                  Click to confirm {activeResidentPresence === 'IN' ? 'exit' : 'entry'} for resident
-                </span>
               </div>
             </div>
           ) : isUnknown ? (
-            /* State 3: Unknown Person (Requirement 27) */
-            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20">
+            /* Person not identified */
+            <div className="my-auto py-10 flex flex-col items-center justify-center text-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center border border-red-200">
                 <UserX size={28} />
               </div>
-              <h3 className="text-base font-bold text-rose-400">Person not identified</h3>
-              <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-                Ask the resident to contact the Warden if they have not been enrolled.
+              <h3 className="text-lg font-bold text-slate-900">Person not identified</h3>
+              <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                Resident face not found in system roster. Please verify identity manually.
               </p>
             </div>
           ) : isLowQuality ? (
-            /* State 4: Low Quality Face */
-            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
+            /* Face not clear enough */
+            <div className="my-auto py-10 flex flex-col items-center justify-center text-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
                 <AlertTriangle size={28} />
               </div>
-              <h3 className="text-base font-bold text-amber-400">Face not clear enough</h3>
-              <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+              <h3 className="text-lg font-bold text-slate-900">Face not clear enough</h3>
+              <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
                 Please ask the resident to face the camera directly.
               </p>
             </div>
           ) : (
-            /* State 1: Waiting for Resident (Requirement 19) */
-            <div className="my-auto py-12 flex flex-col items-center justify-center text-center gap-3 text-slate-500">
-              <div className="w-14 h-14 rounded-full bg-slate-800/80 text-slate-400 flex items-center justify-center border border-slate-700/60">
+            /* Waiting for resident */
+            <div className="my-auto py-12 flex flex-col items-center justify-center text-center gap-3 text-slate-400">
+              <div className="w-14 h-14 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center border border-slate-200">
                 <Eye size={28} />
               </div>
-              <h3 className="text-base font-semibold text-slate-300">Waiting for resident...</h3>
-              <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
-                Resident identity and movement option will appear automatically when standing in front of the camera.
+              <h3 className="text-lg font-semibold text-slate-800">Waiting for resident</h3>
+              <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                Stand in front of the camera to verify identity and record entry or exit.
               </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* Recent Gate Activity Log (Requirement 32) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
-        <div className="px-4 py-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between text-xs">
-          <h3 className="font-semibold text-slate-200">Recent Gate Activity</h3>
-          <span className="text-slate-400">Live Operator Log</span>
+      {/* Recent Activity Log */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-slate-900">Recent Activity</h3>
         </div>
 
         <div className="overflow-x-auto">
           {recentMovements.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 text-xs">
+            <div className="p-8 text-center text-slate-500 text-sm">
               No recent gate activity recorded.
             </div>
           ) : (
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-sm border-collapse">
               <thead>
-                <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider bg-slate-900/50">
-                  <th className="py-2.5 px-4 font-semibold">Time</th>
-                  <th className="py-2.5 px-4 font-semibold">Resident</th>
-                  <th className="py-2.5 px-4 font-semibold">Code</th>
-                  <th className="py-2.5 px-4 font-semibold text-right">Direction</th>
+                <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/50">
+                  <th className="py-3 px-6 font-semibold">Time</th>
+                  <th className="py-3 px-6 font-semibold">Resident</th>
+                  <th className="py-3 px-6 font-semibold">Code</th>
+                  <th className="py-3 px-6 font-semibold text-right">Movement</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-slate-100">
                 {recentMovements.map((mov) => {
                   const time = new Date(mov.effectiveTimestamp).toLocaleTimeString([], {
                     hour: '2-digit',
@@ -473,20 +451,20 @@ export const GatePage: React.FC = () => {
                   const isIN = mov.movementType === 'IN';
 
                   return (
-                    <tr key={mov.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-2.5 px-4 font-mono text-slate-400">{time}</td>
-                      <td className="py-2.5 px-4 font-medium text-slate-200">
+                    <tr key={mov.id} className="hover:bg-slate-50/80 transition-colors h-14">
+                      <td className="py-3 px-6 text-slate-500 font-mono">{time}</td>
+                      <td className="py-3 px-6 font-semibold text-slate-900">
                         {mov.resident?.fullName || mov.residentId}
                       </td>
-                      <td className="py-2.5 px-4 font-mono text-slate-400">
+                      <td className="py-3 px-6 text-slate-600 font-mono">
                         {mov.resident?.residentCode || '—'}
                       </td>
-                      <td className="py-2.5 px-4 text-right">
+                      <td className="py-3 px-6 text-right">
                         <span
-                          className={`inline-block px-2.5 py-0.5 rounded text-[11px] font-bold ${
+                          className={`inline-block px-3 py-1 rounded-md text-xs font-bold ${
                             isIN
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
                           }`}
                         >
                           {mov.movementType}
@@ -503,4 +481,5 @@ export const GatePage: React.FC = () => {
     </div>
   );
 };
+
 export default GatePage;

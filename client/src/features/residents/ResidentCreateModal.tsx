@@ -144,7 +144,7 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
         {formError && (
-          <div className="p-3 bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-sm rounded border border-red-200 dark:border-red-800 flex items-center gap-2">
+          <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200 flex items-center gap-2">
             <AlertCircle size={16} className="shrink-0" />
             <span>{formError}</span>
           </div>
@@ -193,9 +193,9 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
               required
             />
           ) : (
-            <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
               <span className="text-xs text-slate-500 block font-medium">Assigned Hostel</span>
-              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              <span className="text-sm font-semibold text-slate-800">
                 Assigned to your operational hostel
               </span>
             </div>
@@ -254,7 +254,7 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
           ]}
         />
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
           <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
             Cancel
           </Button>

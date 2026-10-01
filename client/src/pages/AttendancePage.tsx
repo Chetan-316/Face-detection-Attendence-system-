@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import {
@@ -89,7 +88,6 @@ export const AttendancePage: React.FC = () => {
       setSessions(sessionsRes.sessions);
       setCameras(camerasRes.data);
 
-      // If active session exists, default to it
       if (activeRes.activeSession) {
         setSelectedSessionId(activeRes.activeSession.id);
         setActiveSessionData(activeRes.activeSession);
@@ -140,44 +138,40 @@ export const AttendancePage: React.FC = () => {
     }
   };
 
-  // Live Face Recognition connection during ACTIVE session (Section 30 & 31)
+  // Live recognition subscriber for active attendance session
   useEffect(() => {
-    if (!activeSessionData || activeSessionData.status !== 'ACTIVE') {
-      setCurrentResident(null);
-      return;
-    }
-
-    const camId = activeSessionData.camera?.id || (cameras.length > 0 ? cameras[0].id : '');
-    if (!camId) return;
+    if (!activeSessionData || activeSessionData.status !== 'ACTIVE') return;
 
     let isMounted = true;
     let eventSource: EventSource | null = null;
+    const camId = activeSessionData.camera?.id || (cameras.length > 0 ? cameras[0].id : '');
 
-    const connectLiveStream = async () => {
+    if (!camId) return;
+
+    const connectLiveRecognition = async () => {
       try {
         const { streamToken } = await recognitionApi.getStreamToken(camId);
         if (!isMounted) return;
 
         const streamUrl = recognitionApi.getEventsStreamUrl(camId, streamToken);
-        const es = new EventSource(streamUrl);
-        eventSource = es;
+        eventSource = new EventSource(streamUrl);
 
-        es.addEventListener('observation', async (event: MessageEvent) => {
+        eventSource.addEventListener('observation', async (event: MessageEvent) => {
           try {
             const obs = JSON.parse(event.data);
             if (obs.classification === 'MATCH' && obs.resident) {
-              const res = obs.resident;
+              const resident = obs.resident;
               const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
               setCurrentResident({
-                id: res.id,
-                fullName: res.fullName,
-                residentCode: res.residentCode,
-                roomGroup: res.roomGroup || '—',
+                id: resident.id,
+                fullName: resident.fullName,
+                residentCode: resident.residentCode,
+                roomGroup: resident.roomGroup || '—',
                 markedTime: timeStr,
               });
 
-              // Mark attendance record idempotently with duplicate prevention
-              await markAttendanceRecord(activeSessionData.id, res.id, 'FACE_RECOGNITION');
+              await markAttendanceRecord(activeSessionData.id, resident.id, 'FACE_RECOGNITION');
               const updated = await getAttendanceRoster(activeSessionData.id);
               if (isMounted) {
                 setStats(updated.stats);
@@ -186,19 +180,11 @@ export const AttendancePage: React.FC = () => {
             }
           } catch (e) {}
         });
-
-        es.onerror = () => {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
-        };
       } catch (err) {}
     };
 
-    connectLiveStream();
+    connectLiveRecognition();
 
-    // Fallback polling for recognition events
     const pollInterval = setInterval(async () => {
       if (!isMounted) return;
       try {
@@ -237,7 +223,7 @@ export const AttendancePage: React.FC = () => {
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newSessionTitle.trim()) {
-      toastError('Session title is required');
+      toastError('Attendance Name is required');
       return;
     }
 
@@ -338,66 +324,50 @@ export const AttendancePage: React.FC = () => {
       if (!matchesSearch) return false;
 
       if (statusFilter === 'ALL') return true;
-      if (statusFilter === 'PRESENT') {
-        return item.status === 'PRESENT' || item.status === 'CORRECTED_PRESENT';
-      }
+      if (statusFilter === 'PRESENT') return item.status === 'PRESENT' || item.status === 'CORRECTED_PRESENT';
       if (statusFilter === 'ABSENT') return item.status === 'ABSENT';
       if (statusFilter === 'NOT_RECORDED') return item.status === 'NOT_RECORDED';
       return true;
     });
   }, [roster, searchQuery, statusFilter]);
 
-  // Status badge helper
   const renderStatusBadge = (status: string) => {
     switch (status) {
       case 'PRESENT':
       case 'CORRECTED_PRESENT':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
             <CheckCircle2 size={13} className="text-emerald-600" />
-            {status === 'CORRECTED_PRESENT' ? 'Present (Corrected)' : 'Present'}
+            <span>Present</span>
           </span>
         );
       case 'ABSENT':
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <XCircle size={13} className="text-rose-600" />
-            Absent
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-800 border border-red-200">
+            <XCircle size={13} className="text-red-600" />
+            <span>Absent</span>
           </span>
         );
       case 'NOT_RECORDED':
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200">
-            <HelpCircle size={13} className="text-gray-500" />
-            Not Recorded
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+            <HelpCircle size={13} className="text-slate-400" />
+            <span>Not Recorded</span>
           </span>
         );
     }
   };
 
-  const renderSourceLabel = (method: string | null) => {
-    switch (method) {
-      case 'FACE_RECOGNITION':
-        return 'Face Recognition';
-      case 'WARDEN_OVERRIDE':
-        return 'Staff Correction';
-      case 'MANUAL_STAFF':
-        return 'Manual Entry';
-      case 'SYSTEM':
-        return 'System Auto-Close';
-      default:
-        return '—';
-    }
-  };
+  const hasActiveSession = activeSessionData?.status === 'ACTIVE';
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-gray-200 pb-4">
+    <div className="attendance-page max-w-7xl mx-auto space-y-6">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Hostel Attendance</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Hostel Attendance</h1>
+          <p className="text-sm text-slate-500 mt-0.5">
             Roll call, daily night attendance sessions, and attendance roster records
           </p>
         </div>
@@ -407,10 +377,10 @@ export const AttendancePage: React.FC = () => {
             type="button"
             onClick={() => loadData(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none"
+            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none transition"
             title="Refresh attendance data"
           >
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin text-blue-600' : ''} />
+            <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-blue-600' : ''} />
             <span>Refresh</span>
           </button>
 
@@ -427,108 +397,107 @@ export const AttendancePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content Area */}
       {isLoading ? (
-        <div className="py-24 text-center">
+        <div className="py-24 text-center bg-white rounded-xl border border-slate-200">
           <RefreshCw size={32} className="animate-spin text-blue-600 mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Loading attendance sessions...</p>
+          <p className="text-slate-500 text-sm">Loading attendance sessions...</p>
         </div>
       ) : sessions.length === 0 ? (
-        <div className="attendance-empty-panel">
-          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--primary-subtle)', color: 'var(--primary-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem auto' }}>
-            <CheckSquare size={24} />
+        /* Empty State */
+        <div className="attendance-empty-panel bg-white border border-slate-200 rounded-xl p-12 text-center max-w-xl mx-auto my-8 shadow-sm">
+          <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 border border-blue-100">
+            <CheckSquare size={28} />
           </div>
-          <h2>Hostel Attendance</h2>
-          <p>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Hostel Attendance</h2>
+          <p className="text-base text-slate-600 mb-6 leading-relaxed">
             No attendance session is active.
             <br />
-            Start a session when you are ready to conduct roll call.
+            Start attendance when you are ready to conduct roll call.
           </p>
           {canManage && (
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
-              className="btn btn-primary btn-md inline-flex items-center gap-2"
+              aria-label="Start Attendance"
+              className="inline-flex items-center gap-2 px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
             >
-              <Play size={16} />
+              <Play size={18} />
               <span>Start Attendance</span>
             </button>
           )}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Left Column: Sessions Sidebar */}
+          {/* Left Column: Sessions List */}
           <div className="lg:col-span-1 space-y-3">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 px-1">
+            <h2 className="text-sm font-semibold text-slate-700 px-1">
               Attendance Sessions
             </h2>
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm divide-y divide-gray-100">
-              {sessions.length === 0 ? (
-                <div className="p-4 text-center text-sm text-gray-500">No sessions recorded yet.</div>
-              ) : (
-                sessions.map((s) => {
-                  const isSelected = s.id === selectedSessionId;
-                  const isActive = s.status === 'ACTIVE';
-                  const isClosed = s.status === 'CLOSED';
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => handleSelectSession(s.id)}
-                      className={`w-full text-left p-3.5 transition flex flex-col gap-1 ${
-                        isSelected ? 'bg-blue-50/70 border-l-4 border-blue-600' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-semibold text-gray-900 text-sm truncate">{s.title}</span>
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded font-medium ${
-                            isActive
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : isClosed
-                              ? 'bg-gray-100 text-gray-600'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          {s.status}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <Calendar size={12} />
-                        <span>{new Date(s.attendanceDate).toLocaleDateString()}</span>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm divide-y divide-slate-100">
+              {sessions.map((s) => {
+                const isSelected = s.id === selectedSessionId;
+                const isActive = s.status === 'ACTIVE';
+                const isClosed = s.status === 'CLOSED';
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => handleSelectSession(s.id)}
+                    className={`w-full text-left p-3.5 transition flex flex-col gap-1 ${
+                      isSelected ? 'bg-blue-50/80 border-l-4 border-blue-600' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-slate-900 text-sm truncate">{s.title}</span>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                          isActive
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            : isClosed
+                            ? 'bg-slate-100 text-slate-700'
+                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        {s.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <Calendar size={13} />
+                      <span>{new Date(s.attendanceDate).toLocaleDateString()}</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Right Column: Active Session Card & Roster */}
+          {/* Right Column: Selected/Active Session Card & Roster */}
           <div className="lg:col-span-3 space-y-6">
             {activeSessionData ? (
               <>
-                {/* Session Summary Card */}
-                <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm space-y-4">
+                {/* Active Session Overview Banner */}
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-5">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
-                      <div className="flex items-center gap-2.5">
-                        <h2 className="text-xl font-bold text-gray-900">{activeSessionData.title}</h2>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-22px font-bold text-slate-900">{activeSessionData.title}</h2>
                         <span
-                          className={`text-xs px-2.5 py-1 rounded-full font-semibold ${
+                          className={`text-xs px-3 py-1 rounded-full font-semibold ${
                             activeSessionData.status === 'ACTIVE'
-                              ? 'bg-emerald-100 text-emerald-800'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               : activeSessionData.status === 'CLOSED'
-                              ? 'bg-gray-100 text-gray-700'
-                              : 'bg-amber-100 text-amber-800'
+                              ? 'bg-slate-100 text-slate-700'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
                           }`}
                         >
                           Status: {activeSessionData.status}
                         </span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-gray-600">
+
+                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-slate-600">
                         <span className="flex items-center gap-1.5">
-                          <Calendar size={15} className="text-gray-400" />
+                          <Calendar size={15} className="text-slate-400" />
                           {new Date(activeSessionData.attendanceDate).toLocaleDateString(undefined, {
                             weekday: 'short',
                             year: 'numeric',
@@ -537,7 +506,7 @@ export const AttendancePage: React.FC = () => {
                           })}
                         </span>
                         <span className="flex items-center gap-1.5">
-                          <Clock size={15} className="text-gray-400" />
+                          <Clock size={15} className="text-slate-400" />
                           {new Date(activeSessionData.startTime).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit',
@@ -550,39 +519,37 @@ export const AttendancePage: React.FC = () => {
                         </span>
                         {activeSessionData.camera && (
                           <span className="flex items-center gap-1.5">
-                            <CameraIcon size={15} className="text-gray-400" />
+                            <CameraIcon size={15} className="text-slate-400" />
                             {activeSessionData.camera.name}
                           </span>
                         )}
                       </div>
                     </div>
 
-                    {/* Operational Actions */}
+                    {/* Operational Action Controls */}
                     {canManage && (
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-3">
                         {activeSessionData.status === 'DRAFT' && (
                           <button
                             type="button"
                             onClick={handleStartSession}
                             disabled={isSubmitting}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition"
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition shadow-sm"
                           >
-                            <Play size={15} />
+                            <Play size={16} />
                             <span>Start Session</span>
                           </button>
                         )}
                         {activeSessionData.status === 'ACTIVE' && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setIsCloseConfirmOpen(true)}
-                              disabled={isSubmitting}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 transition"
-                            >
-                              <CheckSquare size={15} />
-                              <span>Close Attendance</span>
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsCloseConfirmOpen(true)}
+                            disabled={isSubmitting}
+                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition shadow-sm"
+                          >
+                            <CheckSquare size={16} />
+                            <span>Close Attendance</span>
+                          </button>
                         )}
                       </div>
                     )}
@@ -590,58 +557,43 @@ export const AttendancePage: React.FC = () => {
 
                   {/* Summary Metric Counters */}
                   {stats && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-                      <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-center">
-                        <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          Expected
-                        </span>
-                        <span className="text-2xl font-bold text-gray-900 mt-1 block">
-                          {stats.expectedResidents}
-                        </span>
-                      </div>
-                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-center">
-                        <span className="block text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                    <div className="grid grid-cols-3 gap-4 pt-1">
+                      <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-center">
+                        <span className="block text-sm font-semibold text-emerald-800">
                           Present
                         </span>
-                        <span className="text-2xl font-bold text-emerald-800 mt-1 block">
+                        <span className="text-3xl font-bold text-emerald-900 mt-1 block">
                           {stats.presentCount}
                         </span>
                       </div>
-                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-center">
-                        <span className="block text-xs font-semibold text-amber-700 uppercase tracking-wide">
-                          Remaining
+                      <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-xl text-center">
+                        <span className="block text-sm font-semibold text-amber-800">
+                          Pending
+                          <span className="sr-only">Remaining</span>
                         </span>
-                        <span className="text-2xl font-bold text-amber-800 mt-1 block">
+                        <span className="text-3xl font-bold text-amber-900 mt-1 block">
                           {stats.remainingCount}
                         </span>
                       </div>
-                      <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-center">
-                        <span className="block text-xs font-semibold text-rose-700 uppercase tracking-wide">
-                          Absent
+                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                        <span className="block text-sm font-semibold text-slate-700">
+                          Total
+                          <span className="sr-only">Expected</span>
                         </span>
-                        <span className="text-2xl font-bold text-rose-800 mt-1 block">
-                          {stats.absentCount}
+                        <span className="text-3xl font-bold text-slate-900 mt-1 block">
+                          {stats.expectedResidents}
                         </span>
                       </div>
                     </div>
                   )}
                 </div>
 
-                {/* Live Camera & Current Resident Display (Section 30) */}
+                {/* Live Camera & Current Resident Display (When Active) */}
                 {activeSessionData.status === 'ACTIVE' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                    {/* Live Camera Card */}
-                    <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                      <div className="px-4 py-2.5 bg-slate-850 border-b border-slate-800 flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-200 flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          Live Attendance Camera
-                        </span>
-                        <span className="text-slate-400 font-mono text-[11px]">
-                          {activeSessionData.camera?.name || (cameras.length > 0 ? cameras[0].name : 'Hostel Camera')}
-                        </span>
-                      </div>
-                      <div className="relative bg-black flex items-center justify-center overflow-hidden min-h-[300px]">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                    {/* Live Camera Feed */}
+                    <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                      <div className="relative bg-slate-100 flex items-center justify-center overflow-hidden min-h-[340px] sm:min-h-[380px] h-full">
                         {(activeSessionData.camera?.id || cameras[0]?.id) ? (
                           <img
                             src={
@@ -650,28 +602,28 @@ export const AttendancePage: React.FC = () => {
                                 : `/api/v1/cameras/${activeSessionData.camera?.id || cameras[0].id}/preview`
                             }
                             alt="Live Attendance Camera Feed"
-                            className="w-full h-full object-contain max-h-[340px]"
+                            className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="flex flex-col items-center justify-center text-slate-500 p-8 text-center gap-2">
-                            <CameraIcon size={36} className="opacity-40" />
-                            <p className="text-sm font-semibold text-slate-300">Camera Feed Active</p>
+                          <div className="flex flex-col items-center justify-center text-slate-400 p-8 text-center gap-2">
+                            <CameraIcon size={44} className="text-slate-300" />
+                            <p className="text-base font-semibold text-slate-700">Attendance Camera Active</p>
                           </div>
                         )}
                       </div>
                     </div>
 
                     {/* Current Resident Card */}
-                    <div className="lg:col-span-5 bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col justify-between min-h-[300px]">
+                    <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between min-h-[340px]">
                       <div>
-                        <span className="text-xs uppercase tracking-wider font-bold text-blue-600 block mb-3">
+                        <h3 className="text-sm font-semibold text-slate-500 mb-4">
                           Current Resident
-                        </span>
+                        </h3>
 
                         {currentResident ? (
                           <div className="flex flex-col gap-4">
                             <div className="flex items-center gap-4">
-                              <div className="w-20 h-20 rounded-xl overflow-hidden bg-gray-100 border-2 border-gray-200 shrink-0 flex items-center justify-center shadow-sm">
+                              <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center shadow-sm">
                                 <img
                                   src={residentsApi.getProfilePhotoUrl(currentResident.id)}
                                   alt={currentResident.fullName}
@@ -680,45 +632,45 @@ export const AttendancePage: React.FC = () => {
                                     (e.target as HTMLElement).style.display = 'none';
                                   }}
                                 />
-                                <Users size={32} className="text-gray-400" />
+                                <Users size={32} className="text-slate-400" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <h3 className="text-xl font-bold text-gray-900 truncate">
+                                <h3 className="text-22px font-bold text-slate-900 truncate">
                                   {currentResident.fullName}
                                 </h3>
-                                <p className="text-xs font-mono text-gray-500 mt-0.5">
+                                <p className="text-15px text-slate-600 mt-1 font-medium">
                                   {currentResident.residentCode} • {currentResident.roomGroup}
                                 </p>
                                 <div className="mt-2.5">
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                    <CheckCircle2 size={14} className="text-emerald-600" />
+                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                    <CheckCircle2 size={15} className="text-emerald-600" />
                                     PRESENT
                                   </span>
                                 </div>
                               </div>
                             </div>
-                            <div className="text-xs text-gray-600 bg-gray-50 p-2.5 rounded-lg border border-gray-100 mt-2">
-                              Recognized and marked Present at {currentResident.markedTime || 'Just now'}
+                            <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-2">
+                              Marked Present at {currentResident.markedTime || 'Just now'}
                             </div>
                           </div>
                         ) : (
-                          <div className="my-auto py-12 flex flex-col items-center justify-center text-center gap-3 text-gray-400">
-                            <div className="w-14 h-14 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center border border-gray-200">
+                          <div className="my-auto py-12 flex flex-col items-center justify-center text-center gap-3 text-slate-400">
+                            <div className="w-14 h-14 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center border border-slate-200">
                               <Users size={28} />
                             </div>
-                            <h4 className="text-sm font-semibold text-gray-700">Waiting for resident...</h4>
-                            <p className="text-xs text-gray-500 max-w-xs leading-relaxed">
-                              Residents standing before the camera will be identified and marked Present automatically.
+                            <h4 className="text-base font-semibold text-slate-800">Waiting for resident</h4>
+                            <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                              Residents will be recognized and marked Present automatically.
                             </p>
                           </div>
                         )}
                       </div>
 
-                      <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-                        <span>Roll call in progress</span>
-                        <span className="font-semibold text-emerald-600 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          Live Face Marking Active
+                      <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-sm text-slate-500">
+                        <span>Roll call session active</span>
+                        <span className="font-semibold text-emerald-700 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                          Live Marking Active
                         </span>
                       </div>
                     </div>
@@ -726,24 +678,24 @@ export const AttendancePage: React.FC = () => {
                 )}
 
                 {/* Roster Controls */}
-                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
                   <div className="relative flex-1">
-                    <Search className="absolute left-3 top-2.5 text-gray-400" size={17} />
+                    <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
                     <input
                       type="text"
                       placeholder="Search residents by code, name, or room..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     />
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Filter size={16} className="text-gray-400" />
+                    <Filter size={16} className="text-slate-400" />
                     <select
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
-                      className="text-sm border border-gray-300 rounded-lg px-2.5 py-2 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      className="text-sm border border-slate-300 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                     >
                       <option value="ALL">All Statuses</option>
                       <option value="PRESENT">Present</option>
@@ -754,45 +706,47 @@ export const AttendancePage: React.FC = () => {
                 </div>
 
                 {/* Roster Table */}
-                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                  <table className="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead className="bg-gray-50 text-gray-600 font-semibold">
+                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-slate-900">Residents</h3>
+                    <span className="text-sm text-slate-500 font-medium">{filteredRoster.length} resident records</span>
+                  </div>
+
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50/70 text-slate-600 font-semibold">
                       <tr>
-                        <th scope="col" className="px-4 py-3 text-left">
-                          Resident
+                        <th scope="col" className="px-6 py-3.5 text-left">
+                          Name
                         </th>
-                        <th scope="col" className="px-4 py-3 text-left">
+                        <th scope="col" className="px-6 py-3.5 text-left">
                           Room
                         </th>
-                        <th scope="col" className="px-4 py-3 text-left">
+                        <th scope="col" className="px-6 py-3.5 text-left">
                           Status
                         </th>
-                        <th scope="col" className="px-4 py-3 text-left">
-                          Marked At
-                        </th>
-                        <th scope="col" className="px-4 py-3 text-left">
-                          Source
+                        <th scope="col" className="px-6 py-3.5 text-left">
+                          Time
                         </th>
                         {canManage && (
-                          <th scope="col" className="px-4 py-3 text-right">
+                          <th scope="col" className="px-6 py-3.5 text-right">
                             Action
                           </th>
                         )}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
+                    <tbody className="divide-y divide-slate-100 bg-white">
                       {filteredRoster.length === 0 ? (
                         <tr>
-                          <td colSpan={canManage ? 6 : 5} className="px-4 py-12 text-center text-gray-500">
+                          <td colSpan={canManage ? 5 : 4} className="px-6 py-12 text-center text-slate-500">
                             No resident attendance records matching current criteria.
                           </td>
                         </tr>
                       ) : (
                         filteredRoster.map((item) => (
-                          <tr key={item.residentId} className="hover:bg-gray-50/60 transition">
-                            <td className="px-4 py-3">
+                          <tr key={item.residentId} className="hover:bg-slate-50/70 transition h-16">
+                            <td className="px-6 py-3.5">
                               <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-gray-100 border border-gray-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
                                   <img
                                     src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(item.residentId) : `/api/v1/residents/${item.residentId}/profile-photo`}
                                     alt=""
@@ -801,17 +755,17 @@ export const AttendancePage: React.FC = () => {
                                       (e.currentTarget as HTMLElement).style.display = 'none';
                                     }}
                                   />
-                                  <Users size={16} className="text-gray-400" />
+                                  <Users size={18} className="text-slate-400" />
                                 </div>
                                 <div>
-                                  <div className="font-semibold text-gray-900">{item.fullName}</div>
-                                  <div className="text-xs text-gray-500 font-mono">{item.residentCode}</div>
+                                  <div className="font-semibold text-slate-900">{item.fullName}</div>
+                                  <div className="text-xs text-slate-500 font-mono">{item.residentCode}</div>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-3 text-gray-700 font-medium">{item.roomGroup}</td>
-                            <td className="px-4 py-3">{renderStatusBadge(item.status)}</td>
-                            <td className="px-4 py-3 text-gray-600">
+                            <td className="px-6 py-3.5 text-slate-700 font-medium">{item.roomGroup}</td>
+                            <td className="px-6 py-3.5">{renderStatusBadge(item.status)}</td>
+                            <td className="px-6 py-3.5 text-slate-600 font-mono text-xs">
                               {item.markedAt
                                 ? new Date(item.markedAt).toLocaleTimeString([], {
                                     hour: '2-digit',
@@ -819,16 +773,8 @@ export const AttendancePage: React.FC = () => {
                                   })
                                 : '—'}
                             </td>
-                            <td className="px-4 py-3 text-gray-600 text-xs">
-                              {renderSourceLabel(item.markMethod)}
-                              {item.correctionReason && (
-                                <div className="text-xs text-amber-700 italic truncate max-w-xs mt-0.5">
-                                  {item.correctionReason}
-                                </div>
-                              )}
-                            </td>
                             {canManage && (
-                              <td className="px-4 py-3 text-right">
+                              <td className="px-6 py-3.5 text-right">
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -840,9 +786,9 @@ export const AttendancePage: React.FC = () => {
                                     );
                                     setCorrectionReason('');
                                   }}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 focus:outline-none"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none"
                                 >
-                                  <Edit2 size={12} />
+                                  <Edit2 size={13} />
                                   <span>Correct</span>
                                 </button>
                               </td>
@@ -855,23 +801,24 @@ export const AttendancePage: React.FC = () => {
                 </div>
               </>
             ) : (
-              <div className="attendance-empty-panel">
-                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--primary-subtle)', color: 'var(--primary-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem auto' }}>
-                  <CheckSquare size={24} />
+              <div className="attendance-empty-panel bg-white border border-slate-200 rounded-xl p-12 text-center max-w-xl mx-auto my-8 shadow-sm">
+                <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 border border-blue-100">
+                  <CheckSquare size={28} />
                 </div>
-                <h2>Hostel Attendance</h2>
-                <p>
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Hostel Attendance</h2>
+                <p className="text-base text-slate-600 mb-6 leading-relaxed">
                   No attendance session is active.
                   <br />
-                  Start a session when you are ready to conduct roll call.
+                  Start attendance when you are ready to conduct roll call.
                 </p>
                 {canManage && (
                   <button
                     type="button"
                     onClick={() => setIsCreateModalOpen(true)}
-                    className="btn btn-primary btn-md inline-flex items-center gap-2"
+                    aria-label="Start Attendance"
+                    className="inline-flex items-center gap-2 px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
                   >
-                    <Play size={16} />
+                    <Play size={18} />
                     <span>Start Attendance</span>
                   </button>
                 )}
@@ -885,12 +832,12 @@ export const AttendancePage: React.FC = () => {
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex justify-between items-center border-b border-gray-200 pb-3">
-              <h3 className="text-lg font-bold text-gray-900">Create Attendance</h3>
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+              <h3 className="text-lg font-bold text-slate-900">Create Attendance</h3>
               <button
                 type="button"
                 onClick={() => setIsCreateModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-slate-400 hover:text-slate-600"
               >
                 ✕
               </button>
@@ -898,7 +845,7 @@ export const AttendancePage: React.FC = () => {
 
             <form onSubmit={handleCreateSession} className="space-y-4">
               <div>
-                <label htmlFor="new-session-title" className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                <label htmlFor="new-session-title" className="block text-sm font-semibold text-slate-700 mb-1">
                   Attendance Name
                 </label>
                 <input
@@ -906,19 +853,19 @@ export const AttendancePage: React.FC = () => {
                   type="text"
                   value={newSessionTitle}
                   onChange={(e) => setNewSessionTitle(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
                   Session Type
                 </label>
                 <select
                   value={newSessionType}
                   onChange={(e) => setNewSessionType(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 >
                   <option value="NIGHT">Night Attendance</option>
                   <option value="GENERAL">General Assembly</option>
@@ -927,50 +874,50 @@ export const AttendancePage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Date</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-1">Date</label>
                 <input
                   type="date"
                   value={newSessionDate}
                   onChange={(e) => setNewSessionDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   required
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
                     Start Time
                   </label>
                   <input
                     type="time"
                     value={newSessionStartTime}
                     onChange={(e) => setNewSessionStartTime(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
                     End Time
                   </label>
                   <input
                     type="time"
                     value={newSessionEndTime}
                     onChange={(e) => setNewSessionEndTime(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
                   Camera (Optional)
                 </label>
                 <select
                   value={newSessionCameraId}
                   onChange={(e) => setNewSessionCameraId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 >
                   <option value="">Any Attendance Camera in Hostel</option>
                   {cameras.map((c) => (
@@ -981,18 +928,18 @@ export const AttendancePage: React.FC = () => {
                 </select>
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-gray-200">
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
                   Create Attendance
                 </button>
@@ -1006,28 +953,28 @@ export const AttendancePage: React.FC = () => {
       {isCloseConfirmOpen && activeSessionData && stats && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center gap-3 text-rose-600">
+            <div className="flex items-center gap-3 text-red-600">
               <AlertCircle size={24} />
-              <h3 className="text-lg font-bold text-gray-900">Close Night Attendance?</h3>
+              <h3 className="text-lg font-bold text-slate-900">Close Night Attendance?</h3>
             </div>
 
-            <div className="text-sm text-gray-600 space-y-2">
+            <div className="text-sm text-slate-600 space-y-2">
               <p>
-                Present: <strong className="text-gray-900">{stats.presentCount}</strong>
+                Present: <strong className="text-slate-900">{stats.presentCount}</strong>
               </p>
               <p>
-                Not yet marked: <strong className="text-rose-600">{stats.remainingCount}</strong>
+                Not yet marked: <strong className="text-red-600">{stats.remainingCount}</strong>
               </p>
-              <p className="text-xs text-gray-500 bg-amber-50 border border-amber-200 p-2.5 rounded-lg text-amber-900">
+              <p className="text-sm text-slate-600 bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-900">
                 Residents not marked will be recorded as absent upon closing this session.
               </p>
             </div>
 
-            <div className="flex justify-end gap-3 pt-3 border-t border-gray-200">
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => setIsCloseConfirmOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
               >
                 Cancel
               </button>
@@ -1035,7 +982,7 @@ export const AttendancePage: React.FC = () => {
                 type="button"
                 onClick={handleCloseSession}
                 disabled={isSubmitting}
-                className="px-4 py-2 text-sm font-semibold text-white bg-rose-600 rounded-lg hover:bg-rose-700 disabled:opacity-50"
+                className="px-5 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 Close Attendance
               </button>
@@ -1048,19 +995,19 @@ export const AttendancePage: React.FC = () => {
       {correctingResident && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex justify-between items-center border-b border-gray-200 pb-3">
-              <h3 className="text-lg font-bold text-gray-900">Change attendance</h3>
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+              <h3 className="text-lg font-bold text-slate-900">Change attendance</h3>
               <button
                 type="button"
                 onClick={() => setCorrectingResident(null)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-slate-400 hover:text-slate-600"
               >
                 ✕
               </button>
             </div>
 
             <form onSubmit={handleSaveCorrection} className="space-y-4">
-              <div className="text-sm text-gray-700 space-y-1">
+              <div className="text-sm text-slate-700 space-y-1">
                 <div>
                   Resident: <strong>{correctingResident.fullName}</strong> ({correctingResident.residentCode})
                 </div>
@@ -1070,13 +1017,13 @@ export const AttendancePage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
                   Change to
                 </label>
                 <select
                   value={targetCorrectionStatus}
                   onChange={(e) => setTargetCorrectionStatus(e.target.value as any)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 >
                   <option value="PRESENT">Present</option>
                   <option value="ABSENT">Absent</option>
@@ -1084,7 +1031,7 @@ export const AttendancePage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">
+                <label className="block text-sm font-semibold text-slate-700 mb-1">
                   Reason (Mandatory)
                 </label>
                 <textarea
@@ -1092,23 +1039,23 @@ export const AttendancePage: React.FC = () => {
                   value={correctionReason}
                   onChange={(e) => setCorrectionReason(e.target.value)}
                   placeholder="Explain why this attendance record is being changed..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   required
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-3 border-t border-gray-200">
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setCorrectingResident(null)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
                 >
                   Save correction
                 </button>

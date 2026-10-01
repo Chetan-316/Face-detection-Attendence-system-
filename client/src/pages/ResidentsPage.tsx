@@ -144,16 +144,16 @@ export const ResidentsPage: React.FC = () => {
   return (
     <div className="residents-page">
       <PageHeader
-        title="Resident Management"
-        subtitle="Roster management, presence tracking, and status controls."
+        title="Residents"
+        subtitle="Manage resident roster, room allocation, presence, and face enrollment."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <Button
               variant="outline"
-              size="sm"
+              size="md"
               onClick={fetchResidents}
               isLoading={isLoading}
-              leftIcon={<RefreshCw size={14} />}
+              leftIcon={<RefreshCw size={16} />}
             >
               Refresh
             </Button>
@@ -162,9 +162,9 @@ export const ResidentsPage: React.FC = () => {
             {canManage && (
               <Button
                 variant="primary"
-                size="sm"
+                size="md"
                 onClick={() => setIsCreateOpen(true)}
-                leftIcon={<Plus size={15} />}
+                leftIcon={<Plus size={18} />}
               >
                 Add Resident
               </Button>

@@ -375,6 +375,77 @@ export class CameraService {
     return frame;
   }
 
+  /**
+   * Captures a strictly fresh frame from the camera adapter, ensuring the returned frame
+   * was produced AFTER this call was initiated. Prevents stale buffered frames during
+   * face enrollment pose progression.
+   */
+  public async captureFreshSnapshot(cameraId: string, timeoutMs: number = 2500): Promise<CameraFrame> {
+    const adapter = await this.getOrCreateAdapter(cameraId);
+    if (!adapter.isActive()) {
+      await this.startCamera(cameraId);
+    }
+
+    const baseline = adapter.getLatestFrame();
+    const baselineSeq = baseline?.sequence !== undefined ? baseline.sequence : -1;
+    const baselineTime = baseline?.timestamp ? new Date(baseline.timestamp).getTime() : 0;
+
+    return new Promise<CameraFrame>((resolve, reject) => {
+      let settled = false;
+      let unsubscribe: (() => void) | null = null;
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          if (unsubscribe) {
+            try { unsubscribe(); } catch {}
+          }
+          reject(new ValidationError('Camera did not provide a fresh frame. Please try again.'));
+        }
+      }, timeoutMs);
+
+      // Fallback pulse for pull-based frame sources or slow frames:
+      // If no fresh frame arrives within 200ms and adapter has captureSnapshot, trigger a frame capture
+      const fallbackTimer = setTimeout(() => {
+        if (!settled && adapter.captureSnapshot) {
+          adapter.captureSnapshot().catch(() => {});
+        }
+      }, 200);
+
+      unsubscribe = adapter.onFrame((frame: CameraFrame) => {
+        if (settled) return;
+        if (!frame || !frame.frameBuffer) return;
+
+        const frameSeq = frame.sequence !== undefined ? frame.sequence : -1;
+        const frameTime = frame.timestamp ? new Date(frame.timestamp).getTime() : 0;
+
+        const isFresh = (baselineSeq >= 0 && frameSeq > baselineSeq) ||
+                        (baselineTime > 0 && frameTime > baselineTime) ||
+                        (!baseline);
+
+        if (isFresh) {
+          settled = true;
+          clearTimeout(timer);
+          clearTimeout(fallbackTimer);
+          if (unsubscribe) {
+            try { unsubscribe(); } catch {}
+          }
+
+          this.db.camera.update({
+            where: { id: cameraId },
+            data: {
+              healthStatus: CameraHealthStatus.ONLINE,
+              lastSeenAt: new Date(),
+            },
+          }).catch(() => {});
+
+          resolve(frame);
+        }
+      });
+    });
+  }
+
+
   public async subscribeToStream(
     cameraId: string,
     listener: (frame: CameraFrame) => void

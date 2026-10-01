@@ -1,18 +1,13 @@
 import React from 'react';
 import { Badge } from '../../components/Badge';
-import { Button } from '../../components/Button';
 import { SafeResident } from '../../types/resident.types';
 import { residentsApi } from '../../api/residents.api';
 import {
-  Edit2,
-  UserMinus,
-  UserCheck,
-  Eye,
   UserX,
-  ScanFace,
   PlusCircle,
   User as UserIcon,
 } from 'lucide-react';
+import { Button } from '../../components/Button';
 
 interface ResidentListTableProps {
   residents: SafeResident[];
@@ -41,31 +36,27 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
 }) => {
   if (isLoading) {
     return (
-      <div className="table-container">
-        <table className="data-table">
+      <div className="table-container bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <table className="data-table w-full">
           <thead>
-            <tr>
-              <th className="w-12">Photo</th>
-              <th>Full Name</th>
-              <th>Resident Code</th>
-              <th>Room / Group</th>
-              <th>Presence</th>
-              <th>Face Biometrics</th>
-              <th>Status</th>
-              <th className="text-right">Actions</th>
+            <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 text-left text-sm font-semibold">
+              <th className="px-6 py-4">Resident</th>
+              <th className="px-6 py-4">Room</th>
+              <th className="px-6 py-4">Presence</th>
+              <th className="px-6 py-4">Face</th>
+              <th className="px-6 py-4">Status</th>
+              <th className="px-6 py-4 text-right">Action</th>
             </tr>
           </thead>
           <tbody>
             {[...Array(6)].map((_, i) => (
-              <tr key={i} className="skeleton-row">
-                <td><span className="skeleton-cell w-9 h-9 rounded-full" /></td>
-                <td><span className="skeleton-cell w-36" /></td>
-                <td><span className="skeleton-cell w-20" /></td>
-                <td><span className="skeleton-cell w-24" /></td>
-                <td><span className="skeleton-cell w-20" /></td>
-                <td><span className="skeleton-cell w-28" /></td>
-                <td><span className="skeleton-cell w-16" /></td>
-                <td className="text-right"><span className="skeleton-cell w-24 ml-auto" /></td>
+              <tr key={i} className="h-16 border-b border-slate-100">
+                <td className="px-6 py-4"><span className="skeleton-cell w-36 h-5 rounded" /></td>
+                <td className="px-6 py-4"><span className="skeleton-cell w-20 h-5 rounded" /></td>
+                <td className="px-6 py-4"><span className="skeleton-cell w-20 h-5 rounded" /></td>
+                <td className="px-6 py-4"><span className="skeleton-cell w-24 h-5 rounded" /></td>
+                <td className="px-6 py-4"><span className="skeleton-cell w-16 h-5 rounded" /></td>
+                <td className="px-6 py-4 text-right"><span className="skeleton-cell w-16 h-5 rounded ml-auto" /></td>
               </tr>
             ))}
           </tbody>
@@ -76,96 +67,88 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
 
   if (residents.length === 0) {
     return (
-      <div className="table-empty-state">
-        <div className="empty-state-icon">
-          <UserX size={44} />
+      <div className="table-empty-state bg-white border border-slate-200 rounded-xl p-12 text-center shadow-sm">
+        <div className="w-14 h-14 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center mx-auto mb-4 border border-slate-200">
+          <UserX size={32} />
         </div>
-        <h3 className="empty-state-title">
+        <h3 className="text-xl font-bold text-slate-900 mb-2">
           {hasActiveFilters ? 'No matching residents found' : 'No residents registered in facility'}
         </h3>
-        <p className="empty-state-text">
+        <p className="text-sm text-slate-500 max-w-sm mx-auto mb-6">
           {hasActiveFilters
             ? 'Try adjusting your search criteria or resetting filters to view all residents.'
             : 'Get started by creating the first resident profile in this hostel.'}
         </p>
         {!hasActiveFilters && canManage && onOpenAdd && (
-          <div className="empty-state-action mt-4">
-            <Button
-              variant="primary"
-              size="md"
-              onClick={onOpenAdd}
-              leftIcon={<PlusCircle size={16} />}
-            >
-              Add Your First Resident
-            </Button>
-          </div>
+          <Button
+            variant="primary"
+            size="md"
+            className="h-11 px-6 font-semibold"
+            onClick={onOpenAdd}
+            leftIcon={<PlusCircle size={16} />}
+          >
+            Add Resident
+          </Button>
         )}
       </div>
     );
   }
 
   return (
-    <div className="table-container">
-      <table className="data-table">
+    <div className="table-container bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <table className="data-table w-full text-left border-collapse text-sm">
         <thead>
-          <tr>
-            <th scope="col" className="w-12">Photo</th>
-            <th scope="col">Full Name</th>
-            <th scope="col">Resident Code</th>
-            <th scope="col">Room / Group</th>
-            <th scope="col">Presence</th>
-            <th scope="col">Face Biometrics</th>
-            <th scope="col">Status</th>
-            <th scope="col" className="text-right">Actions</th>
+          <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 font-semibold text-sm">
+            <th scope="col" className="px-6 py-4">Resident</th>
+            <th scope="col" className="px-6 py-4">Room</th>
+            <th scope="col" className="px-6 py-4">Presence</th>
+            <th scope="col" className="px-6 py-4">Face</th>
+            <th scope="col" className="px-6 py-4">Status</th>
+            <th scope="col" className="px-6 py-4 text-right">Action</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-slate-100">
           {residents.map((resident) => {
             return (
               <tr
                 key={resident.id}
-                className="table-row-interactive"
-                onClick={() => onSelect(resident)}
+                className="hover:bg-slate-50/80 transition-colors h-18"
               >
-                {/* Photo Thumbnail */}
-                <td className="py-2" onClick={(e) => e.stopPropagation()}>
-                  <div className="w-9 h-9 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
-                    <img
-                      src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
-                      alt={resident.fullName}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                    <UserIcon size={16} className="text-slate-400" />
+                {/* Resident (Photo + Name + Code) */}
+                <td className="px-6 py-3.5">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+                      <img
+                        src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
+                        alt=""
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                      <UserIcon size={20} className="text-slate-400" />
+                    </div>
+
+                    <div className="flex flex-col min-w-0">
+                      <button
+                        type="button"
+                        className="font-semibold text-slate-900 text-left hover:text-blue-600 truncate text-15px"
+                        onClick={() => onSelect(resident)}
+                      >
+                        {resident.fullName}
+                      </button>
+                      <span className="font-mono text-xs text-slate-500 mt-0.5">{resident.residentCode}</span>
+                    </div>
                   </div>
                 </td>
 
-                {/* Full Name */}
-                <td className="font-semibold text-slate-900 dark:text-white">
-                  <button
-                    type="button"
-                    className="table-link-btn font-semibold text-left"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(resident);
-                    }}
-                  >
-                    {resident.fullName}
-                  </button>
+                {/* Room */}
+                <td className="px-6 py-3.5 text-slate-700 font-medium text-15px">
+                  {resident.roomGroup}
                 </td>
 
-                {/* Resident Code */}
-                <td className="font-mono font-medium text-primary">
-                  {resident.residentCode}
-                </td>
-
-                {/* Room / Group */}
-                <td className="text-secondary">{resident.roomGroup}</td>
-
-                {/* Current Presence Status */}
-                <td>
+                {/* Presence */}
+                <td className="px-6 py-3.5">
                   <Badge
                     type="presence"
                     value={resident.presence?.currentState || 'OUT'}
@@ -173,79 +156,61 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                 </td>
 
                 {/* Face Enrollment */}
-                <td>
+                <td className="px-6 py-3.5">
                   <Badge
                     type="enrollment"
                     value={resident.faceEnrollmentStatus}
                   />
                 </td>
 
-                {/* Account / Resident Status */}
-                <td>
+                {/* Status */}
+                <td className="px-6 py-3.5">
                   <Badge
                     type="status"
                     value={resident.status}
                   />
                 </td>
 
-                {/* Actions */}
-                <td
-                  className="table-actions-cell text-right"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="table-actions-group flex items-center justify-end gap-1">
+                {/* Action */}
+                <td className="px-6 py-3.5 text-right">
+                  <div className="inline-flex items-center justify-end gap-2">
                     <button
                       type="button"
-                      className="btn-icon-table"
-                      title="View Profile Details"
+                      className="px-3.5 py-1.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none transition"
                       onClick={() => onSelect(resident)}
                       aria-label={`View details for ${resident.fullName}`}
                     >
-                      <Eye size={15} />
+                      View
                     </button>
 
-                    {/* Management controls ONLY for Admin / Warden */}
                     {canManage && (
                       <>
                         <button
                           type="button"
-                          className="btn-icon-table"
-                          title="Edit Resident"
+                          className="px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-900 transition"
                           onClick={() => onEdit(resident)}
                           aria-label={`Edit ${resident.fullName}`}
                         >
-                          <Edit2 size={15} />
-                        </button>
-
-                        <button
-                          type="button"
-                          className="btn-icon-table text-purple-600 hover:text-purple-700"
-                          title="Enroll Face Biometrics"
-                          onClick={() => onEnrollFace?.(resident)}
-                          aria-label={`Enroll face for ${resident.fullName}`}
-                        >
-                          <ScanFace size={15} />
+                          Edit
                         </button>
 
                         {resident.status === 'ACTIVE' ? (
                           <button
                             type="button"
-                            className="btn-icon-table btn-icon-danger"
-                            title="Deactivate Resident"
+                            className="px-3 py-1.5 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
                             onClick={() => onDeactivate(resident)}
                             aria-label={`Deactivate ${resident.fullName}`}
                           >
-                            <UserMinus size={15} />
+                            Deactivate
                           </button>
                         ) : (
                           <button
                             type="button"
-                            className="btn-icon-table btn-icon-success"
-                            title="Reactivate Resident"
+                            className="px-3 py-1.5 text-sm font-medium text-emerald-700 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 transition"
                             onClick={() => onReactivate(resident)}
                             aria-label={`Reactivate ${resident.fullName}`}
                           >
-                            <UserCheck size={15} />
+                            Reactivate
                           </button>
                         )}
                       </>

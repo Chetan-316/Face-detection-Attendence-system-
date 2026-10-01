@@ -228,8 +228,8 @@ export class EnrollmentService {
       throw new EnrollmentSessionError(`Enrollment session is already ${session.status}`);
     }
 
-    // Capture live snapshot from camera service using session's validated camera
-    const snapshot = await this.cameraService.captureSnapshot(session.cameraId);
+    // Capture strictly fresh live snapshot from camera service using session's validated camera
+    const snapshot = await this.cameraService.captureFreshSnapshot(session.cameraId);
     if (!snapshot || !snapshot.frameBuffer) {
       throw new ValidationError('Camera failed to deliver snapshot frame');
     }

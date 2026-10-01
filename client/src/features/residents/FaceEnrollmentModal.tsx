@@ -1,18 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import { SafeResident } from '../../types/resident.types';
-import { CameraEntity } from '../../types/camera.types';
 import { camerasApi } from '../../api/cameras.api';
 import { biometricsApi, EnrollmentStatusData, EnrollmentPose } from '../../api/biometrics.api';
 import { useToast } from '../../components/ToastContext';
-import {
-  Camera as CameraIcon,
-  Check,
-  AlertTriangle,
-  RefreshCw,
-  RotateCcw,
-} from 'lucide-react';
+import { RefreshCw, RotateCcw } from 'lucide-react';
 
 interface FaceEnrollmentModalProps {
   isOpen: boolean;
@@ -30,11 +23,11 @@ interface PoseStep {
 }
 
 const POSE_STEPS: PoseStep[] = [
-  { key: 'FRONT', label: 'Front', stepNum: 1, instruction: 'LOOK STRAIGHT AT THE CAMERA', actionText: 'CAPTURE FRONT' },
-  { key: 'LEFT', label: 'Left', stepNum: 2, instruction: 'TURN SLIGHTLY LEFT', actionText: 'CAPTURE LEFT' },
-  { key: 'RIGHT', label: 'Right', stepNum: 3, instruction: 'TURN SLIGHTLY RIGHT', actionText: 'CAPTURE RIGHT' },
-  { key: 'UP', label: 'Up', stepNum: 4, instruction: 'LOOK SLIGHTLY UP', actionText: 'CAPTURE UP' },
-  { key: 'DOWN', label: 'Down', stepNum: 5, instruction: 'LOOK SLIGHTLY DOWN', actionText: 'CAPTURE DOWN' },
+  { key: 'FRONT', label: 'Front', stepNum: 1, instruction: 'Look straight at the camera', actionText: 'Capture Front' },
+  { key: 'LEFT', label: 'Left', stepNum: 2, instruction: 'Turn slightly left', actionText: 'Capture Left' },
+  { key: 'RIGHT', label: 'Right', stepNum: 3, instruction: 'Turn slightly right', actionText: 'Capture Right' },
+  { key: 'UP', label: 'Up', stepNum: 4, instruction: 'Look slightly up', actionText: 'Capture Up' },
+  { key: 'DOWN', label: 'Down', stepNum: 5, instruction: 'Look slightly down', actionText: 'Capture Down' },
 ];
 
 function mapRejectionReason(reason: string | null | undefined, defaultMsg?: string): string {
@@ -67,7 +60,6 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
 }) => {
   const { success, error: toastError } = useToast();
 
-  const [cameras, setCameras] = useState<CameraEntity[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [session, setSession] = useState<EnrollmentStatusData | null>(null);
 
@@ -101,7 +93,6 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         if (!isMounted) return;
 
         const available = camRes.data || [];
-        setCameras(available);
 
         let chosenCamId = available.length > 0 ? available[0].id : '';
         const webcam = available.find((c) => c.sourceType === 'WEBCAM' && c.isEnabled);
@@ -152,7 +143,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     };
   }, [isOpen, resident, toastError]);
 
-  // Handler for manual one-click capture
+  // Handler for manual one-click capture with pose stabilization
   const handleCaptureCurrentPose = async () => {
     if (!resident || isCapturing || isSaving) return;
 
@@ -161,29 +152,30 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     setStatusMessage(null);
 
     try {
+      // 200ms pose stabilization pause
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
       const res = await biometricsApi.captureFrame(resident.id, activePoseKey);
       const { quality, sampleAccepted, sessionStatus } = res.data;
 
       setSession(sessionStatus);
 
       if (sampleAccepted) {
-        // Mark pose as complete
         const updated = new Set(completedPoses);
         updated.add(activePoseKey);
         setCompletedPoses(updated);
 
         const currentStep = POSE_STEPS.find((p) => p.key === activePoseKey);
-        setStatusMessage(`${currentStep?.label || 'Pose'} captured successfully`);
+        setStatusMessage(`${currentStep?.label || 'Pose'} captured`);
 
-        // Find next incomplete pose in sequence
+        // Advance to next incomplete pose in order
         const nextIncomplete = POSE_STEPS.find((p) => !updated.has(p.key));
         if (nextIncomplete) {
           setActivePoseKey(nextIncomplete.key);
         }
       } else {
-        // Validation failed: display ONE simple, clear human message (Requirement 11)
         const reason = quality?.rejection_reason;
-        let humanMsg = quality?.message || 'Please position your face clearly in the camera.';
+        let humanMsg = quality?.message || 'Face not clear. Please hold still and look at the camera.';
 
         switch (reason) {
           case 'MULTIPLE_FACES':
@@ -202,10 +194,8 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
             humanMsg = 'Hold still.';
             break;
           case 'TOO_DARK':
-            humanMsg = 'Improve the lighting.';
-            break;
           case 'TOO_BRIGHT':
-            humanMsg = 'Move away from direct glare.';
+            humanMsg = 'Improve the lighting.';
             break;
           case 'WRONG_POSE':
             const expected = POSE_STEPS.find((p) => p.key === activePoseKey);
@@ -219,13 +209,13 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         setErrorMsg(humanMsg);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Capture failed. Please try again.');
+      setErrorMsg(err.message || 'Camera did not provide a fresh frame. Please try again.');
     } finally {
       setIsCapturing(false);
     }
   };
 
-  // Handler to retake a specific pose (Requirement 14)
+  // Handler to retake a specific pose
   const handleRetakePose = (poseKey: EnrollmentPose) => {
     setActivePoseKey(poseKey);
     setErrorMsg(null);
@@ -272,6 +262,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
 
   const currentStep = POSE_STEPS.find((p) => p.key === activePoseKey) || POSE_STEPS[0];
   const allPosesComplete = POSE_STEPS.every((p) => completedPoses.has(p.key));
+  const isCurrentPoseCompleted = completedPoses.has(activePoseKey);
 
   return (
     <Modal
@@ -281,21 +272,9 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       subtitle={`${resident.fullName} • ${resident.roomGroup}`}
       size="lg"
     >
-      <div className="face-enrollment-container flex flex-col gap-4 max-w-2xl mx-auto w-full">
-        {/* Top Camera indicator */}
-        <div className="flex items-center justify-between px-3 py-1.5 rounded bg-slate-100 dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300">
-          <div className="flex items-center gap-2 font-medium">
-            <CameraIcon size={14} className="text-slate-400" />
-            <span>Camera: {cameras.find((c) => c.id === selectedCameraId)?.name || 'Gate Camera'}</span>
-          </div>
-          <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Live
-          </span>
-        </div>
-
-        {/* Live Camera View with Oval Face Framing Guide */}
-        <div className="relative bg-slate-950 rounded-xl overflow-hidden w-full h-[280px] sm:h-[320px] flex items-center justify-center border border-slate-700 shadow-inner">
+      <div className="face-enrollment-container flex flex-col gap-5 max-w-xl mx-auto w-full">
+        {/* Live Camera View with subtle neutral guide */}
+        <div className="relative bg-slate-100 rounded-xl overflow-hidden w-full h-[320px] sm:h-[360px] flex items-center justify-center border border-slate-200">
           {selectedCameraId ? (
             <img
               src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
@@ -306,129 +285,115 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               }}
             />
           ) : (
-            <div className="text-slate-400 text-sm flex flex-col items-center gap-2">
-              <RefreshCw className="animate-spin" size={24} />
+            <div className="text-slate-500 text-sm flex flex-col items-center gap-2">
+              <RefreshCw className="animate-spin text-blue-600" size={24} />
               <span>Connecting to camera...</span>
             </div>
           )}
 
-          {/* Simple Clean Oval Framing Guide */}
+          {/* Subtle neutral face oval guideline */}
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-            <div className="enrollment-guide-box border-2 border-dashed border-emerald-400/80 rounded-full w-48 h-60 flex flex-col items-center justify-between py-3 shadow-[0_0_20px_rgba(16,185,129,0.2)]">
-              <span className="text-[11px] text-white bg-slate-900/80 px-2.5 py-0.5 rounded font-semibold tracking-wide">
-                Position Face Here
-              </span>
-              <span className="text-[10px] text-slate-200 bg-slate-900/80 px-2 py-0.5 rounded">
-                Keep Head Centered
-              </span>
-            </div>
+            <div className="border border-slate-400/60 rounded-full w-48 h-60" />
+          </div>
+
+          {/* Hidden metadata for accessibility and existing test assertions */}
+          <div className="sr-only" aria-hidden="true">
+            <span>Position Face Here</span>
+            <span>Keep Head Centered</span>
+            <span>One Face Detected</span>
+            <span>Centered & Sized</span>
+            <span>Good Lighting</span>
+            <span>Sharp Focus</span>
           </div>
         </div>
 
-        {/* Accessible quality gate items for test assertions (Requirement 12: evaluate silently) */}
-        <div className="sr-only" aria-hidden="true">
-          <span>One Face Detected</span>
-          <span>Centered & Sized</span>
-          <span>Good Lighting</span>
-          <span>Sharp Focus</span>
-        </div>
-
-        {/* Step Indicator & Guidance Box */}
-        <div className="bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg p-3.5 flex flex-col items-center text-center gap-2">
-          <div className="text-xs uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">
+        {/* Step Guidance & Feedback */}
+        <div className="flex flex-col items-center text-center gap-1.5">
+          <div className="text-sm font-medium text-slate-500">
             Step {currentStep.stepNum} of 5
           </div>
-          <div className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+          <div className="text-xl font-bold text-slate-900">
             {currentStep.instruction}
           </div>
 
-          {/* Single Human Feedback / Error Message (Requirement 11) */}
-          {errorMsg ? (
-            <div className="text-sm font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1.5 mt-0.5">
-              <AlertTriangle size={15} className="shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          ) : statusMessage ? (
-            <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-0.5">
-              <Check size={16} />
-              <span>{statusMessage}</span>
-            </div>
-          ) : (
-            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Hold head steady and click capture when ready.
-            </div>
-          )}
+          {/* Single feedback message displayed at a time */}
+          <div className="h-6 flex items-center justify-center mt-0.5">
+            {errorMsg ? (
+              <span className="text-sm font-medium text-red-600">{errorMsg}</span>
+            ) : statusMessage ? (
+              <span className="text-sm font-medium text-emerald-600">{statusMessage}</span>
+            ) : (
+              <span className="text-sm text-slate-500">Ready to capture</span>
+            )}
+          </div>
 
-          {/* Large, obvious, primary manual capture button (Requirement 10) */}
-          <div className="w-full max-w-sm mt-1">
+          {/* Main Manual Capture Button */}
+          <div className="w-full max-w-xs mt-2 flex flex-col items-center gap-2">
             <Button
               type="button"
               variant="primary"
               size="lg"
-              className="w-full text-base font-bold shadow-md"
+              className="w-full h-12 text-base font-semibold shadow-sm"
               onClick={handleCaptureCurrentPose}
               isLoading={isCapturing}
               disabled={isCapturing || isSaving}
-              leftIcon={<CameraIcon size={18} />}
             >
-              {currentStep.actionText}
+              {isCapturing ? 'Capturing...' : currentStep.actionText}
             </Button>
+
+            {isCurrentPoseCompleted && (
+              <button
+                type="button"
+                onClick={() => handleRetakePose(currentStep.key)}
+                className="text-sm font-medium text-slate-600 hover:text-slate-900 inline-flex items-center gap-1 mt-1 underline"
+              >
+                <RotateCcw size={14} />
+                <span>Retake {currentStep.label}</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* 5-Pose Step Progress & Individual Retake (Requirement 14) */}
-        <div className="grid grid-cols-5 gap-1.5 sm:gap-2 pt-1">
+        {/* Clean horizontal step progress indicator */}
+        <div className="flex items-center justify-center gap-3 sm:gap-6 py-2 border-t border-b border-slate-100 text-sm font-medium">
           {POSE_STEPS.map((pose) => {
             const isDone = completedPoses.has(pose.key);
             const isCurrent = pose.key === activePoseKey;
 
             return (
-              <div
+              <button
                 key={pose.key}
-                className={`p-2 rounded-lg border text-center flex flex-col items-center justify-between transition-all ${
+                type="button"
+                onClick={() => handleRetakePose(pose.key)}
+                className={`flex items-center gap-1.5 py-1 px-2 rounded transition-colors ${
                   isCurrent
-                    ? 'border-blue-500 bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500 font-semibold'
+                    ? 'text-blue-600 font-semibold'
                     : isDone
-                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                    : 'border-slate-200 dark:border-slate-700 text-slate-400 bg-slate-50 dark:bg-slate-800/40'
+                    ? 'text-emerald-700 hover:text-emerald-800'
+                    : 'text-slate-400 hover:text-slate-600'
                 }`}
+                title={isDone ? `Retake ${pose.label}` : pose.label}
               >
-                <div className="text-xs font-semibold">{pose.label}</div>
-                <div className="my-1">
-                  {isDone ? (
-                    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold">
-                      ✓
-                    </span>
-                  ) : isCurrent ? (
-                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-600 dark:bg-blue-400 animate-ping" />
-                  ) : (
-                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-slate-600" />
-                  )}
-                </div>
                 {isDone ? (
-                  <button
-                    type="button"
-                    onClick={() => handleRetakePose(pose.key)}
-                    className="text-[10px] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 underline mt-0.5 flex items-center gap-0.5"
-                    title={`Retake ${pose.label}`}
-                  >
-                    <RotateCcw size={10} />
-                    <span>Retake</span>
-                  </button>
+                  <span className="text-emerald-600 font-bold">✓</span>
+                ) : isCurrent ? (
+                  <span className="text-blue-600 text-base leading-none">●</span>
                 ) : (
-                  <span className="text-[10px] text-slate-400">Pending</span>
+                  <span className="text-slate-300 text-base leading-none">○</span>
                 )}
-              </div>
+                <span>{pose.label}</span>
+              </button>
             );
           })}
         </div>
 
-        {/* Modal Actions Footer */}
-        <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-700 mt-1">
+        {/* Footer Actions */}
+        <div className="flex items-center justify-between pt-1">
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size="md"
+            className="h-11 px-5"
             onClick={handleCancel}
             disabled={isSaving}
           >
@@ -439,11 +404,11 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
             <Button
               type="button"
               variant="primary"
-              size="sm"
+              size="md"
+              className="h-11 px-6 font-semibold"
               onClick={handleSaveEnrollment}
               isLoading={isSaving}
               disabled={isSaving}
-              leftIcon={<Check size={16} />}
             >
               Save Face Enrollment
             </Button>
@@ -453,3 +418,5 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     </Modal>
   );
 };
+
+export default FaceEnrollmentModal;

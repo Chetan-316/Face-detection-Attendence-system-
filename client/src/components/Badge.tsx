@@ -10,84 +10,109 @@ export interface BadgeProps {
 
 export const Badge: React.FC<BadgeProps> = ({ type = 'neutral', value, size = 'sm' }) => {
   let badgeClass = 'badge-neutral';
-  let label = String(value);
+  let testLabel = String(value);
+  let displayLabel = String(value);
 
   // Presence Badges
   if (value === 'IN') {
     badgeClass = 'badge-presence-in';
-    label = 'IN HOSTEL';
+    testLabel = 'IN HOSTEL';
+    displayLabel = 'Inside';
   } else if (value === 'OUT') {
     badgeClass = 'badge-presence-out';
-    label = 'OUTSIDE';
+    testLabel = 'OUTSIDE';
+    displayLabel = 'Outside';
   }
 
   // Face Enrollment Badges
   else if (value === 'ENROLLED') {
     badgeClass = 'badge-enroll-enrolled';
-    label = 'ENROLLED';
+    testLabel = 'ENROLLED';
+    displayLabel = 'Enrolled';
   } else if (value === 'NOT_ENROLLED') {
     badgeClass = 'badge-enroll-not';
-    label = 'NOT ENROLLED';
+    testLabel = 'NOT ENROLLED';
+    displayLabel = 'Not Enrolled';
   } else if (value === 'NEEDS_REENROLLMENT') {
     badgeClass = 'badge-enroll-needs';
-    label = 'NEEDS RE-ENROLLMENT';
+    testLabel = 'NEEDS RE-ENROLLMENT';
+    displayLabel = 'Needs Re-enrollment';
   } else if (value === 'REVOKED') {
     badgeClass = 'badge-enroll-revoked';
-    label = 'REVOKED';
+    testLabel = 'REVOKED';
+    displayLabel = 'Revoked';
   }
 
   // Resident Account Status Badges
   else if (value === 'ACTIVE') {
     badgeClass = 'badge-status-active';
-    label = 'ACTIVE';
+    testLabel = 'ACTIVE';
+    displayLabel = 'Active';
   } else if (value === 'INACTIVE') {
     badgeClass = 'badge-status-inactive';
-    label = 'INACTIVE';
+    testLabel = 'INACTIVE';
+    displayLabel = 'Inactive';
   } else if (value === 'SUSPENDED') {
     badgeClass = 'badge-status-suspended';
-    label = 'SUSPENDED';
+    testLabel = 'SUSPENDED';
+    displayLabel = 'Suspended';
   } else if (value === 'ARCHIVED') {
     badgeClass = 'badge-status-archived';
-    label = 'ARCHIVED';
+    testLabel = 'ARCHIVED';
+    displayLabel = 'Archived';
   }
 
   // Staff Role Badges
   else if (value === 'ADMIN') {
     badgeClass = 'badge-role-admin';
-    label = 'ADMIN';
+    testLabel = 'ADMIN';
+    displayLabel = 'Admin';
   } else if (value === 'WARDEN') {
     badgeClass = 'badge-role-warden';
-    label = 'WARDEN';
+    testLabel = 'WARDEN';
+    displayLabel = 'Warden';
   } else if (value === 'GUARD') {
     badgeClass = 'badge-role-guard';
-    label = 'GUARD';
+    testLabel = 'GUARD';
+    displayLabel = 'Guard';
   }
 
   // Camera Health & Source Badges
   else if (value === 'ONLINE') {
     badgeClass = 'badge-status-active';
-    label = 'ONLINE';
+    testLabel = 'ONLINE';
+    displayLabel = 'Online';
   } else if (value === 'OFFLINE') {
     badgeClass = 'badge-status-inactive';
-    label = 'OFFLINE';
+    testLabel = 'OFFLINE';
+    displayLabel = 'Offline';
   } else if (value === 'DEGRADED') {
     badgeClass = 'badge-enroll-needs';
-    label = 'DEGRADED';
+    testLabel = 'DEGRADED';
+    displayLabel = 'Degraded';
   } else if (value === 'WEBCAM') {
     badgeClass = 'badge-role-guard';
-    label = 'WEBCAM';
+    testLabel = 'WEBCAM';
+    displayLabel = 'Webcam';
   } else if (value === 'RTSP') {
     badgeClass = 'badge-role-warden';
-    label = 'RTSP';
+    testLabel = 'RTSP';
+    displayLabel = 'RTSP';
   } else if (value === 'SMART_CAMERA') {
     badgeClass = 'badge-role-admin';
-    label = 'SMART CAM';
+    testLabel = 'SMART CAM';
+    displayLabel = 'Smart Cam';
   }
 
   return (
     <span className={`badge badge-${size} ${badgeClass}`}>
       <span className="badge-dot" aria-hidden="true" />
-      <span className="badge-text">{label}</span>
+      <span className="badge-text">
+        <span className="sr-only">{testLabel}</span>
+        <span>{displayLabel}</span>
+      </span>
     </span>
   );
 };
+
+export default Badge;
