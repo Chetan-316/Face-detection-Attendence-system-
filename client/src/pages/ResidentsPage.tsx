@@ -245,7 +245,13 @@ export const ResidentsPage: React.FC = () => {
         <ResidentCreateModal
           isOpen={isCreateOpen}
           onClose={() => setIsCreateOpen(false)}
-          onResidentCreated={handleResidentCreated}
+          onResidentCreated={(newRes: SafeResident, shouldEnroll?: boolean) => {
+            handleResidentCreated(newRes);
+            if (shouldEnroll) {
+              setSelectedResident(newRes);
+              setIsFaceEnrollOpen(true);
+            }
+          }}
         />
       )}
 

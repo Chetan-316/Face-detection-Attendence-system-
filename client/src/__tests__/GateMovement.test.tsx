@@ -196,7 +196,7 @@ describe('Step 07: Frontend Gate Movement & Automation Interface Tests', () => {
     renderComponent();
 
     await waitFor(() => {
-      expect(screen.getByText('Rahul Patil')).toBeInTheDocument();
+      expect(screen.getAllByText('Rahul Patil').length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText(/IN RECORDED/i)).toBeInTheDocument();
     });
   });
@@ -358,7 +358,7 @@ describe('Step 07: Frontend Gate Movement & Automation Interface Tests', () => {
     const { container } = renderComponent();
 
     await waitFor(() => {
-      expect(screen.getByText('Rahul Patil')).toBeInTheDocument();
+      expect(screen.getAllByText('Rahul Patil').length).toBeGreaterThanOrEqual(1);
     });
 
     const domHtml = container.innerHTML;

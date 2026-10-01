@@ -94,21 +94,12 @@ export const AppLayout: React.FC = () => {
             {user?.role === 'GUARD' ? (
               <>
                 <NavLink
-                  to="/recognition"
+                  to="/gate"
                   className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   <Eye size={18} />
-                  <span>Gate Monitor</span>
-                </NavLink>
-
-                <NavLink
-                  to="/residents"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <Users size={18} />
-                  <span>Resident Lookup</span>
+                  <span>Gate</span>
                 </NavLink>
               </>
             ) : user?.role === 'WARDEN' ? (
@@ -121,15 +112,6 @@ export const AppLayout: React.FC = () => {
                 >
                   <LayoutDashboard size={18} />
                   <span>Dashboard</span>
-                </NavLink>
-
-                <NavLink
-                  to="/recognition"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <Eye size={18} />
-                  <span>Gate Monitor</span>
                 </NavLink>
 
                 <NavLink

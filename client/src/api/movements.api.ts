@@ -70,7 +70,7 @@ export const movementsApi = {
   confirmMovement: async (payload: {
     residentId: string;
     cameraId: string;
-    direction: 'IN' | 'OUT';
+    direction?: 'IN' | 'OUT';
     overrideReason?: string;
   }): Promise<{ success: boolean; data: MovementEventEntity; message: string }> => {
     return apiClient<{ success: boolean; data: MovementEventEntity; message: string }>(

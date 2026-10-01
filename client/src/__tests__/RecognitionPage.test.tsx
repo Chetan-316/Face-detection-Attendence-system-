@@ -201,8 +201,8 @@ describe('Step 06: Continuous Face Recognition Monitor Interface', () => {
 
     await waitFor(() => {
       // 1. MATCH card renders resident name & code
-      expect(screen.getByText('Rahul Patil')).toBeInTheDocument();
-      expect(screen.getByText(/Code: R001/i)).toBeInTheDocument();
+      expect(screen.getAllByText('Rahul Patil').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText(/Code: R001/i).length).toBeGreaterThanOrEqual(1);
 
       // 2. UNCERTAIN card renders privacy notice and NO resident name
       expect(screen.getByText(/Ambiguous match or low candidate separation. Identity kept private./i)).toBeInTheDocument();
@@ -212,7 +212,7 @@ describe('Step 06: Continuous Face Recognition Monitor Interface', () => {
     });
   });
 
-  it('enforces Guard role restrictions with view-only badge and no start/stop control', async () => {
+  it('enforces Guard role restrictions: no start/stop recognition control, but gate status is shown', async () => {
     currentUser = {
       id: 'user-guard-1',
       username: 'guard_h1',
@@ -226,11 +226,16 @@ describe('Step 06: Continuous Face Recognition Monitor Interface', () => {
     renderComponent();
 
     await waitFor(() => {
-      expect(screen.getByText(/Guard: View-Only Access/i)).toBeInTheDocument();
+      // Guard sees Gate Monitor page (as an active gate operator)
+      expect(screen.getByText(/Gate Monitor/i)).toBeInTheDocument();
     });
 
+    // Guard CANNOT start or stop recognition (server-side enforced; no button in UI either)
     expect(screen.queryByTestId('start-recognition-btn')).not.toBeInTheDocument();
     expect(screen.queryByTestId('stop-recognition-btn')).not.toBeInTheDocument();
+
+    // Guard DOES see the "Current Resident at Gate" section to approve IN/OUT
+    expect(screen.getByText(/Current Resident at Gate/i)).toBeInTheDocument();
   });
 
   it('displays QUALITY INSUFFICIENT for low-quality faces instead of UNKNOWN', async () => {

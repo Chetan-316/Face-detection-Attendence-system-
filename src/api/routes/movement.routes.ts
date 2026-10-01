@@ -100,11 +100,6 @@ export function createMovementRouter(
         throw new ValidationError('cameraId is required');
       }
 
-      const finalType = ((movementType || direction || '') as string).toUpperCase();
-      if (finalType !== 'IN' && finalType !== 'OUT') {
-        throw new ValidationError("movementType must be either 'IN' or 'OUT'");
-      }
-
       // Check resident
       const resident = await db.resident.findUnique({
         where: { id: residentId },
@@ -112,6 +107,15 @@ export function createMovementRouter(
       });
       if (!resident || resident.organizationId !== actor.organizationId) {
         throw new NotFoundError('Resident', residentId);
+      }
+
+      let finalType = ((movementType || direction || '') as string).toUpperCase();
+      if (!finalType) {
+        // Automatically determine direction from current locked presence state: IN -> OUT, OUT -> IN
+        finalType = resident.presence?.currentState === 'IN' ? 'OUT' : 'IN';
+      }
+      if (finalType !== 'IN' && finalType !== 'OUT') {
+        throw new ValidationError("movementType must be either 'IN' or 'OUT'");
       }
 
       // Scoping: Warden and Guard must match resident hostel
@@ -129,9 +133,10 @@ export function createMovementRouter(
         throw new NotFoundError('Camera', cameraId);
       }
 
-      // Check if camera role suggests a direction
+      // Check if camera role suggests a direction (Only Warden/Admin requires override reason if conflicting)
+      const isGuard = actor.role === StaffRole.GUARD;
       const suggestedDir = camera.role === 'IN' ? 'IN' : camera.role === 'OUT' ? 'OUT' : null;
-      const isOverridden = suggestedDir && suggestedDir !== finalType;
+      const isOverridden = !isGuard && suggestedDir && suggestedDir !== finalType;
 
       if (isOverridden && (!overrideReason || overrideReason.trim().length === 0)) {
         throw new ValidationError('An override reason is required when confirming movement against camera direction');
@@ -139,6 +144,8 @@ export function createMovementRouter(
 
       const notes = isOverridden
         ? `Supervised confirmation: Direction overridden (Camera role: ${camera.role}) - ${overrideReason.trim()}`
+        : isGuard
+        ? `Gate movement recorded by Guard (${actor.username})`
         : 'Supervised movement confirmed by operator';
 
       const movementEvent = await movService.recordNormalMovement({

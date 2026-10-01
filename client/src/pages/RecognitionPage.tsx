@@ -69,8 +69,12 @@ export const RecognitionPage: React.FC = () => {
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollIntervalRef = useRef<number | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const [activeResidentDetails, setActiveResidentDetails] = useState<any>(null);
+  const [activeResidentPresence, setActiveResidentPresence] = useState<'IN' | 'OUT'>('OUT');
 
-  const canControl = user?.role === 'ADMIN' || user?.role === 'WARDEN';
+  // Admin and Warden can start/stop the camera recognition process; all staff (including Guard) can confirm entry/exit
+  const canManageSession = user?.role === 'ADMIN' || user?.role === 'WARDEN';
+  const canControl = true; // All authenticated staff can supervise movements
 
   // 1. Fetch available cameras for user scope
   const fetchCameras = useCallback(async () => {
@@ -417,8 +421,9 @@ export const RecognitionPage: React.FC = () => {
         direction,
         overrideReason: reason,
       });
-      success(`Confirmed ${direction === 'IN' ? 'Entry' : 'Exit'} for ${resident.fullName}`);
+      success(`Confirmed ${direction === 'IN' ? 'Entry (IN)' : 'Exit (OUT)'} for ${resident.fullName}`);
       setOverrideModalOpen(false);
+      setActiveResidentPresence(direction);
       if (selectedCamera?.hostelId) {
         fetchMovementData(selectedCamera.hostelId);
       }
@@ -440,6 +445,20 @@ export const RecognitionPage: React.FC = () => {
 
   const latestResidentMatch = observations.find((o) => o.classification === 'MATCH' && o.resident);
   const isRunning = sessionStatus?.state === 'RUNNING';
+
+  useEffect(() => {
+    if (latestResidentMatch?.resident?.id) {
+      residentsApi
+        .getResident(latestResidentMatch.resident.id)
+        .then((res) => {
+          setActiveResidentDetails(res);
+          if (res.presence?.currentState) {
+            setActiveResidentPresence(res.presence.currentState);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [latestResidentMatch?.resident?.id]);
 
   return (
     <div className="recognition-page-container">
@@ -474,7 +493,7 @@ export const RecognitionPage: React.FC = () => {
             </select>
           </div>
 
-          {canControl ? (
+          {canManageSession ? (
             isRunning ? (
               <button
                 type="button"
@@ -499,9 +518,16 @@ export const RecognitionPage: React.FC = () => {
               </button>
             )
           ) : (
-            <div className="guard-view-badge text-xs px-3 py-2 rounded bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
-              <Shield size={14} />
-              <span>Guard: View-Only Access</span>
+            <div className="flex items-center gap-2">
+              <span
+                className={`px-3 py-1.5 text-xs font-semibold rounded-full border ${
+                  isRunning
+                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                    : 'bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+              >
+                {isRunning ? '● Gate Recognition Active' : '○ Standby'}
+              </span>
             </div>
           )}
         </div>
@@ -720,9 +746,105 @@ export const RecognitionPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Live Recognition Observations & Gate Movement Feed */}
-        <div className="lg:col-span-1 flex flex-col gap-3">
-          <div className="feed-card bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col h-[600px]">
+        {/* Right Column: Live Person Identified + Gate Decision Action + Observations Feed */}
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          {/* Prominent Current Identified Resident & IN/OUT Action Card */}
+          <div
+            className="identified-person-card p-4 rounded-xl border shadow-lg transition-all"
+            style={{
+              backgroundColor: 'var(--bg-surface-elevated)',
+              borderColor: latestResidentMatch ? 'var(--primary-subtle)' : 'var(--border-subtle)',
+            }}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-700/50 mb-3">
+              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <UserCheck size={14} className="text-emerald-400" />
+                Current Resident at Gate
+              </span>
+              {latestResidentMatch && (
+                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  {typeof latestResidentMatch.similarity === 'number'
+                    ? `${(latestResidentMatch.similarity * 100).toFixed(0)}% Match`
+                    : 'Matched'}
+                </span>
+              )}
+            </div>
+
+            {latestResidentMatch?.resident ? (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-lg overflow-hidden border-2 border-slate-600 bg-slate-800 shrink-0 flex items-center justify-center shadow">
+                    <img
+                      src={residentsApi.getProfilePhotoUrl(latestResidentMatch.resident.id)}
+                      alt={latestResidentMatch.resident.fullName}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <UserIcon size={24} className="text-slate-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-base font-bold text-slate-100 truncate">
+                      {latestResidentMatch.resident.fullName}
+                    </div>
+                    <div className="text-xs text-slate-400 font-mono mt-0.5">
+                      {latestResidentMatch.resident.residentCode} • {latestResidentMatch.resident.roomGroup || activeResidentDetails?.roomGroup || 'Resident'}
+                    </div>
+                    <div className="mt-1">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${
+                          activeResidentPresence === 'IN'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        }`}
+                      >
+                        {activeResidentPresence === 'IN' ? '● Currently INSIDE' : '○ Currently OUTSIDE'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Direct Action Button based strictly on Resident Presence (Requirement 20) */}
+                <div className="pt-2 border-t border-slate-700/50 flex flex-col gap-2">
+                  {activeResidentPresence === 'IN' ? (
+                    <button
+                      type="button"
+                      onClick={() => handleInitiateConfirm(latestResidentMatch.resident, 'OUT')}
+                      disabled={isConfirmingMovement}
+                      className="w-full px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white shadow transition-all"
+                    >
+                      <LogOut size={18} />
+                      <span>MARK OUT (Exit)</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleInitiateConfirm(latestResidentMatch.resident, 'IN')}
+                      disabled={isConfirmingMovement}
+                      className="w-full px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow transition-all"
+                    >
+                      <LogIn size={18} />
+                      <span>MARK IN (Entry)</span>
+                    </button>
+                  )}
+                  <span className="text-[11px] text-slate-400 text-center">
+                    Resident is currently {activeResidentPresence === 'IN' ? 'inside' : 'outside'} — click to record {activeResidentPresence === 'IN' ? 'exit' : 'entry'}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="py-6 flex flex-col items-center justify-center text-center text-slate-500">
+                <CameraIcon size={32} className="mb-2 opacity-40 text-slate-400" />
+                <p className="text-sm font-semibold text-slate-300">Awaiting Resident at Gate</p>
+                <p className="text-xs text-slate-500 mt-1 max-w-[240px]">
+                  When a resident stands in front of the camera, their details and Mark In / Out buttons appear here.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="feed-card bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col h-[480px]">
             {/* Feed Tabs Header */}
             <div className="feed-header px-4 py-2.5 bg-slate-800/80 border-b border-slate-700/60 flex items-center justify-between">
               <div className="flex items-center gap-2">

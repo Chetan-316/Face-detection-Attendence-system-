@@ -202,7 +202,8 @@ export class EnrollmentService {
    */
   public async captureFrame(
     residentId: string,
-    actor?: AuthenticatedActor
+    actor?: AuthenticatedActor,
+    targetPose?: EnrollmentPose
   ): Promise<{
     sessionStatus: EnrollmentStatusResponse;
     quality: BiometricQualityResult;
@@ -233,9 +234,11 @@ export class EnrollmentService {
       throw new ValidationError('Camera failed to deliver snapshot frame');
     }
 
-    const requiredPose = session.currentPoseIndex < session.requiredPoses.length
-      ? session.requiredPoses[session.currentPoseIndex]
-      : null;
+    const requiredPose = targetPose || (
+      session.currentPoseIndex < session.requiredPoses.length
+        ? session.requiredPoses[session.currentPoseIndex]
+        : null
+    );
 
     // Run server frame through Python worker
     const processResult = await this.workerClient.processFrame(snapshot.frameBuffer, {
@@ -263,22 +266,25 @@ export class EnrollmentService {
         quality.rejection_reason = 'WRONG_POSE';
         quality.message = this.getPoseInstruction(requiredPose);
       } else {
-        // Enforce capture interval pacing (at least 400ms between accepted samples)
+        // Enforce capture interval pacing (at least 200ms between accepted manual samples)
         const now = Date.now();
         const timeSinceLast = now - session.lastCaptureTime;
 
-        if (timeSinceLast >= 400 && session.samplesAccepted < session.requiredSamples) {
-          session.acceptedEmbeddings.push(processResult.embedding);
+        if (timeSinceLast >= 200) {
           session.acceptedPoseEmbeddings[requiredPose] = processResult.embedding;
-          session.completedPoses.push(requiredPose);
-          session.currentPoseIndex += 1;
-          session.samplesAccepted += 1;
+          if (!session.completedPoses.includes(requiredPose)) {
+            session.completedPoses.push(requiredPose);
+          }
+          session.acceptedEmbeddings = Object.values(session.acceptedPoseEmbeddings);
+          session.samplesAccepted = session.completedPoses.length;
+          if (!targetPose || targetPose === session.requiredPoses[session.currentPoseIndex]) {
+            session.currentPoseIndex = session.completedPoses.length;
+          }
           session.lastCaptureTime = now;
           sampleAccepted = true;
 
           if (
-            session.completedPoses.length >= session.requiredPoses.length &&
-            session.samplesAccepted >= session.requiredSamples
+            session.completedPoses.length >= session.requiredPoses.length
           ) {
             session.status = 'READY';
           }

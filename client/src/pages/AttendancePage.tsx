@@ -331,12 +331,12 @@ export const AttendancePage: React.FC = () => {
           <p className="text-gray-500 text-sm">Loading attendance sessions...</p>
         </div>
       ) : sessions.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center max-w-lg mx-auto my-8 shadow-sm">
-          <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+        <div className="attendance-empty-panel">
+          <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--primary-subtle)', color: 'var(--primary-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem auto' }}>
             <CheckSquare size={24} />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Hostel Attendance</h2>
-          <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+          <h2>Hostel Attendance</h2>
+          <p>
             No attendance session is active.
             <br />
             Start a session when you are ready to conduct roll call.
@@ -345,7 +345,7 @@ export const AttendancePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
+              className="btn btn-primary btn-md inline-flex items-center gap-2"
             >
               <Play size={16} />
               <span>Start Attendance</span>
@@ -661,12 +661,12 @@ export const AttendancePage: React.FC = () => {
                 </div>
               </>
             ) : (
-              <div className="bg-white border border-gray-200 rounded-xl p-12 text-center max-w-lg mx-auto my-8 shadow-sm">
-                <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
+              <div className="attendance-empty-panel">
+                <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'var(--primary-subtle)', color: 'var(--primary-500)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem auto' }}>
                   <CheckSquare size={24} />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Hostel Attendance</h2>
-                <p className="text-gray-600 text-sm mb-6 leading-relaxed">
+                <h2>Hostel Attendance</h2>
+                <p>
                   No attendance session is active.
                   <br />
                   Start a session when you are ready to conduct roll call.
@@ -675,7 +675,7 @@ export const AttendancePage: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setIsCreateModalOpen(true)}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
+                    className="btn btn-primary btn-md inline-flex items-center gap-2"
                   >
                     <Play size={16} />
                     <span>Start Attendance</span>

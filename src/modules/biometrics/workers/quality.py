@@ -117,7 +117,7 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "MULTIPLE_FACES",
-                "message": "Only one person should be in the frame.",
+                "message": "Only one person should be visible.",
                 "face_count": face_count,
                 "detected_pose": None,
                 "metrics": None
@@ -176,7 +176,7 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "LOW_DETECTION_CONFIDENCE",
-                "message": "Move slightly closer and face the camera.",
+                "message": "Look straight at the camera.",
                 "face_count": 1,
                 "detected_pose": detected_pose,
                 "metrics": metrics
@@ -187,7 +187,7 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "FACE_TOO_SMALL",
-                "message": "Move slightly closer to the camera.",
+                "message": "Move closer.",
                 "face_count": 1,
                 "detected_pose": detected_pose,
                 "metrics": metrics
@@ -209,7 +209,7 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "TOO_BLURRY",
-                "message": "Hold still for a moment.",
+                "message": "Hold still.",
                 "face_count": 1,
                 "detected_pose": detected_pose,
                 "metrics": metrics
@@ -220,7 +220,7 @@ class QualityChecker:
             return {
                 "is_valid": False,
                 "rejection_reason": "TOO_DARK",
-                "message": "Move to a brighter area.",
+                "message": "Improve the lighting.",
                 "face_count": 1,
                 "detected_pose": detected_pose,
                 "metrics": metrics
