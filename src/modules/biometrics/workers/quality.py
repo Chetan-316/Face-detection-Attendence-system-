@@ -18,13 +18,13 @@ from typing import Dict, Any, List, Optional
 class QualityChecker:
     def __init__(
         self,
-        min_face_size: int = 60,
-        min_size_ratio: float = 0.10,
-        min_blur_score: float = 40.0,
-        min_brightness: float = 35.0,
-        max_brightness: float = 230.0,
-        min_confidence: float = 0.50,
-        center_margin_ratio: float = 0.12
+        min_face_size: int = 30,
+        min_size_ratio: float = 0.03,
+        min_blur_score: float = 8.0,
+        min_brightness: float = 15.0,
+        max_brightness: float = 245.0,
+        min_confidence: float = 0.20,
+        center_margin_ratio: float = 0.02
     ):
         self.min_face_size = min_face_size
         self.min_size_ratio = min_size_ratio
@@ -98,11 +98,16 @@ class QualityChecker:
 
         return "FRONT"
 
-    def evaluate(self, img: np.ndarray, detected_faces: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def evaluate(
+        self,
+        img: np.ndarray,
+        detected_faces: List[Dict[str, Any]],
+        expected_pose: Optional[str] = None
+    ) -> Dict[str, Any]:
         h, w = img.shape[:2]
         face_count = len(detected_faces)
 
-        # 1. Exactly one face check
+        # 1. Zero face check
         if face_count == 0:
             return {
                 "is_valid": False,
@@ -113,15 +118,27 @@ class QualityChecker:
                 "metrics": None
             }
 
+        # If multiple faces detected: during enrollment or if one face is dominant, isolate primary subject
         if face_count > 1:
-            return {
-                "is_valid": False,
-                "rejection_reason": "MULTIPLE_FACES",
-                "message": "Only one person should be visible.",
-                "face_count": face_count,
-                "detected_pose": None,
-                "metrics": None
-            }
+            detected_faces = sorted(
+                detected_faces,
+                key=lambda f: f["bbox"]["width"] * f["bbox"]["height"],
+                reverse=True
+            )
+            largest_area = detected_faces[0]["bbox"]["width"] * detected_faces[0]["bbox"]["height"]
+            second_area = detected_faces[1]["bbox"]["width"] * detected_faces[1]["bbox"]["height"]
+            if expected_pose or largest_area > 1.6 * second_area:
+                detected_faces = [detected_faces[0]]
+                face_count = 1
+            else:
+                return {
+                    "is_valid": False,
+                    "rejection_reason": "MULTIPLE_FACES",
+                    "message": "Only one person should be visible.",
+                    "face_count": face_count,
+                    "detected_pose": None,
+                    "metrics": None
+                }
 
         face = detected_faces[0]
         bbox = face["bbox"]
@@ -129,7 +146,7 @@ class QualityChecker:
         confidence = face["score"]
         landmarks = face.get("landmarks", [])
 
-        detected_pose = self.classify_pose(landmarks, bbox)
+        detected_pose = expected_pose if expected_pose else self.classify_pose(landmarks, bbox)
 
         # Crop face region safely for blur and lighting analysis
         y1 = max(0, by)
@@ -170,6 +187,17 @@ class QualityChecker:
             "frame_width": w,
             "frame_height": h,
         }
+
+        # If an expected pose was targeted during manual enrollment, accept the detected face sample
+        if expected_pose:
+            return {
+                "is_valid": True,
+                "rejection_reason": None,
+                "message": f"Sample captured for {expected_pose}.",
+                "face_count": 1,
+                "detected_pose": expected_pose,
+                "metrics": metrics
+            }
 
         # 2. Confidence check
         if confidence < self.min_confidence:

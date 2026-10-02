@@ -173,11 +173,13 @@ def main():
 
                 # Run detector
                 faces = detector.detect(img)
-                quality_res = quality_checker.evaluate(img, faces)
+                expected_pose = cmd_data.get("expected_pose")
+                quality_res = quality_checker.evaluate(img, faces, expected_pose=expected_pose)
 
                 embedding = None
-                if quality_res["is_valid"] and len(faces) == 1:
-                    raw_face = faces[0]["raw_face"]
+                if quality_res["is_valid"] and len(faces) >= 1:
+                    primary_face = faces[0] if len(faces) == 1 else sorted(faces, key=lambda f: f["bbox"]["width"] * f["bbox"]["height"], reverse=True)[0]
+                    raw_face = primary_face["raw_face"]
                     feat = embedder.align_and_extract(img, raw_face)
                     embedding = [round(float(x), 6) for x in feat.tolist()]
 

@@ -10,7 +10,7 @@ import numpy as np
 from typing import List, Dict, Any, Tuple, Optional
 
 class FaceEmbedder:
-    def __init__(self, model_path: str, consistency_threshold: float = 0.65):
+    def __init__(self, model_path: str, consistency_threshold: float = 0.40):
         self.model_path = model_path
         self.consistency_threshold = consistency_threshold
         self.recognizer = cv2.FaceRecognizerSF.create(model_path, "")

@@ -78,32 +78,7 @@ export const RecognitionPage: React.FC = () => {
   const canManageSession = user?.role === 'ADMIN' || user?.role === 'WARDEN';
   const canControl = true; // All authenticated staff can supervise movements
 
-  // 1. Fetch available cameras for user scope
-  const fetchCameras = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const res = await camerasApi.listCameras(user?.hostelId || undefined);
-      setCameras(res.data);
-
-      const activeId = selectedCameraId || (res.data.length > 0 ? res.data[0].id : '');
-      if (activeId) {
-        setSelectedCameraId(activeId);
-        const found = res.data.find((c) => c.id === activeId) || null;
-        setSelectedCamera(found);
-        fetchStatusAndResults(activeId);
-      }
-    } catch (err: any) {
-      toastError(err.message || 'Failed to load cameras');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user?.hostelId, selectedCameraId, toastError]);
-
-  useEffect(() => {
-    fetchCameras();
-  }, [fetchCameras]);
-
-  // 2. Fetch recognition status & initial observations when camera changes
+  // 1. Fetch recognition status & initial observations when camera changes
   const fetchMovementData = useCallback(async (hostelId?: string) => {
     try {
       const [counts, autoStat, movs] = await Promise.all([
@@ -129,6 +104,33 @@ export const RecognitionPage: React.FC = () => {
       setSessionStatus(null);
     }
   }, []);
+
+  // 2. Fetch available cameras for user scope
+  const fetchCameras = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const res = await camerasApi.listCameras(user?.hostelId || undefined);
+      setCameras(res.data);
+
+      setSelectedCameraId((current) => {
+        const activeId = current || (res.data.length > 0 ? res.data[0].id : '');
+        if (activeId) {
+          const found = res.data.find((c) => c.id === activeId) || null;
+          setSelectedCamera(found);
+          fetchStatusAndResults(activeId);
+        }
+        return activeId;
+      });
+    } catch (err: any) {
+      toastError(err.message || 'Failed to load cameras');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user?.hostelId, toastError, fetchStatusAndResults]);
+
+  useEffect(() => {
+    fetchCameras();
+  }, [fetchCameras]);
 
   useEffect(() => {
     if (selectedCameraId) {

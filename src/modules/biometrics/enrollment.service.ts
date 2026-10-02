@@ -244,6 +244,7 @@ export class EnrollmentService {
     const processResult = await this.workerClient.processFrame(snapshot.frameBuffer, {
       expectedPose: requiredPose || undefined,
     });
+
     const quality: BiometricQualityResult = processResult?.quality || {
       is_valid: false,
       rejection_reason: 'NO_FACE',

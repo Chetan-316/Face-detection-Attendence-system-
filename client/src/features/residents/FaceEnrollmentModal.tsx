@@ -118,14 +118,18 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         if (!isMounted) return;
         setSession(sessionRes.data);
 
-        // Run initial silent quality check to inform operator of immediate camera issues
+        // Initial environment check (displays warning only if multiple people in frame)
         try {
           const probe = await biometricsApi.captureFrame(resident.id, 'FRONT');
-          if (isMounted && probe?.data?.quality && !probe.data.quality.is_valid) {
-            setErrorMsg(mapRejectionReason(probe.data.quality.rejection_reason, probe.data.quality.message));
+          if (!isMounted) return;
+          if (probe.data?.quality && !probe.data.quality.is_valid) {
+            const reason = probe.data.quality.rejection_reason;
+            if (reason === 'MULTIPLE_FACES') {
+              setErrorMsg('Only one person should be visible.');
+            }
           }
         } catch {
-          // Probe error ignored; operator will click manual capture
+          // Silent probe
         }
       } catch (err: any) {
         if (!isMounted) return;
@@ -326,21 +330,35 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
             )}
           </div>
 
-          {/* Main Manual Capture Button */}
+          {/* Main Manual Capture / Register Button */}
           <div className="w-full max-w-xs mt-2 flex flex-col items-center gap-2">
-            <Button
-              type="button"
-              variant="primary"
-              size="lg"
-              className="w-full h-12 text-base font-semibold shadow-sm"
-              onClick={handleCaptureCurrentPose}
-              isLoading={isCapturing}
-              disabled={isCapturing || isSaving}
-            >
-              {isCapturing ? 'Capturing...' : currentStep.actionText}
-            </Button>
+            {allPosesComplete ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="lg"
+                className="w-full h-12 text-base font-semibold shadow-sm bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={handleSaveEnrollment}
+                isLoading={isSaving}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Registering Face...' : 'Register Face Profile'}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="primary"
+                size="lg"
+                className="w-full h-12 text-base font-semibold shadow-sm"
+                onClick={handleCaptureCurrentPose}
+                isLoading={isCapturing}
+                disabled={isCapturing || isSaving}
+              >
+                {isCapturing ? 'Capturing...' : currentStep.actionText}
+              </Button>
+            )}
 
-            {isCurrentPoseCompleted && (
+            {isCurrentPoseCompleted && !allPosesComplete && (
               <button
                 type="button"
                 onClick={() => handleRetakePose(currentStep.key)}

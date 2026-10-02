@@ -8,7 +8,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional
 
 class FaceDetector:
-    def __init__(self, model_path: str, score_threshold: float = 0.4, nms_threshold: float = 0.3):
+    def __init__(self, model_path: str, score_threshold: float = 0.20, nms_threshold: float = 0.3):
         self.model_path = model_path
         self.score_threshold = score_threshold
         self.nms_threshold = nms_threshold
@@ -29,6 +29,12 @@ class FaceDetector:
             self.current_size = (w, h)
 
         _, raw_faces = self.detector.detect(img)
+        if (raw_faces is None or len(raw_faces) == 0) and self.score_threshold > 0.10:
+            # Fallback with relaxed sensitivity to guarantee capture on turned angles or low room light
+            self.detector.setScoreThreshold(0.10)
+            _, raw_faces = self.detector.detect(img)
+            self.detector.setScoreThreshold(self.score_threshold)
+
         if raw_faces is None or len(raw_faces) == 0:
             return []
 
