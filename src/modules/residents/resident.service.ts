@@ -133,6 +133,96 @@ export class ResidentService {
     });
   }
 
+  public async createRegularComer(input: {
+    organizationId: string;
+    hostelId: string;
+    residentCode: string;
+    fullName: string;
+    category: string;
+    contactPhone?: string | null;
+    initialPresence?: PresenceState;
+    performedByUserId?: string;
+    performedByRole?: StaffRole;
+  }): Promise<Resident> {
+    const hostel = await this.db.hostel.findUnique({
+      where: { id: input.hostelId },
+    });
+    if (!hostel) {
+      throw new NotFoundError('Hostel', input.hostelId);
+    }
+    if (hostel.organizationId !== input.organizationId) {
+      throw new ValidationError('Hostel does not belong to the specified organization');
+    }
+
+    if (input.performedByUserId) {
+      const staffUser = await this.db.user.findUnique({ where: { id: input.performedByUserId } });
+      if (!staffUser) {
+        throw new NotFoundError('User', input.performedByUserId);
+      }
+      assertUserCanOperateInHostel(staffUser, input.organizationId, input.hostelId);
+    }
+
+    const existing = await this.db.resident.findUnique({
+      where: {
+        organizationId_residentCode: {
+          organizationId: input.organizationId,
+          residentCode: input.residentCode.trim(),
+        },
+      },
+    });
+    if (existing) {
+      throw new ConflictError(
+        `Person with code '${input.residentCode.trim()}' already exists in this organization`
+      );
+    }
+
+    return this.db.$transaction(async (tx) => {
+      const resident = await tx.resident.create({
+        data: {
+          organizationId: input.organizationId,
+          hostelId: input.hostelId,
+          residentCode: input.residentCode.trim(),
+          fullName: input.fullName.trim(),
+          roomGroup: `[Non-Resident] ${input.category.trim()}`,
+          contactPhone: input.contactPhone || null,
+          status: ResidentStatus.ACTIVE,
+          faceEnrollmentStatus: FaceEnrollmentStatus.NOT_ENROLLED,
+        },
+      });
+
+      await tx.residentPresence.create({
+        data: {
+          residentId: resident.id,
+          hostelId: resident.hostelId,
+          currentState: input.initialPresence || PresenceState.IN,
+          lastUpdatedByUserId: input.performedByUserId || null,
+        },
+      });
+
+      await this.auditService.record(
+        {
+          organizationId: input.organizationId,
+          hostelId: input.hostelId,
+          entityType: 'RESIDENT',
+          entityId: resident.id,
+          action: 'CREATE',
+          performedByUserId: input.performedByUserId || null,
+          performedByRole: input.performedByRole || null,
+          reason: 'Quick registration of regular visitor/comer at gate',
+          newValues: {
+            residentCode: resident.residentCode,
+            fullName: resident.fullName,
+            roomGroup: resident.roomGroup,
+            initialPresence: input.initialPresence || PresenceState.IN,
+          },
+        },
+        tx
+      );
+
+      return resident;
+    });
+  }
+
   public async updateResident(
     residentId: string,
     input: UpdateResidentInput,

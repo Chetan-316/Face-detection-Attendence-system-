@@ -37,6 +37,38 @@ export const createResidentSchema = z.object({
   hostelId: z.string().trim().optional(),
 });
 
+export const registerRegularComerSchema = z.object({
+  fullName: z
+    .string()
+    .trim()
+    .min(1, 'Full name is required')
+    .max(100, 'Full name must be at most 100 characters'),
+  category: z
+    .string()
+    .trim()
+    .max(50, 'Category must be at most 50 characters')
+    .optional()
+    .default('Regular Visitor'),
+  contactPhone: z
+    .string()
+    .trim()
+    .max(25, 'Contact phone must be at most 25 characters')
+    .optional()
+    .nullable(),
+  code: z
+    .string()
+    .trim()
+    .max(50, 'Code must be at most 50 characters')
+    .optional(),
+  markInNow: z
+    .boolean()
+    .optional()
+    .default(true),
+  hostelId: z.string().trim().optional(),
+});
+
+export type RegisterRegularComerDTO = z.infer<typeof registerRegularComerSchema>;
+
 export const updateResidentSchema = z
   .object({
     residentCode: z

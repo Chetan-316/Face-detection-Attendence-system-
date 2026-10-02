@@ -23,9 +23,16 @@ export function createFaceEnrollmentRouter(
 
   router.use(requireAuth);
 
-  // Guard guardrail: guards are not permitted to manage biometrics
-  const enforceStaffRole = (req: Request, _res: Response, next: NextFunction) => {
+  // Guard guardrail: guards are only permitted to enroll regular visitors at gate
+  const enforceStaffRole = async (req: Request, _res: Response, next: NextFunction) => {
     if (req.user?.role === StaffRole.GUARD) {
+      const residentId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      if (residentId) {
+        const target = await db.resident.findUnique({ where: { id: residentId } });
+        if (target && target.hostelId === req.user.hostelId && target.roomGroup?.includes('Non-Resident')) {
+          return next();
+        }
+      }
       return next(new ForbiddenError('Guards are not authorized to perform face enrollment or revocation'));
     }
     next();

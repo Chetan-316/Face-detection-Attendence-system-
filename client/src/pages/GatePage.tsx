@@ -6,6 +6,9 @@ import { residentsApi } from '../api/residents.api';
 import { CameraEntity } from '../types/camera.types';
 import { RecognitionObservation } from '../types/recognition.types';
 import { MovementEventEntity, PresenceCounts } from '../types/movement.types';
+import { SafeResident } from '../types/resident.types';
+import { RegisterRegularComerModal } from '../features/gate/RegisterRegularComerModal';
+import { FaceEnrollmentModal } from '../features/residents/FaceEnrollmentModal';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Button } from '../components/Button';
@@ -18,6 +21,7 @@ import {
   User as UserIcon,
   Check,
   Eye,
+  UserPlus,
 } from 'lucide-react';
 
 export const GatePage: React.FC = () => {
@@ -38,8 +42,17 @@ export const GatePage: React.FC = () => {
   const [lastActionSuccessMsg, setLastActionSuccessMsg] = useState<string | null>(null);
 
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [isRegisterVisitorOpen, setIsRegisterVisitorOpen] = useState(false);
+  const [enrollingVisitor, setEnrollingVisitor] = useState<SafeResident | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const resetTimerRef = useRef<any>(null);
+
+  const handleRegisterVisitorSuccess = (newPerson: SafeResident, shouldEnrollFace: boolean) => {
+    fetchMovementData();
+    if (shouldEnrollFace) {
+      setEnrollingVisitor(newPerson);
+    }
+  };
 
   // Fetch gate cameras
   const fetchCameras = useCallback(async () => {
@@ -276,6 +289,17 @@ export const GatePage: React.FC = () => {
               </span>
             </div>
           </div>
+
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={() => setIsRegisterVisitorOpen(true)}
+            leftIcon={<UserPlus size={16} />}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm py-2 px-3 rounded-lg shadow-sm whitespace-nowrap ml-2"
+          >
+            + Register Regular Comer
+          </Button>
         </div>
       </div>
 
@@ -396,14 +420,26 @@ export const GatePage: React.FC = () => {
             </div>
           ) : isUnknown ? (
             /* Person not identified */
-            <div className="my-auto py-10 flex flex-col items-center justify-center text-center gap-3">
+            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
               <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center border border-red-200">
                 <UserX size={28} />
               </div>
               <h3 className="text-lg font-bold text-slate-900">Person not identified</h3>
               <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                Resident face not found in system roster. Please verify identity manually.
+                Face not found in system roster.
               </p>
+              <div className="mt-2 w-full max-w-xs">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setIsRegisterVisitorOpen(true)}
+                  leftIcon={<UserPlus size={16} />}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg shadow-sm"
+                >
+                  Register Regular Comer
+                </Button>
+              </div>
             </div>
           ) : isLowQuality ? (
             /* Face not clear enough */
@@ -488,6 +524,25 @@ export const GatePage: React.FC = () => {
           )}
         </div>
       </div>
+
+      <RegisterRegularComerModal
+        isOpen={isRegisterVisitorOpen}
+        onClose={() => setIsRegisterVisitorOpen(false)}
+        onSuccess={handleRegisterVisitorSuccess}
+        hostelId={user?.hostelId || undefined}
+      />
+
+      {enrollingVisitor && (
+        <FaceEnrollmentModal
+          isOpen={!!enrollingVisitor}
+          resident={enrollingVisitor}
+          onClose={() => setEnrollingVisitor(null)}
+          onSuccess={(updated) => {
+            setEnrollingVisitor(null);
+            success(`Face enrollment completed for ${updated.fullName}. Future visits will be auto-recognized.`);
+          }}
+        />
+      )}
     </div>
   );
 };

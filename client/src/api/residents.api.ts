@@ -49,6 +49,20 @@ export const residentsApi = {
     });
   },
 
+  async registerRegularComer(payload: {
+    fullName: string;
+    category?: string;
+    contactPhone?: string;
+    code?: string;
+    markInNow?: boolean;
+    hostelId?: string;
+  }): Promise<SafeResident> {
+    return apiClient<SafeResident>('/residents/regular-comer', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async updateResident(id: string, payload: UpdateResidentPayload): Promise<SafeResident> {
     return apiClient<SafeResident>(`/residents/${encodeURIComponent(id)}`, {
       method: 'PATCH',

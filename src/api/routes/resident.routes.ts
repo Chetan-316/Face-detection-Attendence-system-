@@ -1,10 +1,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { StaffRole } from '@prisma/client';
+import { StaffRole, PresenceState, MovementType, MovementSource } from '@prisma/client';
 import { ResidentService } from '../../modules/residents/resident.service';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
 import {
   createResidentSchema,
+  registerRegularComerSchema,
   updateResidentSchema,
   deactivateResidentSchema,
   reactivateResidentSchema,
@@ -217,6 +218,64 @@ export function createResidentRouter(
       next(error);
     }
   });
+
+  /**
+   * POST /api/v1/residents/regular-comer
+   * Quick-register a regular visitor / non-resident comer at the gate.
+   * Allowed for: GUARD, WARDEN, ADMIN.
+   */
+  router.post(
+    '/regular-comer',
+    validateRequest({ body: registerRegularComerSchema }),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const user = req.user!;
+        const body = req.body;
+
+        const targetHostelId = user.hostelId || body.hostelId;
+        if (!targetHostelId) {
+          throw new ValidationError('A facility/hostel must be assigned or specified');
+        }
+
+        const category = body.category?.trim() || 'Regular Visitor';
+        const rawCode = body.code?.trim() || `VIS-${Date.now().toString().slice(-4)}`;
+        const code = rawCode.toUpperCase();
+
+        const resident = await residentService.createRegularComer({
+          organizationId: user.organizationId,
+          hostelId: targetHostelId,
+          residentCode: code,
+          fullName: body.fullName.trim(),
+          category,
+          contactPhone: body.contactPhone?.trim() || null,
+          initialPresence: body.markInNow ? PresenceState.IN : PresenceState.OUT,
+          performedByUserId: user.id,
+          performedByRole: user.role,
+        });
+
+        if (body.markInNow) {
+          try {
+            await db.movementEvent.create({
+              data: {
+                residentId: resident.id,
+                hostelId: targetHostelId,
+                movementType: MovementType.IN,
+                source: MovementSource.GUARD_CONFIRMATION,
+                effectiveTimestamp: new Date(),
+                confirmedByUserId: user.id,
+                notes: `Quick-registered regular comer (${category}) marked IN at gate`,
+              },
+            });
+          } catch {}
+        }
+
+        const safeResident = await residentService.getResidentScoped(resident.id, user);
+        res.status(201).json(safeResident);
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   /**
    * GET /api/v1/residents/:id

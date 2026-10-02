@@ -49,10 +49,6 @@ export class EnrollmentService {
    * Helper to verify actor permission for a given resident
    */
   private async verifyActorScope(residentId: string, actor: AuthenticatedActor) {
-    if (actor.role === StaffRole.GUARD) {
-      throw new ForbiddenError('Guards are not authorized to perform face enrollment or revocation');
-    }
-
     const resident = await this.db.resident.findUnique({
       where: { id: residentId },
     });
@@ -63,6 +59,14 @@ export class EnrollmentService {
 
     if (resident.organizationId !== actor.organizationId) {
       throw new NotFoundError('Resident', residentId);
+    }
+
+    if (actor.role === StaffRole.GUARD) {
+      const isRegularComer = resident.roomGroup?.includes('Non-Resident');
+      const isAssignedHostel = !actor.hostelId || resident.hostelId === actor.hostelId;
+      if (!isRegularComer || !isAssignedHostel) {
+        throw new ForbiddenError('Guards are not authorized to perform face enrollment or revocation');
+      }
     }
 
     if (actor.role === StaffRole.WARDEN && actor.hostelId && resident.hostelId !== actor.hostelId) {
