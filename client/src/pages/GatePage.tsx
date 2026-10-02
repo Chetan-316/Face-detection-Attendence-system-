@@ -94,6 +94,16 @@ export const GatePage: React.FC = () => {
 
     const connectStream = async () => {
       try {
+        // Auto-start recognition if not currently running
+        if (user?.role === 'ADMIN' || user?.role === 'WARDEN') {
+          try {
+            const st = await recognitionApi.getStatus(selectedCameraId);
+            if (st.state !== 'RUNNING') {
+              await recognitionApi.startRecognition(selectedCameraId);
+            }
+          } catch {}
+        }
+
         const { streamToken } = await recognitionApi.getStreamToken(selectedCameraId);
         if (!isMounted) return;
 
