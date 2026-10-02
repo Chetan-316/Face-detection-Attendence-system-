@@ -16,6 +16,14 @@ import { ReportsPage } from './pages/ReportsPage';
 
 import { useAuth } from './auth/AuthContext';
 
+const GateRoute: React.FC = () => {
+  const { user } = useAuth();
+  if (user && user.role !== 'GUARD') {
+    return <Navigate to="/" replace />;
+  }
+  return <GatePage />;
+};
+
 const RecognitionRoute: React.FC = () => {
   const { user } = useAuth();
   if (user?.role === 'GUARD') {
@@ -48,7 +56,7 @@ export const App: React.FC = () => {
               <Route path="attendance" element={<AttendancePage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="cameras" element={<CamerasPage />} />
-              <Route path="gate" element={<GatePage />} />
+              <Route path="gate" element={<GateRoute />} />
               <Route path="recognition" element={<RecognitionRoute />} />
             </Route>
 
