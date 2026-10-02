@@ -164,7 +164,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     };
   }, [isOpen, resident, toastError]);
 
-  // Handler for manual one-click capture with pose stabilization
+  // Handler for manual one-click capture with pose stabilization & session auto-healing
   const handleCaptureCurrentPose = async () => {
     if (!resident || isCapturing || isSaving) return;
 
@@ -173,6 +173,37 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     setStatusMessage(null);
 
     try {
+      // Ensure session is started if lost or not yet created
+      if (!session && selectedCameraId) {
+        try {
+          const sessionRes = await biometricsApi.startEnrollment(resident.id, selectedCameraId);
+          setSession(sessionRes.data);
+        } catch {
+          // Will be handled in callCapture
+        }
+      }
+
+      // Resilient capture call with transparent session re-establishment
+      const callCapture = async () => {
+        try {
+          return await biometricsApi.captureFrame(resident.id, activePoseKey);
+        } catch (captureErr: any) {
+          const isSessionMissing =
+            captureErr?.message?.includes('Active enrollment session') ||
+            captureErr?.message?.includes('session has expired') ||
+            captureErr?.status === 404 ||
+            captureErr?.status === 410;
+
+          if (isSessionMissing && selectedCameraId) {
+            // Re-establish session seamlessly
+            const sessionRes = await biometricsApi.startEnrollment(resident.id, selectedCameraId);
+            setSession(sessionRes.data);
+            return await biometricsApi.captureFrame(resident.id, activePoseKey);
+          }
+          throw captureErr;
+        }
+      };
+
       let resData: any = null;
 
       // Try up to 3 rapid attempts to gracefully handle camera sensor latency
@@ -183,7 +214,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           await new Promise((resolve) => setTimeout(resolve, 150));
         }
 
-        const res = await biometricsApi.captureFrame(resident.id, activePoseKey);
+        const res = await callCapture();
         resData = res.data;
         if (resData?.sampleAccepted) {
           break;
@@ -249,7 +280,11 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         setErrorMsg(humanMsg);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Camera did not provide a fresh frame. Please try again.');
+      if (err?.message?.includes('Active enrollment session') || err?.message?.includes('session')) {
+        setErrorMsg('Camera session re-synchronized. Please click Capture again.');
+      } else {
+        setErrorMsg(err.message || 'Camera did not provide a fresh frame. Please try again.');
+      }
     } finally {
       setIsCapturing(false);
     }
