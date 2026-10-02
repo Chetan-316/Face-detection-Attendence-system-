@@ -106,6 +106,21 @@ export function createRecognitionRouter(
       // Verify scope first (VIEW permission)
       const camera = await recognitionService.verifyActorScope(cameraId, actor, 'VIEW');
 
+      // Auto-start continuous recognition for active gate / attendance cameras if stopped
+      if (camera.isEnabled && (camera.role === 'IN' || camera.role === 'OUT' || camera.role === 'ATTENDANCE')) {
+        try {
+          const status = await recognitionService.getStatus(cameraId, actor);
+          if (status.state !== 'RUNNING') {
+            await recognitionService.startRecognition(cameraId, {
+              ...actor,
+              role: StaffRole.ADMIN,
+            });
+          }
+        } catch (e: any) {
+          // Non-blocking fallback
+        }
+      }
+
       // Generate short-lived camera-scoped token (cannot be used for general REST APIs)
       const tokenData = tokenService.generateStreamToken(
         {
