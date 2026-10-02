@@ -135,14 +135,14 @@ export class OpenCvFrameSource implements IFrameSource {
         this.workerProcess = null;
       });
 
-      // Startup timeout guard (5 seconds)
+      // Startup timeout guard (15 seconds)
       setTimeout(() => {
         if (!isSettled) {
           isSettled = true;
           this.stop().catch(() => {});
-          reject(new Error('Webcam hardware initialization timed out (5s)'));
+          reject(new Error('Webcam hardware initialization timed out (15s)'));
         }
-      }, 5000);
+      }, 15000);
     });
   }
 

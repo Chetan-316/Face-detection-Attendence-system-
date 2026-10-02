@@ -427,7 +427,9 @@ export function createCameraRouter(
         res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=--pravahax-frame');
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         res.setHeader('Connection', 'close');
-        res.setHeader('Pragma', 'no-cache');
+        if (typeof res.flushHeaders === 'function') {
+          res.flushHeaders();
+        }
 
         const writeFrame = (buf: Buffer) => {
           if (res.writableEnded || res.destroyed) return;
@@ -443,6 +445,11 @@ export function createCameraRouter(
         };
 
         const adapter = await cameraService.getOrCreateAdapter(camera.id);
+        if (!adapter.isActive()) {
+          try {
+            await cameraService.startCamera(camera.id);
+          } catch {}
+        }
 
         // If adapter has a latest frame, emit it immediately so preview renders without delay
         const latest = adapter.getLatestFrame();

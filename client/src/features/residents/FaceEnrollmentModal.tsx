@@ -73,6 +73,11 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   const [activePoseKey, setActivePoseKey] = useState<EnrollmentPose>('FRONT');
   const [completedPoses, setCompletedPoses] = useState<Set<EnrollmentPose>>(new Set());
 
+  // Camera preview stream connection states
+  const [isStreamLoaded, setIsStreamLoaded] = useState<boolean>(false);
+  const [streamRetryKey, setStreamRetryKey] = useState<number>(0);
+  const [isCameraStarting, setIsCameraStarting] = useState<boolean>(true);
+
   const isEnrolled = resident?.faceEnrollmentStatus === 'ENROLLED';
 
   // Initialize camera and start enrollment session
@@ -81,6 +86,9 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
 
     let isMounted = true;
     setIsLoading(true);
+    setIsCameraStarting(true);
+    setIsStreamLoaded(false);
+    setStreamRetryKey(0);
     setErrorMsg(null);
     setStatusMessage(null);
     setSession(null);
@@ -105,14 +113,18 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         if (!chosenCamId) {
           setErrorMsg('No active camera found for enrollment. Please register a camera first.');
           setIsLoading(false);
+          setIsCameraStarting(false);
           return;
         }
 
         try {
           await camerasApi.startCamera(chosenCamId);
         } catch (e) {
-          // Camera already streaming
+          // Camera already streaming or starting
         }
+
+        if (!isMounted) return;
+        setIsCameraStarting(false);
 
         const sessionRes = await biometricsApi.startEnrollment(resident.id, chosenCamId);
         if (!isMounted) return;
@@ -138,7 +150,10 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         setErrorMsg(err.message || 'Failed to initialize face enrollment session');
         toastError(err.message || 'Failed to initialize face enrollment session');
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+          setIsCameraStarting(false);
+        }
       }
     };
 
@@ -289,6 +304,11 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   const allPosesComplete = POSE_STEPS.every((p) => completedPoses.has(p.key));
   const isCurrentPoseCompleted = completedPoses.has(activePoseKey);
 
+  const basePreviewUrl = selectedCameraId ? camerasApi.getPreviewStreamUrl(selectedCameraId) : '';
+  const previewStreamUrl = basePreviewUrl
+    ? `${basePreviewUrl}${basePreviewUrl.includes('?') ? '&' : '?'}_t=${streamRetryKey}`
+    : '';
+
   return (
     <Modal
       isOpen={isOpen}
@@ -299,24 +319,66 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     >
       <div className="face-enrollment-container flex flex-col gap-5 max-w-xl mx-auto w-full">
         {/* Live Camera View with subtle neutral guide */}
-        <div className="relative bg-slate-100 rounded-xl overflow-hidden w-full h-[320px] sm:h-[360px] flex items-center justify-center border border-slate-200">
-          {selectedCameraId ? (
+        <div className="relative bg-slate-900 rounded-xl overflow-hidden w-full h-[320px] sm:h-[360px] flex items-center justify-center border border-slate-700 shadow-inner">
+          {/* Active stream image */}
+          {selectedCameraId && (
             <img
-              src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
+              key={`${selectedCameraId}-${streamRetryKey}`}
+              src={previewStreamUrl}
               alt="Face Enrollment Live Preview"
-              className="w-full h-full object-cover"
+              className={`w-full h-full object-cover transition-opacity duration-300 ${
+                isStreamLoaded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+              }`}
+              onLoad={() => {
+                setIsStreamLoaded(true);
+              }}
               onError={() => {
-                setErrorMsg('Camera stream interrupted. Reconnecting...');
+                setIsStreamLoaded(false);
+                setTimeout(() => {
+                  setStreamRetryKey((prev) => prev + 1);
+                }, 1500);
               }}
             />
-          ) : (
-            <div className="text-slate-500 text-sm flex flex-col items-center gap-2">
-              <RefreshCw className="animate-spin text-blue-600" size={24} />
-              <span>Connecting to camera...</span>
+          )}
+
+          {/* Loading overlay when stream is connecting or hardware is starting */}
+          {(!isStreamLoaded || !selectedCameraId) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-slate-300 gap-3 z-10">
+              <RefreshCw className="animate-spin text-blue-400" size={28} />
+              <div className="flex flex-col items-center gap-1 text-center px-4">
+                <span className="text-sm font-medium text-white">
+                  {isCameraStarting ? 'Initializing camera hardware...' : 'Connecting to live camera feed...'}
+                </span>
+                <span className="text-xs text-slate-400">
+                  Please hold still in front of the lens
+                </span>
+              </div>
+              {streamRetryKey > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setStreamRetryKey((k) => k + 1)}
+                  className="mt-1 text-xs text-blue-400 hover:text-blue-300 underline font-medium cursor-pointer"
+                >
+                  Click to reconnect feed
+                </button>
+              )}
             </div>
           )}
 
+          {/* Live stream status badge */}
+          {isStreamLoaded && (
+            <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 backdrop-blur-sm rounded-full text-white text-xs font-medium tracking-wider pointer-events-none">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>LIVE CAMERA</span>
+            </div>
+          )}
 
+          {/* Subtle face centering guide */}
+          {isStreamLoaded && (
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="w-48 h-60 sm:w-56 sm:h-72 border-2 border-dashed border-white/40 rounded-full" />
+            </div>
+          )}
 
           {/* Hidden metadata for accessibility and existing test assertions */}
           <div className="sr-only" aria-hidden="true">

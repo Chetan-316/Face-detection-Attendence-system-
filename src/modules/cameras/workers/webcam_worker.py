@@ -65,10 +65,6 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
     cap.set(cv2.CAP_PROP_FPS, args.fps)
 
-    # Discard initial exposure calibration frames
-    for _ in range(5):
-        cap.read()
-
     # Test read frame to verify hardware response
     ret, test_frame = cap.read()
     if not ret or test_frame is None:
