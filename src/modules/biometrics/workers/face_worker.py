@@ -171,9 +171,9 @@ def main():
                     })
                     continue
 
-                # Run detector
-                faces = detector.detect(img)
+                # Run detector with enrollment pose fallback
                 expected_pose = cmd_data.get("expected_pose")
+                faces = detector.detect(img, expected_pose=expected_pose)
                 quality_res = quality_checker.evaluate(img, faces, expected_pose=expected_pose)
 
                 embedding = None
