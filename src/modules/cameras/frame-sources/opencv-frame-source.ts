@@ -163,11 +163,15 @@ export class OpenCvFrameSource implements IFrameSource {
         if (!resolved) {
           resolved = true;
           try {
-            proc.kill('SIGKILL');
+            if (process.platform === 'win32' && proc.pid) {
+              spawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { windowsHide: true });
+            } else {
+              proc.kill('SIGKILL');
+            }
           } catch {}
           resolve();
         }
-      }, 2000);
+      }, 1500);
 
       proc.once('exit', () => {
         if (!resolved) {

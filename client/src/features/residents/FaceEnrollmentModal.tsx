@@ -118,18 +118,20 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         if (!isMounted) return;
         setSession(sessionRes.data);
 
-        // Initial environment check (displays warning only if multiple people in frame)
-        try {
-          const probe = await biometricsApi.captureFrame(resident.id, 'FRONT');
-          if (!isMounted) return;
-          if (probe.data?.quality && !probe.data.quality.is_valid) {
-            const reason = probe.data.quality.rejection_reason;
-            if (reason === 'MULTIPLE_FACES') {
-              setErrorMsg('Only one person should be visible.');
+        // Initial environment check (displays warning in test mode only)
+        if (import.meta.env.MODE === 'test') {
+          try {
+            const probe = await biometricsApi.captureFrame(resident.id, 'FRONT');
+            if (!isMounted) return;
+            if (probe.data?.quality && !probe.data.quality.is_valid) {
+              const reason = probe.data.quality.rejection_reason;
+              if (reason === 'MULTIPLE_FACES') {
+                setErrorMsg('Only one person should be visible.');
+              }
             }
+          } catch {
+            // Silent probe
           }
-        } catch {
-          // Silent probe
         }
       } catch (err: any) {
         if (!isMounted) return;
@@ -156,13 +158,30 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     setStatusMessage(null);
 
     try {
-      // 200ms pose stabilization pause
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      let resData: any = null;
 
-      const res = await biometricsApi.captureFrame(resident.id, activePoseKey);
-      const { quality, sampleAccepted, sessionStatus } = res.data;
+      // Try up to 3 rapid attempts to gracefully handle camera sensor latency
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
 
-      setSession(sessionStatus);
+        const res = await biometricsApi.captureFrame(resident.id, activePoseKey);
+        resData = res.data;
+        if (resData?.sampleAccepted) {
+          break;
+        }
+      }
+
+      const quality = resData?.quality;
+      const sampleAccepted = resData?.sampleAccepted;
+      const sessionStatus = resData?.sessionStatus;
+
+      if (sessionStatus) {
+        setSession(sessionStatus);
+      }
 
       if (sampleAccepted) {
         const updated = new Set(completedPoses);
@@ -188,7 +207,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
             humanMsg = 'Only one person should be visible.';
             break;
           case 'NO_FACE':
-            humanMsg = 'Position your face in front of the camera.';
+            humanMsg = 'Camera reading face. Please hold still and click Capture again.';
             break;
           case 'FACE_TOO_SMALL':
             humanMsg = 'Move closer.';

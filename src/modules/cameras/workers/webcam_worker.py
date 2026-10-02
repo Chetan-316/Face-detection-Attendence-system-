@@ -65,7 +65,11 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
     cap.set(cv2.CAP_PROP_FPS, args.fps)
 
-    # Test read first frame to verify hardware response
+    # Discard initial exposure calibration frames
+    for _ in range(5):
+        cap.read()
+
+    # Test read frame to verify hardware response
     ret, test_frame = cap.read()
     if not ret or test_frame is None:
         cap.release()
@@ -82,15 +86,27 @@ def main():
             try:
                 line = sys.stdin.readline()
                 if not line:
-                    # stdin closed by parent process
+                    # stdin closed by parent process -> release and exit immediately
                     stop_requested.set()
-                    break
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    os._exit(0)
                 cmd_data = json.loads(line.strip())
                 if cmd_data.get("command") == "stop":
                     stop_requested.set()
-                    break
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    os._exit(0)
             except Exception:
-                break
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+                os._exit(0)
 
     stdin_thread = threading.Thread(target=listen_stdin, daemon=True)
     stdin_thread.start()
