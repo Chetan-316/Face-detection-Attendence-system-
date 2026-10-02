@@ -166,12 +166,14 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         setCompletedPoses(updated);
 
         const currentStep = POSE_STEPS.find((p) => p.key === activePoseKey);
-        setStatusMessage(`${currentStep?.label || 'Pose'} captured`);
 
         // Advance to next incomplete pose in order
         const nextIncomplete = POSE_STEPS.find((p) => !updated.has(p.key));
         if (nextIncomplete) {
+          setStatusMessage(`${currentStep?.label || 'Pose'} captured`);
           setActivePoseKey(nextIncomplete.key);
+        } else {
+          setStatusMessage('All angles captured. Ready to register face.');
         }
       } else {
         const reason = quality?.rejection_reason;
@@ -231,7 +233,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
 
     try {
       await biometricsApi.completeEnrollment(resident.id);
-      success(isEnrolled ? `Face re-enrollment completed for ${resident.fullName}.` : `Face enrollment completed for ${resident.fullName}.`);
+      success(isEnrolled ? `Face re-enrollment completed for ${resident.fullName}.` : `Face registered successfully for ${resident.fullName}.`);
 
       const updatedResident: SafeResident = {
         ...resident,
