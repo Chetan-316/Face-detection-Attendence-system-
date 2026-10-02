@@ -590,10 +590,10 @@ export const AttendancePage: React.FC = () => {
 
                 {/* Live Camera & Current Resident Display (When Active) */}
                 {activeSessionData.status === 'ACTIVE' && (
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  <div className="attendance-active-layout">
                     {/* Live Camera Feed */}
-                    <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                      <div className="relative bg-slate-100 flex items-center justify-center overflow-hidden min-h-[340px] sm:min-h-[380px] h-full">
+                    <div className="attendance-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="relative bg-slate-100 flex items-center justify-center overflow-hidden min-h-[360px] sm:min-h-[400px] h-full">
                         {(activeSessionData.camera?.id || cameras[0]?.id) ? (
                           <img
                             src={
@@ -614,7 +614,7 @@ export const AttendancePage: React.FC = () => {
                     </div>
 
                     {/* Current Resident Card */}
-                    <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between min-h-[340px]">
+                    <div className="attendance-resident-col bg-white border border-slate-200 rounded-xl p-6 shadow-sm justify-between min-h-[360px]">
                       <div>
                         <h3 className="text-sm font-semibold text-slate-500 mb-4">
                           Current Resident
@@ -758,14 +758,14 @@ export const AttendancePage: React.FC = () => {
                                   <Users size={18} className="text-slate-400" />
                                 </div>
                                 <div>
-                                  <div className="font-semibold text-slate-900">{item.fullName}</div>
-                                  <div className="text-xs text-slate-500 font-mono">{item.residentCode}</div>
+                                  <div className="font-semibold text-slate-900 text-15px">{item.fullName}</div>
+                                  <div className="text-13px text-slate-500 font-mono">{item.residentCode}</div>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-6 py-3.5 text-slate-700 font-medium">{item.roomGroup}</td>
+                            <td className="px-6 py-3.5 text-slate-700 font-medium text-15px">{item.roomGroup}</td>
                             <td className="px-6 py-3.5">{renderStatusBadge(item.status)}</td>
-                            <td className="px-6 py-3.5 text-slate-600 font-mono text-xs">
+                            <td className="px-6 py-3.5 text-slate-600 font-mono text-14px">
                               {item.markedAt
                                 ? new Date(item.markedAt).toLocaleTimeString([], {
                                     hour: '2-digit',
@@ -786,7 +786,7 @@ export const AttendancePage: React.FC = () => {
                                     );
                                     setCorrectionReason('');
                                   }}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-13px font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none transition"
                                 >
                                   <Edit2 size={13} />
                                   <span>Correct</span>

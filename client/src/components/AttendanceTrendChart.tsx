@@ -58,7 +58,7 @@ export const AttendanceTrendChart: React.FC<AttendanceTrendChartProps> = ({
   return (
     <div className="attendance-trend-container" role="region" aria-label="Attendance Trend Line Chart">
       <div className="chart-header-row mb-2 flex justify-between items-center">
-        <span className="text-xs font-semibold text-secondary uppercase tracking-wider">
+        <span className="text-13px font-semibold text-secondary">
           Daily Attendance Rate (%)
         </span>
         {hoveredPoint && (

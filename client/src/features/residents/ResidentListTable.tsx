@@ -137,7 +137,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                       >
                         {resident.fullName}
                       </button>
-                      <span className="font-mono text-xs text-slate-500 mt-0.5">{resident.residentCode}</span>
+                      <span className="font-mono text-13px text-slate-500 mt-0.5">{resident.residentCode}</span>
                     </div>
                   </div>
                 </td>

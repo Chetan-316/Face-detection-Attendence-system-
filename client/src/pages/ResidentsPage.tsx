@@ -145,7 +145,7 @@ export const ResidentsPage: React.FC = () => {
     <div className="residents-page">
       <PageHeader
         title="Residents"
-        subtitle="Manage resident roster, room allocation, presence, and face enrollment."
+        subtitle="Manage resident roster, rooms, presence, and face enrollment."
         actions={
           <div className="flex items-center gap-3">
             <Button

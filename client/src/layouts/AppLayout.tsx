@@ -150,7 +150,7 @@ export const AppLayout: React.FC = () => {
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   <LayoutDashboard size={18} />
-                  <span>Overview</span>
+                  <span>Dashboard</span>
                 </NavLink>
 
                 <NavLink
@@ -160,15 +160,6 @@ export const AppLayout: React.FC = () => {
                 >
                   <Users size={18} />
                   <span>Residents</span>
-                </NavLink>
-
-                <NavLink
-                  to="/cameras"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <Video size={18} />
-                  <span>Cameras</span>
                 </NavLink>
 
                 <NavLink
@@ -187,6 +178,15 @@ export const AppLayout: React.FC = () => {
                 >
                   <FileText size={18} />
                   <span>Reports</span>
+                </NavLink>
+
+                <NavLink
+                  to="/cameras"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                >
+                  <Video size={18} />
+                  <span>Cameras</span>
                 </NavLink>
               </>
             )}

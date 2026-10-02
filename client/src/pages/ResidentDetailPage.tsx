@@ -142,7 +142,7 @@ export const ResidentDetailPage: React.FC = () => {
         <div className="presence-hero-content">
           <span className="presence-hero-caption">CURRENT REAL-TIME PRESENCE</span>
           <h2 className="presence-hero-state">
-            {isCurrentlyIn ? 'CURRENTLY IN HOSTEL' : 'CURRENTLY OUTSIDE HOSTEL'}
+            {isCurrentlyIn ? 'Currently Inside Hostel' : 'Currently Outside Hostel'}
           </h2>
           <p className="presence-hero-meta">
             {resident.presence?.lastMovementTime
@@ -156,42 +156,42 @@ export const ResidentDetailPage: React.FC = () => {
       </div>
 
       {/* Onboarding Checklist Summary */}
-      <div className="p-4 bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-700">
-        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">
+      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+        <span className="text-sm font-semibold text-slate-700 block mb-3">
           Resident Onboarding Checklist
         </span>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
-            <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white border border-slate-200 shadow-sm">
+            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
             <div>
-              <span className="font-semibold block text-slate-800 dark:text-slate-200">Personal Details</span>
-              <span className="text-emerald-600 dark:text-emerald-400">Complete</span>
+              <span className="font-semibold block text-slate-800">Personal Details</span>
+              <span className="text-emerald-700 font-medium">Complete</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white border border-slate-200 shadow-sm">
             {hasProfilePhoto ? (
-              <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
             ) : (
-              <XCircle size={18} className="text-amber-500 shrink-0" />
+              <XCircle size={18} className="text-amber-600 shrink-0" />
             )}
             <div>
-              <span className="font-semibold block text-slate-800 dark:text-slate-200">Staff Profile Photo</span>
-              <span className={hasProfilePhoto ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}>
+              <span className="font-semibold block text-slate-800">Staff Profile Photo</span>
+              <span className={hasProfilePhoto ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
                 {hasProfilePhoto ? 'Photo Attached' : 'Missing Photo'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white border border-slate-200 shadow-sm">
             {isFaceEnrolled ? (
-              <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
+              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
             ) : (
               <XCircle size={18} className="text-slate-400 shrink-0" />
             )}
             <div>
-              <span className="font-semibold block text-slate-800 dark:text-slate-200">Face Biometrics</span>
-              <span className={isFaceEnrolled ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'}>
+              <span className="font-semibold block text-slate-800">Face Biometrics</span>
+              <span className={isFaceEnrolled ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
                 {isFaceEnrolled ? '5-Pose Enrolled' : 'Not Enrolled'}
               </span>
             </div>
@@ -203,7 +203,7 @@ export const ResidentDetailPage: React.FC = () => {
         {/* Profile Card */}
         <Card title="Resident Information" subtitle="Primary identity and facility allocation">
           <div className="flex items-start gap-4 mb-4">
-            <div className="w-20 h-20 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shrink-0 flex items-center justify-center">
+            <div className="w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center">
               <img
                 src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
                 alt={resident.fullName}
@@ -217,10 +217,10 @@ export const ResidentDetailPage: React.FC = () => {
 
             <div className="flex-1 min-w-0">
               <span className="text-xs text-slate-500 block">Full Name</span>
-              <h3 className="font-bold text-base text-slate-900 dark:text-white truncate">
+              <h3 className="font-bold text-base text-slate-900 truncate">
                 {resident.fullName}
               </h3>
-              <span className="text-xs font-mono text-primary font-medium block mt-0.5">
+              <span className="text-xs font-mono text-blue-600 font-medium block mt-0.5">
                 {resident.residentCode}
               </span>
               <div className="mt-1">
@@ -230,21 +230,21 @@ export const ResidentDetailPage: React.FC = () => {
           </div>
 
           <div className="detail-dl space-y-2 text-sm">
-            <div className="detail-row flex justify-between py-1 border-t border-slate-100 dark:border-slate-800">
+            <div className="detail-row flex justify-between py-1 border-t border-slate-100">
               <span className="detail-dt text-slate-500">Room / Group</span>
               <span className="detail-dd font-medium">{resident.roomGroup}</span>
             </div>
-            <div className="detail-row flex justify-between py-1 border-t border-slate-100 dark:border-slate-800">
+            <div className="detail-row flex justify-between py-1 border-t border-slate-100">
               <span className="detail-dt text-slate-500">Facility Assigned</span>
               <span className="detail-dd">
                 {resident.hostel?.name ? `${resident.hostel.name} (${resident.hostel.code})` : 'Assigned Hostel'}
               </span>
             </div>
-            <div className="detail-row flex justify-between py-1 border-t border-slate-100 dark:border-slate-800">
+            <div className="detail-row flex justify-between py-1 border-t border-slate-100">
               <span className="detail-dt text-slate-500">Contact Phone</span>
               <span className="detail-dd">{resident.contactPhone || '—'}</span>
             </div>
-            <div className="detail-row flex justify-between py-1 border-t border-slate-100 dark:border-slate-800">
+            <div className="detail-row flex justify-between py-1 border-t border-slate-100">
               <span className="detail-dt text-slate-500">Contact Email</span>
               <span className="detail-dd">{resident.contactEmail || '—'}</span>
             </div>
@@ -253,16 +253,16 @@ export const ResidentDetailPage: React.FC = () => {
 
         {/* Biometrics and Security Scope */}
         <Card title="Biometrics & Enrollment" subtitle="Face recognition capability tracking">
-          <div className="biometric-status-card">
+          <div className="biometric-status-card p-4 rounded-xl border border-slate-200 bg-white">
             <div className="biometric-status-header flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <ScanFace size={18} className="text-purple-600" />
-                <span className="font-semibold text-sm">Face Recognition Status</span>
+                <ScanFace size={18} className="text-blue-600" />
+                <span className="font-semibold text-sm text-slate-900">Face Recognition Status</span>
               </div>
               <Badge type="enrollment" value={resident.faceEnrollmentStatus} />
             </div>
             {canManage && (
-              <div className="biometric-actions-row flex items-center gap-2 mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+              <div className="biometric-actions-row flex items-center gap-2 mt-4 pt-3 border-t border-slate-200">
                 <Button
                   variant="primary"
                   size="sm"
@@ -285,7 +285,7 @@ export const ResidentDetailPage: React.FC = () => {
             )}
           </div>
 
-          <div className="detail-timestamp-bar mt-6 pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center text-xs text-muted">
+          <div className="detail-timestamp-bar mt-6 pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
             <div className="flex items-center gap-1">
               <Clock size={13} />
               <span>Created: {formatDateTime(resident.createdAt)}</span>

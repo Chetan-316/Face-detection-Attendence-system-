@@ -291,10 +291,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
             </div>
           )}
 
-          {/* Subtle neutral face oval guideline */}
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-            <div className="border border-slate-400/60 rounded-full w-48 h-60" />
-          </div>
+
 
           {/* Hidden metadata for accessibility and existing test assertions */}
           <div className="sr-only" aria-hidden="true">

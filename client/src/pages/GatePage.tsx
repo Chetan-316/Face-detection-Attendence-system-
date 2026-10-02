@@ -219,12 +219,12 @@ export const GatePage: React.FC = () => {
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gate</h1>
             <span className="text-slate-400 font-light">|</span>
             <span className="text-lg font-semibold text-slate-700">{selectedCamera?.name || 'Main Gate'}</span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-13px font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
               Online
             </span>
           </div>
-          <p className="text-sm text-slate-500 mt-0.5">Hostel resident entrance and exit point</p>
+          <p className="text-15px text-slate-500 mt-0.5">Hostel resident entrance and exit point</p>
         </div>
 
         <div className="flex items-center gap-5">
@@ -269,11 +269,11 @@ export const GatePage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2-Column Gate Operations Grid: Live Camera Stream + Recognition Action Card */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Live Camera Video Stream (7 cols, 440-480px dominant height) */}
-        <div className="lg:col-span-7 bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-          <div className="relative bg-slate-100 flex items-center justify-center overflow-hidden min-h-[420px] sm:min-h-[460px] h-full">
+      {/* 2-Column Gate Operations Layout: Live Camera Stream + Recognition Action Card */}
+      <div className="gate-operations-layout">
+        {/* Left Column: Live Camera Video Stream (Dominant 440-480px height) */}
+        <div className="gate-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div className="relative bg-slate-100 flex items-center justify-center overflow-hidden min-h-[440px] sm:min-h-[480px] h-full">
             {selectedCameraId && !streamError ? (
               <img
                 src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
@@ -295,8 +295,8 @@ export const GatePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Resident Recognition & 1-Click Action Card (5 cols) */}
-        <div className="lg:col-span-5 bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between min-h-[420px] sm:min-h-[460px]">
+        {/* Right Column: Resident Recognition & 1-Click Action Card */}
+        <div className="gate-action-col bg-white border border-slate-200 rounded-xl p-6 shadow-sm justify-between min-h-[440px] sm:min-h-[480px]">
           {/* Action Success Confirmation */}
           {lastActionSuccessMsg ? (
             <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
@@ -433,13 +433,13 @@ export const GatePage: React.FC = () => {
               No recent gate activity recorded.
             </div>
           ) : (
-            <table className="w-full text-left text-sm border-collapse">
+            <table className="w-full text-left text-15px border-collapse">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/50">
-                  <th className="py-3 px-6 font-semibold">Time</th>
-                  <th className="py-3 px-6 font-semibold">Resident</th>
-                  <th className="py-3 px-6 font-semibold">Code</th>
-                  <th className="py-3 px-6 font-semibold text-right">Movement</th>
+                  <th className="py-3.5 px-6 text-sm font-semibold">Time</th>
+                  <th className="py-3.5 px-6 text-sm font-semibold">Resident</th>
+                  <th className="py-3.5 px-6 text-sm font-semibold">Code</th>
+                  <th className="py-3.5 px-6 text-sm font-semibold text-right">Movement</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -452,16 +452,16 @@ export const GatePage: React.FC = () => {
 
                   return (
                     <tr key={mov.id} className="hover:bg-slate-50/80 transition-colors h-14">
-                      <td className="py-3 px-6 text-slate-500 font-mono">{time}</td>
-                      <td className="py-3 px-6 font-semibold text-slate-900">
+                      <td className="py-3.5 px-6 text-slate-500 font-mono text-sm">{time}</td>
+                      <td className="py-3.5 px-6 font-semibold text-slate-900">
                         {mov.resident?.fullName || mov.residentId}
                       </td>
-                      <td className="py-3 px-6 text-slate-600 font-mono">
+                      <td className="py-3.5 px-6 text-slate-600 font-mono text-sm">
                         {mov.resident?.residentCode || '—'}
                       </td>
-                      <td className="py-3 px-6 text-right">
+                      <td className="py-3.5 px-6 text-right">
                         <span
-                          className={`inline-block px-3 py-1 rounded-md text-xs font-bold ${
+                          className={`inline-block px-3 py-1 rounded-md text-13px font-semibold ${
                             isIN
                               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               : 'bg-amber-50 text-amber-800 border border-amber-200'
