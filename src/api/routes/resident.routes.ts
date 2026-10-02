@@ -451,7 +451,7 @@ export function createResidentRouter(
   );
 
   // Mount face enrollment routes under /:id/face-enrollment
-  router.use('/:id/face-enrollment', createFaceEnrollmentRouter(db, enrollmentService));
+  router.use('/:id/face-enrollment', createFaceEnrollmentRouter(db, enrollmentService, camService));
 
   return router;
 }

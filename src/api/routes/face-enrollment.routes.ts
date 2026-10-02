@@ -14,10 +14,11 @@ import { ForbiddenError } from '../../common/errors';
 
 export function createFaceEnrollmentRouter(
   db: PrismaClient = defaultPrisma,
-  enrollmentService?: EnrollmentService
+  enrollmentService?: EnrollmentService,
+  cameraService?: any
 ) {
   const router = Router({ mergeParams: true });
-  const service = enrollmentService || new EnrollmentService(db);
+  const service = enrollmentService || new EnrollmentService(db, undefined, cameraService);
   const { requireAuth } = createAuthMiddleware(db);
 
   router.use(requireAuth);

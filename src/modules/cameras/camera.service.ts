@@ -39,7 +39,10 @@ export interface UpdateCameraInput {
 
 export class CameraService {
   private auditService: AuditService;
-  private activeAdapters: Map<string, ICameraAdapter> = new Map();
+  private static globalActiveAdapters: Map<string, ICameraAdapter> = new Map();
+  private get activeAdapters(): Map<string, ICameraAdapter> {
+    return CameraService.globalActiveAdapters;
+  }
   private onCameraChangeCallbacks: Array<(camera: Camera, previousRole?: CameraRole) => Promise<void> | void> = [];
 
   constructor(private readonly db: PrismaClient = defaultPrisma) {
