@@ -120,6 +120,7 @@ export interface BiometricHealthStatus {
   runtime: string;
   license: string;
   mock: boolean;
+  error?: string;
 }
 
 export interface ExtractedFace {

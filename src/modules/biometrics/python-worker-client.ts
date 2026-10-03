@@ -22,6 +22,8 @@ export class PythonWorkerClient {
   private isStarting: boolean = false;
   private startPromise: Promise<void> | null = null;
   private mockMode: boolean = false;
+  private lastStderr: string = '';
+  private lastError: string = '';
 
   constructor(options: { mock?: boolean } = {}) {
     this.mockMode = options.mock || process.env.BIOMETRIC_MOCK === 'true';
@@ -45,6 +47,9 @@ export class PythonWorkerClient {
     }
 
     this.isStarting = true;
+    this.lastStderr = '';
+    this.lastError = '';
+
     this.startPromise = new Promise<void>((resolve, reject) => {
       const scriptPath = path.resolve(__dirname, 'workers/face_worker.py');
       const args = [scriptPath];
@@ -61,23 +66,40 @@ export class PythonWorkerClient {
         });
       } catch (err: any) {
         this.isStarting = false;
-        return reject(new BiometricWorkerError(`Failed to spawn Python biometric worker: ${err.message}`));
+        this.lastError = `Spawn error: ${err.message}`;
+        return reject(new BiometricWorkerError(`Failed to spawn Python biometric worker (${pythonCmd}): ${err.message}`));
       }
 
       this.process.on('error', (err) => {
         console.error('Python biometric worker process error:', err);
+        this.lastError = `Process error: ${err.message}`;
         this.cleanup();
+        if (this.isStarting) {
+          this.isStarting = false;
+          reject(new BiometricWorkerError(`Biometric worker error (${pythonCmd}): ${err.message}`));
+        }
       });
 
       this.process.on('exit', (code, signal) => {
+        const exitMsg = `Worker exited with code ${code}, signal ${signal}. Stderr: ${this.lastStderr}`;
+        this.lastError = exitMsg;
+        console.warn('Python biometric worker exited:', exitMsg);
         this.cleanup();
+        if (this.isStarting) {
+          this.isStarting = false;
+          reject(new BiometricWorkerError(`Biometric worker exited prematurely: ${exitMsg}`));
+        }
       });
 
       // Handle stderr
       if (this.process.stderr) {
         const stderrRl = readline.createInterface({ input: this.process.stderr });
         stderrRl.on('line', (line) => {
-          // Debug logs or worker events
+          this.lastStderr = (this.lastStderr ? this.lastStderr + '\n' : '') + line;
+          if (this.lastStderr.length > 2000) {
+            this.lastStderr = this.lastStderr.slice(-2000);
+          }
+          console.error('[BiometricWorker stderr]', line);
         });
       }
 
@@ -108,13 +130,15 @@ export class PythonWorkerClient {
         });
       }
 
-      // Timeout for worker startup (15 seconds)
+      // Timeout for worker startup (10 seconds)
       const initTimer = setTimeout(() => {
         if (!this.isReady) {
+          const timeoutMsg = `Timed out waiting for biometric worker initialization. Last stderr: ${this.lastStderr || 'none'}`;
+          this.lastError = timeoutMsg;
           this.cleanup();
-          reject(new BiometricWorkerError('Timed out waiting for biometric worker initialization'));
+          reject(new BiometricWorkerError(timeoutMsg));
         }
-      }, 15000);
+      }, 10000);
       initTimer.unref();
     });
 
@@ -198,6 +222,7 @@ export class PythonWorkerClient {
         runtime: 'Unavailable',
         license: 'Apache-2.0',
         mock: this.mockMode,
+        error: `${err.message || 'Worker unavailable'}${this.lastStderr ? ` | Stderr: ${this.lastStderr}` : ''}`,
       };
     }
   }

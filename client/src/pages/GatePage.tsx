@@ -161,12 +161,22 @@ export const GatePage: React.FC = () => {
 
       const res = await recognitionApi.processFrame(selectedCameraId, b64);
       if (res.observation) {
-        setActiveObservation(res.observation);
         if (res.observation.classification === 'MATCH' && res.observation.resident) {
+          setActiveObservation(res.observation);
           const pres = await movementsApi.getResidentPresence(res.observation.resident.id).catch(() => null);
           if (pres?.currentState) {
             setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
           }
+          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = setTimeout(() => {
+            setActiveObservation(null);
+          }, 12000);
+        } else if (res.observation.classification === 'UNKNOWN') {
+          setActiveObservation(res.observation);
+          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = setTimeout(() => {
+            setActiveObservation(null);
+          }, 2500);
         }
       }
     } catch (err) {
@@ -180,7 +190,7 @@ export const GatePage: React.FC = () => {
   useEffect(() => {
     if (!isCameraActive || isConfirming) return;
     const interval = setInterval(() => {
-      if (!activeObservation) {
+      if (!activeObservation || activeObservation.classification !== 'MATCH') {
         captureAndProcessFrame();
       }
     }, 1800);
