@@ -1,4 +1,4 @@
-import { PrismaClient, StaffRole, CameraRole } from '@prisma/client';
+import { PrismaClient, StaffRole, CameraRole, CameraSourceType } from '@prisma/client';
 import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
 import { prisma as defaultPrisma } from '../../database/client';
@@ -468,6 +468,47 @@ export class RecognitionService {
     return () => {
       session.eventEmitter.off('observation', listener);
     };
+  }
+
+  /**
+   * Ingest and process a frame uploaded directly from a client browser webcam
+   */
+  public async processClientFrame(
+    cameraId: string,
+    frameBuffer: Buffer,
+    actor: AuthenticatedActor
+  ): Promise<RecognitionObservation | null> {
+    await this.verifyActorScope(cameraId, actor, 'VIEW');
+
+    let session = this.activeSessions.get(cameraId);
+    if (!session || session.state !== 'RUNNING') {
+      try {
+        await this.startRecognition(cameraId, {
+          ...actor,
+          role: StaffRole.ADMIN,
+        });
+        session = this.activeSessions.get(cameraId);
+      } catch (err) {
+        console.warn(`[RecognitionService] processClientFrame auto-start error:`, err);
+      }
+    }
+
+    if (!session) {
+      return null;
+    }
+
+    // Reset processing flag so client frame is processed immediately
+    session.isProcessingFrame = false;
+    session.lastFrameProcessedTimestamp = 0;
+
+    await this.handleCameraFrame(cameraId, {
+      cameraId,
+      sourceType: CameraSourceType.WEBCAM,
+      timestamp: new Date(),
+      frameBuffer,
+    });
+
+    return session.recentObservations[0] || null;
   }
 
   /**

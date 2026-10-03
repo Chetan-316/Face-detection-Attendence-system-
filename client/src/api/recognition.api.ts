@@ -32,4 +32,14 @@ export const recognitionApi = {
     const tokenParam = streamToken ? `?streamToken=${encodeURIComponent(streamToken)}` : '';
     return `${API_BASE_URL}/cameras/${cameraId}/recognition/events${tokenParam}`;
   },
+
+  async processFrame(cameraId: string, imageBase64: string): Promise<{ success: boolean; observation: RecognitionObservation | null }> {
+    return apiClient<{ success: boolean; observation: RecognitionObservation | null }>(
+      `/cameras/${cameraId}/recognition/process-frame`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ imageBase64 }),
+      }
+    );
+  },
 };

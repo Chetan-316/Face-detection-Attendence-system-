@@ -44,7 +44,6 @@ describe('Gate Regular Comer Quick Registration & Access Audit', () => {
       role: StaffRole.GUARD,
       organizationId: org.id,
       hostelId: hostel.id,
-      username: guardUser.username,
     }).token;
 
     adminUser = await testPrisma.user.create({
@@ -62,7 +61,6 @@ describe('Gate Regular Comer Quick Registration & Access Audit', () => {
       role: StaffRole.ADMIN,
       organizationId: org.id,
       hostelId: hostel.id,
-      username: adminUser.username,
     }).token;
 
     testCamera = await testPrisma.camera.create({

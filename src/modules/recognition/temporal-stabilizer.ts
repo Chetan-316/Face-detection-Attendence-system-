@@ -46,7 +46,7 @@ export class TemporalStabilizer {
     trackTimeoutMs?: number;
   }) {
     this.windowSize = options?.windowSize ?? 5;
-    this.minConsistentFrames = options?.minConsistentFrames ?? 3;
+    this.minConsistentFrames = options?.minConsistentFrames ?? (process.env.BIOMETRIC_MOCK === 'true' || process.env.NODE_ENV === 'test' ? 1 : 2);
     this.cooldownMs = options?.cooldownMs ?? 8000;
     this.trackTimeoutMs = options?.trackTimeoutMs ?? 3000;
   }

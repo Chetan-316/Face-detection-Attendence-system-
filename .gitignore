@@ -22,3 +22,6 @@ src/modules/biometrics/models/*.onnx
 *.dump
 *.sql
 *.csv
+
+.vercel
+.env*

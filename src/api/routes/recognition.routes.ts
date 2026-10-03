@@ -94,6 +94,32 @@ export function createRecognitionRouter(
   });
 
   /**
+   * POST /api/v1/cameras/:cameraId/recognition/process-frame
+   * Ingest a frame captured directly from the client webcam.
+   * Allowed: ADMIN, WARDEN, GUARD.
+   */
+  router.post('/:cameraId/recognition/process-frame', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = getActor(req);
+      const cameraId = req.params.cameraId as string;
+      const { imageBase64 } = req.body;
+
+      if (!imageBase64) {
+        res.status(400).json({ error: 'imageBase64 is required' });
+        return;
+      }
+
+      const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+      const frameBuffer = Buffer.from(cleanBase64, 'base64');
+
+      const observation = await recognitionService.processClientFrame(cameraId, frameBuffer, actor);
+      res.status(200).json({ success: true, observation });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
    * POST /api/v1/cameras/:cameraId/recognition/stream-token
    * Issue a short-lived (60s), camera-scoped stream token for SSE connections.
    * Allowed: ADMIN, WARDEN, GUARD.
