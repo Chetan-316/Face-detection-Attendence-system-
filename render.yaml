@@ -30,5 +30,5 @@ databases:
   - name: pravahax-db
     plan: free
     region: oregon
-    databaseName: pravahax_db
-    user: postgres
+    databaseName: pravahax
+    user: pravahax
