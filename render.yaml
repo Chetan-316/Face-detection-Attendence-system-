@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: (python3 -m pip install --break-system-packages -r src/modules/biometrics/workers/requirements.txt || pip3 install -r src/modules/biometrics/workers/requirements.txt) && python3 src/modules/biometrics/workers/download_models.py && npm install && npx prisma generate && npx prisma db push --accept-data-loss && npm run build:server && npm run seed:safe
+    buildCommand: (python3 -m pip install --break-system-packages -r src/modules/biometrics/workers/requirements.txt || pip3 install -r src/modules/biometrics/workers/requirements.txt || true) && (python3 src/modules/biometrics/workers/download_models.py || true) && npm install && npx prisma generate && npx prisma db push --accept-data-loss && npm run build:server && npm run seed:safe
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
