@@ -72,15 +72,29 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   // Basic Security & HTTP Headers
   app.use(helmet());
 
-  // CORS configuration
-  const isProd = process.env.NODE_ENV === 'production' || config.appEnv === 'production';
-  let allowedOrigins: string | string[] = '*';
-  if (process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.trim().length > 0) {
-    allowedOrigins = process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean);
-  } else if (isProd) {
-    allowedOrigins = [];
-  }
-  app.use(cors({ origin: allowedOrigins }));
+  // CORS configuration: Allow explicit origins, any vercel.app preview/production deployment, and localhost
+  const rawOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (
+          rawOrigins.includes('*') ||
+          rawOrigins.includes(origin) ||
+          origin.endsWith('.vercel.app') ||
+          origin.includes('localhost') ||
+          origin.includes('127.0.0.1')
+        ) {
+          return callback(null, true);
+        }
+        callback(new Error(`Origin '${origin}' not allowed by CORS`));
+      },
+      credentials: true,
+    })
+  );
 
   // Body parsers: JSON up to 10mb (supports profile photos) and raw image streams
   app.use(express.json({ limit: '10mb' }));
