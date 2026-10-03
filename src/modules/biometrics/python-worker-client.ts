@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
+import fs from 'fs';
 import readline from 'readline';
 import {
   BiometricHealthStatus,
@@ -51,18 +52,38 @@ export class PythonWorkerClient {
     this.lastError = '';
 
     this.startPromise = new Promise<void>((resolve, reject) => {
-      const scriptPath = path.resolve(__dirname, 'workers/face_worker.py');
+      let scriptPath = path.resolve(__dirname, 'workers/face_worker.py');
+      if (!fs.existsSync(scriptPath)) {
+        const candidates = [
+          path.resolve(process.cwd(), 'src/modules/biometrics/workers/face_worker.py'),
+          path.resolve(__dirname, '../../../src/modules/biometrics/workers/face_worker.py'),
+          path.resolve(__dirname, '../../../../src/modules/biometrics/workers/face_worker.py'),
+        ];
+        for (const cand of candidates) {
+          if (fs.existsSync(cand)) {
+            scriptPath = cand;
+            break;
+          }
+        }
+      }
+
       const args = [scriptPath];
       if (this.mockMode) {
         args.push('--mock');
       }
 
       const pythonCmd = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
+      const workerDir = path.dirname(scriptPath);
 
       try {
         this.process = spawn(pythonCmd, args, {
+          cwd: workerDir,
           stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env, PYTHONUNBUFFERED: '1' },
+          env: {
+            ...process.env,
+            PYTHONUNBUFFERED: '1',
+            PYTHONPATH: workerDir + (process.env.PYTHONPATH ? path.delimiter + process.env.PYTHONPATH : ''),
+          },
         });
       } catch (err: any) {
         this.isStarting = false;
