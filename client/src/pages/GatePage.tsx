@@ -177,6 +177,12 @@ export const GatePage: React.FC = () => {
           resetTimerRef.current = setTimeout(() => {
             setActiveObservation(null);
           }, 2500);
+        } else if (res.observation.classification === 'UNCERTAIN') {
+          setActiveObservation(res.observation);
+          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+          resetTimerRef.current = setTimeout(() => {
+            setActiveObservation(null);
+          }, 2500);
         }
       }
     } catch (err) {
@@ -270,6 +276,10 @@ export const GatePage: React.FC = () => {
         recognitionApi.getResults(selectedCameraId, 1).then((res) => {
           if (res.results && res.results.length > 0) {
             const latest = res.results[0];
+            const ageMs = Date.now() - new Date(latest.detectedAt).getTime();
+            // Discard observations older than 6 seconds so historical matches do not ghost on gate monitor
+            if (ageMs > 6000) return;
+
             setActiveObservation(latest);
             if (latest.classification === 'MATCH' && latest.resident) {
               movementsApi.getResidentPresence(latest.resident.id).then((pres) => {
