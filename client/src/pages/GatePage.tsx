@@ -54,7 +54,7 @@ export const GatePage: React.FC = () => {
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isScanningFace, setIsScanningFace] = useState<boolean>(false);
@@ -65,11 +65,23 @@ export const GatePage: React.FC = () => {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera is not supported or blocked in this browser context.');
       }
+      if (localStreamRef.current) {
+        if (videoRef.current && videoRef.current.srcObject !== localStreamRef.current) {
+          videoRef.current.srcObject = localStreamRef.current;
+          videoRef.current.play().catch(() => {});
+        }
+        setIsCameraActive(true);
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
         audio: false,
       });
-      setLocalStream(stream);
+      localStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
       setIsCameraActive(true);
     } catch (err: any) {
       console.warn('Webcam access error:', err);
@@ -79,20 +91,24 @@ export const GatePage: React.FC = () => {
   }, []);
 
   const stopLaptopCamera = useCallback(() => {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      setLocalStream(null);
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
-  }, [localStream]);
+  }, []);
 
   useEffect(() => {
     return () => {
-      if (localStream) {
-        localStream.getTracks().forEach((t) => t.stop());
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
       }
     };
-  }, [localStream]);
+  }, []);
 
   // Auto-attempt start on mount
   useEffect(() => {
@@ -430,8 +446,8 @@ export const GatePage: React.FC = () => {
                 <video
                   ref={(el) => {
                     videoRef.current = el;
-                    if (el && localStream && el.srcObject !== localStream) {
-                      el.srcObject = localStream;
+                    if (el && localStreamRef.current && el.srcObject !== localStreamRef.current) {
+                      el.srcObject = localStreamRef.current;
                       el.play().catch(() => {});
                     }
                   }}

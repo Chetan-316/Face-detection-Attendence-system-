@@ -80,35 +80,55 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const [isWebcamActive, setIsWebcamActive] = useState<boolean>(false);
+  const [webcamError, setWebcamError] = useState<string | null>(null);
 
   const startWebcam = useCallback(async () => {
     try {
+      setWebcamError(null);
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        return;
+      }
+      if (localStreamRef.current) {
+        if (videoRef.current && videoRef.current.srcObject !== localStreamRef.current) {
+          videoRef.current.srcObject = localStreamRef.current;
+          videoRef.current.play().catch(() => {});
+        }
+        setIsWebcamActive(true);
+        setIsStreamLoaded(true);
+        setIsCameraStarting(false);
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
         audio: false,
       });
-      setLocalStream(stream);
+      localStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
       setIsWebcamActive(true);
       setIsStreamLoaded(true);
       setIsCameraStarting(false);
     } catch (err: any) {
       console.warn('Webcam direct stream warning:', err);
-      // Non-blocking fallback to server preview
+      setWebcamError(err.message || 'Camera permission denied or camera in use');
+      setIsCameraStarting(false);
     }
   }, []);
 
   const stopWebcam = useCallback(() => {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      setLocalStream(null);
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsWebcamActive(false);
-  }, [localStream]);
+  }, []);
 
   const isEnrolled = resident?.faceEnrollmentStatus === 'ENROLLED';
 
@@ -196,7 +216,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       isMounted = false;
       stopWebcam();
     };
-  }, [isOpen, resident, toastError, startWebcam, stopWebcam]);
+  }, [isOpen, resident?.id]);
 
   // Handler for manual one-click capture with pose stabilization & session auto-healing
   const handleCaptureCurrentPose = async () => {
@@ -405,12 +425,12 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         {/* Live Camera View with subtle neutral guide */}
         <div className="relative bg-slate-900 rounded-xl overflow-hidden w-full h-[320px] sm:h-[360px] flex items-center justify-center border border-slate-700 shadow-inner">
           {/* Active direct browser webcam stream */}
-          {isWebcamActive && localStream ? (
+          {isWebcamActive ? (
             <video
               ref={(el) => {
                 videoRef.current = el;
-                if (el && localStream && el.srcObject !== localStream) {
-                  el.srcObject = localStream;
+                if (el && localStreamRef.current && el.srcObject !== localStreamRef.current) {
+                  el.srcObject = localStreamRef.current;
                   el.play().catch(() => {});
                 }
               }}
@@ -419,7 +439,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               muted
               className="w-full h-full object-cover"
             />
-          ) : selectedCameraId && (
+          ) : selectedCameraId ? (
             /* Fallback server preview stream image */
             <img
               key={`${selectedCameraId}-${streamRetryKey}`}
@@ -433,34 +453,33 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               }}
               onError={() => {
                 setIsStreamLoaded(false);
-                setTimeout(() => {
-                  setStreamRetryKey((prev) => prev + 1);
-                }, 1500);
               }}
             />
-          )}
+          ) : null}
 
-          {/* Loading overlay when stream is connecting or hardware is starting */}
+          {/* Loading / permission overlay when webcam is not yet connected */}
           {!isWebcamActive && (!isStreamLoaded || !selectedCameraId) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-slate-300 gap-3 z-10">
-              <RefreshCw className="animate-spin text-blue-400" size={28} />
+              {isCameraStarting && <RefreshCw className="animate-spin text-blue-400" size={28} />}
               <div className="flex flex-col items-center gap-1 text-center px-4">
                 <span className="text-sm font-medium text-white">
-                  {isCameraStarting ? 'Initializing camera hardware...' : 'Connecting to live camera feed...'}
+                  {webcamError
+                    ? 'Camera Permission Required'
+                    : isCameraStarting
+                    ? 'Initializing camera hardware...'
+                    : 'Camera feed ready'}
                 </span>
-                <span className="text-xs text-slate-400">
-                  Please hold still in front of the lens
+                <span className="text-xs text-slate-400 max-w-xs">
+                  {webcamError || 'Please allow camera access in your browser to capture enrollment photos.'}
                 </span>
               </div>
-              {streamRetryKey > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setStreamRetryKey((k) => k + 1)}
-                  className="mt-1 text-xs text-blue-400 hover:text-blue-300 underline font-medium cursor-pointer"
-                >
-                  Click to reconnect feed
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={startWebcam}
+                className="mt-1 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow transition"
+              >
+                Allow / Start Camera
+              </button>
             </div>
           )}
 

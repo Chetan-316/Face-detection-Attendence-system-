@@ -76,7 +76,7 @@ export const RecognitionPage: React.FC = () => {
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const [isLaptopCameraActive, setIsLaptopCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
@@ -86,11 +86,24 @@ export const RecognitionPage: React.FC = () => {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera is not supported or blocked in this browser context.');
       }
+      if (localStreamRef.current) {
+        if (videoRef.current && videoRef.current.srcObject !== localStreamRef.current) {
+          videoRef.current.srcObject = localStreamRef.current;
+          videoRef.current.play().catch(() => {});
+        }
+        setIsLaptopCameraActive(true);
+        setStreamError(null);
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
         audio: false,
       });
-      setLocalStream(stream);
+      localStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
       setIsLaptopCameraActive(true);
       setStreamError(null);
     } catch (err: any) {
@@ -100,20 +113,24 @@ export const RecognitionPage: React.FC = () => {
   }, []);
 
   const stopLaptopCamera = useCallback(() => {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      setLocalStream(null);
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsLaptopCameraActive(false);
-  }, [localStream]);
+  }, []);
 
   useEffect(() => {
     return () => {
-      if (localStream) {
-        localStream.getTracks().forEach((t) => t.stop());
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
       }
     };
-  }, [localStream]);
+  }, []);
 
   // Admin and Warden can start/stop the camera recognition process; all staff (including Guard) can confirm entry/exit
   const canManageSession = user?.role === 'ADMIN' || user?.role === 'WARDEN';
@@ -756,13 +773,13 @@ export const RecognitionPage: React.FC = () => {
               ref={videoContainerRef}
               className="relative aspect-video bg-black flex items-center justify-center overflow-hidden"
             >
-              {isLaptopCameraActive && localStream ? (
+              {isLaptopCameraActive ? (
                 <>
                   <video
                     ref={(el) => {
                       videoRef.current = el;
-                      if (el && localStream && el.srcObject !== localStream) {
-                        el.srcObject = localStream;
+                      if (el && localStreamRef.current && el.srcObject !== localStreamRef.current) {
+                        el.srcObject = localStreamRef.current;
                         el.play().catch(() => {});
                       }
                     }}

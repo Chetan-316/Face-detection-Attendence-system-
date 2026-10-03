@@ -92,7 +92,7 @@ export const CamerasPage: React.FC = () => {
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
   const [isWebcamPreviewActive, setIsWebcamPreviewActive] = useState<boolean>(false);
   const [webcamError, setWebcamError] = useState<string | null>(null);
 
@@ -102,11 +102,24 @@ export const CamerasPage: React.FC = () => {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera is not supported or blocked in this browser context.');
       }
+      if (localStreamRef.current) {
+        if (videoRef.current && videoRef.current.srcObject !== localStreamRef.current) {
+          videoRef.current.srcObject = localStreamRef.current;
+          videoRef.current.play().catch(() => {});
+        }
+        setIsWebcamPreviewActive(true);
+        setStreamError(null);
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
         audio: false,
       });
-      setLocalStream(stream);
+      localStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
       setIsWebcamPreviewActive(true);
       setStreamError(null);
     } catch (err: any) {
@@ -116,20 +129,24 @@ export const CamerasPage: React.FC = () => {
   }, []);
 
   const stopWebcamPreview = useCallback(() => {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      setLocalStream(null);
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
     setIsWebcamPreviewActive(false);
-  }, [localStream]);
+  }, []);
 
   useEffect(() => {
     return () => {
-      if (localStream) {
-        localStream.getTracks().forEach((t) => t.stop());
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach((t) => t.stop());
+        localStreamRef.current = null;
       }
     };
-  }, [localStream]);
+  }, []);
 
   const pollIntervalRef = useRef<number | null>(null);
 
@@ -698,13 +715,13 @@ export const CamerasPage: React.FC = () => {
 
               {/* Video Screen Frame */}
               <div className="video-screen-frame">
-                {isWebcamPreviewActive && localStream ? (
+                {isWebcamPreviewActive ? (
                   <div className="video-player-wrapper">
                     <video
                       ref={(el) => {
                         videoRef.current = el;
-                        if (el && localStream && el.srcObject !== localStream) {
-                          el.srcObject = localStream;
+                        if (el && localStreamRef.current && el.srcObject !== localStreamRef.current) {
+                          el.srcObject = localStreamRef.current;
                           el.play().catch(() => {});
                         }
                       }}
