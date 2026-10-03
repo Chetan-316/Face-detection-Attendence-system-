@@ -86,15 +86,18 @@ export const GatePage: React.FC = () => {
     setIsCameraActive(false);
   }, [localStream]);
 
-  // Auto-attempt start on mount
   useEffect(() => {
-    startLaptopCamera();
     return () => {
       if (localStream) {
         localStream.getTracks().forEach((t) => t.stop());
       }
     };
-  }, []);
+  }, [localStream]);
+
+  // Auto-attempt start on mount
+  useEffect(() => {
+    startLaptopCamera();
+  }, [startLaptopCamera]);
 
   const handleRegisterVisitorSuccess = (newPerson: SafeResident, shouldEnrollFace: boolean) => {
     fetchMovementData();

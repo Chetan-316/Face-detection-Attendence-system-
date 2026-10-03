@@ -90,6 +90,47 @@ export const CamerasPage: React.FC = () => {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showAdvancedEdit, setShowAdvancedEdit] = useState(false);
 
+  // Direct Laptop Browser Webcam Support
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isWebcamPreviewActive, setIsWebcamPreviewActive] = useState<boolean>(false);
+  const [webcamError, setWebcamError] = useState<string | null>(null);
+
+  const startWebcamPreview = useCallback(async () => {
+    try {
+      setWebcamError(null);
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera is not supported or blocked in this browser context.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false,
+      });
+      setLocalStream(stream);
+      setIsWebcamPreviewActive(true);
+      setStreamError(null);
+    } catch (err: any) {
+      setWebcamError(err.message || 'Permission denied. Please allow camera access in browser address bar.');
+      setIsWebcamPreviewActive(false);
+    }
+  }, []);
+
+  const stopWebcamPreview = useCallback(() => {
+    if (localStream) {
+      localStream.getTracks().forEach((t) => t.stop());
+      setLocalStream(null);
+    }
+    setIsWebcamPreviewActive(false);
+  }, [localStream]);
+
+  useEffect(() => {
+    return () => {
+      if (localStream) {
+        localStream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [localStream]);
+
   const pollIntervalRef = useRef<number | null>(null);
 
   // Fetch cameras list
@@ -164,6 +205,8 @@ export const CamerasPage: React.FC = () => {
     setSelectedCamera(camera);
     setStreamError(null);
     setTestResult(null);
+    setWebcamError(null);
+    stopWebcamPreview();
   };
 
   const handleStartStream = async () => {
@@ -613,6 +656,16 @@ export const CamerasPage: React.FC = () => {
                 </div>
               )}
 
+              {/* Webcam Error Banner */}
+              {webcamError && (
+                <div className="stream-error-banner">
+                  <AlertCircle size={18} />
+                  <div className="error-text">
+                    <strong>Laptop Camera:</strong> {webcamError}
+                  </div>
+                </div>
+              )}
+
               {/* Connection Test Result Banner */}
               {testResult && (
                 <div
@@ -645,7 +698,55 @@ export const CamerasPage: React.FC = () => {
 
               {/* Video Screen Frame */}
               <div className="video-screen-frame">
-                {isStreaming ? (
+                {isWebcamPreviewActive && localStream ? (
+                  <div className="video-player-wrapper">
+                    <video
+                      ref={(el) => {
+                        videoRef.current = el;
+                        if (el && localStream && el.srcObject !== localStream) {
+                          el.srcObject = localStream;
+                          el.play().catch(() => {});
+                        }
+                      }}
+                      autoPlay
+                      playsInline
+                      muted
+                      className="live-preview-image object-contain"
+                    />
+
+                    {/* HUD Overlay */}
+                    <div className="hud-overlay">
+                      <div className="hud-top-left">
+                        <span className="live-indicator">
+                          <span className="pulse-dot" />
+                          <span>BROWSER WEBCAM LIVE</span>
+                        </span>
+                        <span className="hud-metric">Direct Laptop Stream</span>
+                      </div>
+
+                      <div className="hud-top-right">
+                        <button
+                          type="button"
+                          onClick={stopWebcamPreview}
+                          className="bg-black/70 hover:bg-black/90 text-white text-xs px-2.5 py-1 rounded-md transition shadow"
+                        >
+                          Close Laptop Feed
+                        </button>
+                      </div>
+
+                      <div className="hud-bottom-left">
+                        <span className="hud-timestamp">
+                          <Clock size={12} />
+                          <span>{new Date().toLocaleTimeString()}</span>
+                        </span>
+                      </div>
+
+                      <div className="hud-bottom-right">
+                        <span className="hud-device-badge">CLIENT WEBCAM</span>
+                      </div>
+                    </div>
+                  </div>
+                ) : isStreaming ? (
                   <div className="video-player-wrapper">
                     {/* Live Stream MJPEG Image */}
                     <img
@@ -699,18 +800,28 @@ export const CamerasPage: React.FC = () => {
                       </div>
                       <h4>Live Video Feed Inactive</h4>
                       <p>
-                        The camera stream is stopped to conserve compute.
-                        Click <strong>Start Live Preview</strong> to activate real-time frames.
+                        The server camera adapter is stopped or offline.
+                        Click below to start live preview or test your laptop camera.
                       </p>
-                      <button
-                        type="button"
-                        className="btn btn-primary mt-3"
-                        onClick={handleStartStream}
-                        disabled={isActionPending}
-                      >
-                        <Play size={16} />
-                        <span>Start Live Preview</span>
-                      </button>
+                      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={handleStartStream}
+                          disabled={isActionPending}
+                        >
+                          <Play size={16} />
+                          <span>Start Live Preview</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={startWebcamPreview}
+                        >
+                          <CameraIcon size={16} />
+                          <span>Test Laptop Webcam</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -752,6 +863,16 @@ export const CamerasPage: React.FC = () => {
                   >
                     <CameraIcon size={16} />
                     <span>Capture Snapshot</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className={`btn ${isWebcamPreviewActive ? 'btn-danger' : 'btn-secondary'}`}
+                    onClick={isWebcamPreviewActive ? stopWebcamPreview : startWebcamPreview}
+                    title="Stream directly from your browser laptop webcam"
+                  >
+                    <Video size={16} />
+                    <span>{isWebcamPreviewActive ? 'Stop Laptop Cam' : 'Test Laptop Cam'}</span>
                   </button>
 
                   {isAdmin && (

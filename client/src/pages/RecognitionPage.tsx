@@ -74,6 +74,47 @@ export const RecognitionPage: React.FC = () => {
   const [activeResidentDetails, setActiveResidentDetails] = useState<any>(null);
   const [activeResidentPresence, setActiveResidentPresence] = useState<'IN' | 'OUT'>('OUT');
 
+  // Direct Laptop Browser Webcam Support
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isLaptopCameraActive, setIsLaptopCameraActive] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  const startLaptopCamera = useCallback(async () => {
+    try {
+      setCameraError(null);
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera is not supported or blocked in this browser context.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false,
+      });
+      setLocalStream(stream);
+      setIsLaptopCameraActive(true);
+      setStreamError(null);
+    } catch (err: any) {
+      setCameraError(err.message || 'Permission denied. Please allow camera access in browser address bar.');
+      setIsLaptopCameraActive(false);
+    }
+  }, []);
+
+  const stopLaptopCamera = useCallback(() => {
+    if (localStream) {
+      localStream.getTracks().forEach((t) => t.stop());
+      setLocalStream(null);
+    }
+    setIsLaptopCameraActive(false);
+  }, [localStream]);
+
+  useEffect(() => {
+    return () => {
+      if (localStream) {
+        localStream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [localStream]);
+
   // Admin and Warden can start/stop the camera recognition process; all staff (including Guard) can confirm entry/exit
   const canManageSession = user?.role === 'ADMIN' || user?.role === 'WARDEN';
   const canControl = true; // All authenticated staff can supervise movements
@@ -289,6 +330,61 @@ export const RecognitionPage: React.FC = () => {
       }
     };
   }, [selectedCameraId, fetchStatusAndResults]);
+
+  // Periodic frame processing when laptop webcam is active
+  useEffect(() => {
+    if (!isLaptopCameraActive || !selectedCameraId) return;
+
+    let isScanning = false;
+    let isMounted = true;
+    const scanInterval = setInterval(async () => {
+      if (isScanning || !videoRef.current || videoRef.current.videoWidth === 0) return;
+      try {
+        isScanning = true;
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(640, video.videoWidth);
+        canvas.height = Math.min(480, video.videoHeight);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const b64 = canvas.toDataURL('image/jpeg', 0.75);
+
+        const res = await recognitionApi.processFrame(selectedCameraId, b64);
+        if (res.observation && isMounted) {
+          const obs = res.observation;
+          setObservations((prev) => [obs, ...prev.slice(0, 49)]);
+
+          if (obs.movementDecision?.status === 'MOVEMENT_CREATED' && selectedCamera?.hostelId) {
+            fetchMovementData(selectedCamera.hostelId);
+          }
+
+          setActiveBoxes((prev) => [obs, ...prev.filter((b) => b.faceId !== obs.faceId).slice(0, 4)]);
+          setTimeout(() => {
+            setActiveBoxes((prev) => prev.filter((b) => b.id !== obs.id));
+          }, 2500);
+
+          if (obs.classification === 'MATCH' && obs.resident) {
+            setActiveResidentDetails(obs.resident);
+            movementsApi.getResidentPresence(obs.resident.id).then((pres) => {
+              if (isMounted && pres?.currentState) {
+                setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
+              }
+            }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        // Non-blocking background scan
+      } finally {
+        isScanning = false;
+      }
+    }, 1800);
+
+    return () => {
+      isMounted = false;
+      clearInterval(scanInterval);
+    };
+  }, [isLaptopCameraActive, selectedCameraId, selectedCamera?.hostelId, fetchMovementData]);
 
   // 4. Periodically poll session status every 3 seconds to keep telemetry updated
   useEffect(() => {
@@ -660,7 +756,41 @@ export const RecognitionPage: React.FC = () => {
               ref={videoContainerRef}
               className="relative aspect-video bg-black flex items-center justify-center overflow-hidden"
             >
-              {selectedCameraId && !streamError ? (
+              {isLaptopCameraActive && localStream ? (
+                <>
+                  <video
+                    ref={(el) => {
+                      videoRef.current = el;
+                      if (el && localStream && el.srcObject !== localStream) {
+                        el.srcObject = localStream;
+                        el.play().catch(() => {});
+                      }
+                    }}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-contain"
+                  />
+                  {/* Canvas Overlay for Bounding Boxes */}
+                  <canvas
+                    ref={canvasRef}
+                    width={640}
+                    height={480}
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                  />
+                  <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Live Laptop Camera</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={stopLaptopCamera}
+                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition"
+                  >
+                    Switch to Server Stream
+                  </button>
+                </>
+              ) : selectedCameraId && !streamError ? (
                 <>
                   <img
                     src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
@@ -675,14 +805,30 @@ export const RecognitionPage: React.FC = () => {
                     height={480}
                     className="absolute inset-0 w-full h-full pointer-events-none"
                   />
+                  <button
+                    type="button"
+                    onClick={startLaptopCamera}
+                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition flex items-center gap-1"
+                  >
+                    <CameraIcon size={12} />
+                    <span>Use Laptop Camera</span>
+                  </button>
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center text-slate-500 p-6 text-center">
-                  <CameraIcon size={48} className="mb-2 opacity-40" />
-                  <p className="text-sm font-medium">Camera Feed Offline</p>
-                  <p className="text-xs text-slate-600 mt-1 max-w-sm">
-                    {streamError || 'Start camera adapter to initiate live preview'}
+                <div className="flex flex-col items-center justify-center text-slate-400 p-6 text-center gap-3">
+                  <CameraIcon size={48} className="opacity-40" />
+                  <p className="text-sm font-medium text-slate-200">Camera Feed Offline</p>
+                  <p className="text-xs text-slate-400 max-w-sm">
+                    {cameraError || streamError || 'Server camera adapter is offline. Click below to stream directly from your laptop.'}
                   </p>
+                  <button
+                    type="button"
+                    onClick={startLaptopCamera}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow transition"
+                  >
+                    <CameraIcon size={13} />
+                    <span>Start Laptop Camera</span>
+                  </button>
                 </div>
               )}
 

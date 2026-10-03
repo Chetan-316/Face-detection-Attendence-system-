@@ -280,6 +280,10 @@ export const AttendancePage: React.FC = () => {
         const res = await recognitionApi.getResults(camId, 1);
         if (res.results && res.results.length > 0) {
           const latest = res.results[0];
+          const ageMs = Date.now() - new Date(latest.detectedAt).getTime();
+          // Filter out stale observations older than 6 seconds so old matches don't ghost
+          if (ageMs > 6000) return;
+
           if (latest.classification === 'MATCH' && latest.resident) {
             const resident = latest.resident;
             const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -307,6 +311,59 @@ export const AttendancePage: React.FC = () => {
       clearInterval(pollInterval);
     };
   }, [activeSessionData?.id, activeSessionData?.status, selectedLiveCameraId, cameras]);
+
+  // Periodic frame processing when laptop webcam is active during an active session
+  useEffect(() => {
+    if (cameraMode !== 'DEVICE' || activeSessionData?.status !== 'ACTIVE') return;
+    const camId = selectedLiveCameraId || activeSessionData?.camera?.id || (cameras.length > 0 ? cameras[0].id : '');
+    if (!camId) return;
+
+    let isScanning = false;
+    let isMounted = true;
+    const scanInterval = setInterval(async () => {
+      if (isScanning || !videoRef.current || videoRef.current.videoWidth === 0) return;
+      try {
+        isScanning = true;
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.min(640, video.videoWidth);
+        canvas.height = Math.min(480, video.videoHeight);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const b64 = canvas.toDataURL('image/jpeg', 0.75);
+
+        const res = await recognitionApi.processFrame(camId, b64);
+        if (res.observation?.classification === 'MATCH' && res.observation.resident && isMounted) {
+          const resident = res.observation.resident;
+          const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          setCurrentResident({
+            id: resident.id,
+            fullName: resident.fullName,
+            residentCode: resident.residentCode,
+            roomGroup: resident.roomGroup || '—',
+            markedTime: timeStr,
+          });
+
+          await markAttendanceRecord(activeSessionData.id, resident.id, 'FACE_RECOGNITION');
+          const updated = await getAttendanceRoster(activeSessionData.id);
+          if (isMounted) {
+            setStats(updated.stats);
+            setRoster(updated.roster);
+          }
+        }
+      } catch (err) {
+        // Non-blocking background scan
+      } finally {
+        isScanning = false;
+      }
+    }, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(scanInterval);
+    };
+  }, [cameraMode, activeSessionData?.id, activeSessionData?.status, selectedLiveCameraId, cameras]);
 
   // Create session
   const handleCreateSession = async (e: React.FormEvent) => {
