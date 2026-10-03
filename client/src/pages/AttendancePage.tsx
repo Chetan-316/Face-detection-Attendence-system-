@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
+import { Modal } from '../components/Modal';
 import {
   AttendanceSession,
   AttendanceRosterItem,
@@ -36,6 +37,9 @@ import {
   RefreshCw,
   Camera as CameraIcon,
   Users,
+  Video,
+  VideoOff,
+  RotateCcw,
 } from 'lucide-react';
 
 export const AttendancePage: React.FC = () => {
@@ -71,6 +75,15 @@ export const AttendancePage: React.FC = () => {
   const [newSessionStartTime, setNewSessionStartTime] = useState('21:00');
   const [newSessionEndTime, setNewSessionEndTime] = useState('22:00');
 
+  // Camera stream controls
+  const [cameraMode, setCameraMode] = useState<'BACKEND' | 'DEVICE'>('BACKEND');
+  const [selectedLiveCameraId, setSelectedLiveCameraId] = useState<string>('');
+  const [streamStatus, setStreamStatus] = useState<'LOADING' | 'CONNECTED' | 'ERROR'>('LOADING');
+  const [streamRetryKey, setStreamRetryKey] = useState(0);
+  const [deviceCameraError, setDeviceCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+
   const canManage = user?.role === 'ADMIN' || user?.role === 'WARDEN';
 
   // Load initial data
@@ -82,11 +95,18 @@ export const AttendancePage: React.FC = () => {
       const [sessionsRes, activeRes, camerasRes] = await Promise.all([
         getAttendanceSessions(),
         getActiveAttendanceSession(),
-        camerasApi.listCameras(undefined, 'ATTENDANCE'),
+        camerasApi.listCameras(),
       ]);
 
+      const allCams = camerasRes.data || [];
+      const sortedCams = [...allCams].sort((a, b) => {
+        if (a.role === 'ATTENDANCE' && b.role !== 'ATTENDANCE') return -1;
+        if (b.role === 'ATTENDANCE' && a.role !== 'ATTENDANCE') return 1;
+        return 0;
+      });
+
       setSessions(sessionsRes.sessions);
-      setCameras(camerasRes.data);
+      setCameras(sortedCams);
 
       if (activeRes.activeSession) {
         setSelectedSessionId(activeRes.activeSession.id);
@@ -94,6 +114,12 @@ export const AttendancePage: React.FC = () => {
         const rosterRes = await getAttendanceRoster(activeRes.activeSession.id);
         setStats(rosterRes.stats);
         setRoster(rosterRes.roster);
+
+        if (activeRes.activeSession.camera?.id) {
+          setSelectedLiveCameraId(activeRes.activeSession.camera.id);
+        } else if (sortedCams.length > 0) {
+          setSelectedLiveCameraId(sortedCams[0].id);
+        }
       } else if (sessionsRes.sessions.length > 0 && !selectedSessionId) {
         const first = sessionsRes.sessions[0];
         setSelectedSessionId(first.id);
@@ -101,6 +127,14 @@ export const AttendancePage: React.FC = () => {
         const rosterRes = await getAttendanceRoster(first.id);
         setStats(rosterRes.stats);
         setRoster(rosterRes.roster);
+
+        if (first.camera?.id) {
+          setSelectedLiveCameraId(first.camera.id);
+        } else if (sortedCams.length > 0) {
+          setSelectedLiveCameraId(sortedCams[0].id);
+        }
+      } else if (sortedCams.length > 0 && !selectedLiveCameraId) {
+        setSelectedLiveCameraId(sortedCams[0].id);
       }
     } catch (err: any) {
       toastError(err.message || 'Failed to load attendance records');
@@ -131,6 +165,9 @@ export const AttendancePage: React.FC = () => {
       setActiveSessionData(rosterRes.session);
       setStats(rosterRes.stats);
       setRoster(rosterRes.roster);
+      if (rosterRes.session.camera?.id) {
+        setSelectedLiveCameraId(rosterRes.session.camera.id);
+      }
     } catch (err: any) {
       toastError(err.message || 'Failed to load session details');
     } finally {
@@ -138,13 +175,65 @@ export const AttendancePage: React.FC = () => {
     }
   };
 
+  // Direct Browser Device Webcam handler
+  useEffect(() => {
+    if (cameraMode !== 'DEVICE' || activeSessionData?.status !== 'ACTIVE') {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+      return;
+    }
+
+    let isMounted = true;
+    setDeviceCameraError(null);
+    setStreamStatus('LOADING');
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setDeviceCameraError('Browser does not support camera access via getUserMedia.');
+      setStreamStatus('ERROR');
+      return;
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false,
+      })
+      .then((stream) => {
+        if (!isMounted) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        mediaStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+        setStreamStatus('CONNECTED');
+      })
+      .catch((err) => {
+        if (!isMounted) return;
+        setDeviceCameraError(err.message || 'Unable to access device camera. Check browser permissions.');
+        setStreamStatus('ERROR');
+      });
+
+  return () => {
+      isMounted = false;
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      }
+    };
+  }, [cameraMode, activeSessionData?.status]);
+
   // Live recognition subscriber for active attendance session
   useEffect(() => {
     if (!activeSessionData || activeSessionData.status !== 'ACTIVE') return;
 
     let isMounted = true;
     let eventSource: EventSource | null = null;
-    const camId = activeSessionData.camera?.id || (cameras.length > 0 ? cameras[0].id : '');
+    const camId = selectedLiveCameraId || activeSessionData.camera?.id || (cameras.length > 0 ? cameras[0].id : '');
 
     if (!camId) return;
 
@@ -217,7 +306,7 @@ export const AttendancePage: React.FC = () => {
       if (eventSource) eventSource.close();
       clearInterval(pollInterval);
     };
-  }, [activeSessionData?.id, activeSessionData?.status, cameras]);
+  }, [activeSessionData?.id, activeSessionData?.status, selectedLiveCameraId, cameras]);
 
   // Create session
   const handleCreateSession = async (e: React.FormEvent) => {
@@ -359,12 +448,22 @@ export const AttendancePage: React.FC = () => {
     }
   };
 
-  const hasActiveSession = activeSessionData?.status === 'ACTIVE';
+  const activeLiveCameraId = selectedLiveCameraId || activeSessionData?.camera?.id || (cameras.length > 0 ? cameras[0].id : '');
+  const activeCameraObj = cameras.find((c) => c.id === activeLiveCameraId) || activeSessionData?.camera;
+
+  const basePreviewUrl = activeLiveCameraId
+    ? typeof (camerasApi as any)?.getPreviewStreamUrl === 'function'
+      ? (camerasApi as any).getPreviewStreamUrl(activeLiveCameraId)
+      : `/api/v1/cameras/${activeLiveCameraId}/preview`
+    : '';
+  const streamUrl = basePreviewUrl
+    ? `${basePreviewUrl}${basePreviewUrl.includes('?') ? '&' : '?'}_k=${streamRetryKey}`
+    : '';
 
   return (
     <div className="attendance-page max-w-7xl mx-auto space-y-6">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+      {/* Top Header Card */}
+      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Hostel Attendance</h1>
           <p className="text-sm text-slate-500 mt-0.5">
@@ -377,7 +476,7 @@ export const AttendancePage: React.FC = () => {
             type="button"
             onClick={() => loadData(true)}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none transition"
+            className="btn btn-secondary btn-sm"
             title="Refresh attendance data"
           >
             <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-blue-600' : ''} />
@@ -388,7 +487,7 @@ export const AttendancePage: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
+              className="btn btn-primary btn-sm"
             >
               <Plus size={16} />
               <span>Create Attendance</span>
@@ -399,7 +498,7 @@ export const AttendancePage: React.FC = () => {
 
       {/* Main Content Area */}
       {isLoading ? (
-        <div className="py-24 text-center bg-white rounded-xl border border-slate-200">
+        <div className="py-24 text-center bg-white rounded-xl border border-slate-200 shadow-sm">
           <RefreshCw size={32} className="animate-spin text-blue-600 mx-auto mb-3" />
           <p className="text-slate-500 text-sm">Loading attendance sessions...</p>
         </div>
@@ -420,7 +519,7 @@ export const AttendancePage: React.FC = () => {
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
               aria-label="Start Attendance"
-              className="inline-flex items-center gap-2 px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
+              className="btn btn-primary btn-md inline-flex items-center gap-2"
             >
               <Play size={18} />
               <span>Start Attendance</span>
@@ -517,10 +616,10 @@ export const AttendancePage: React.FC = () => {
                               minute: '2-digit',
                             })}`}
                         </span>
-                        {activeSessionData.camera && (
+                        {activeCameraObj && (
                           <span className="flex items-center gap-1.5">
                             <CameraIcon size={15} className="text-slate-400" />
-                            {activeSessionData.camera.name}
+                            {activeCameraObj.name}
                           </span>
                         )}
                       </div>
@@ -534,7 +633,7 @@ export const AttendancePage: React.FC = () => {
                             type="button"
                             onClick={handleStartSession}
                             disabled={isSubmitting}
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition shadow-sm"
+                            className="btn btn-primary btn-sm bg-emerald-600 hover:bg-emerald-700"
                           >
                             <Play size={16} />
                             <span>Start Session</span>
@@ -545,7 +644,7 @@ export const AttendancePage: React.FC = () => {
                             type="button"
                             onClick={() => setIsCloseConfirmOpen(true)}
                             disabled={isSubmitting}
-                            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition shadow-sm"
+                            className="btn btn-danger btn-sm"
                           >
                             <CheckSquare size={16} />
                             <span>Close Attendance</span>
@@ -591,30 +690,179 @@ export const AttendancePage: React.FC = () => {
                 {/* Live Camera & Current Resident Display (When Active) */}
                 {activeSessionData.status === 'ACTIVE' && (
                   <div className="attendance-active-layout">
-                    {/* Live Camera Feed */}
-                    <div className="attendance-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                      <div className="relative bg-slate-100 flex items-center justify-center overflow-hidden min-h-[360px] sm:min-h-[400px] h-full">
-                        {(activeSessionData.camera?.id || cameras[0]?.id) ? (
-                          <img
-                            src={
-                              typeof (camerasApi as any)?.getPreviewStreamUrl === 'function'
-                                ? (camerasApi as any).getPreviewStreamUrl(activeSessionData.camera?.id || cameras[0].id)
-                                : `/api/v1/cameras/${activeSessionData.camera?.id || cameras[0].id}/preview`
-                            }
-                            alt="Live Attendance Camera Feed"
-                            className="w-full h-full object-cover"
-                          />
+                    {/* Live Camera Feed Card */}
+                    <div className="attendance-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                      {/* Camera Control Toolbar Header */}
+                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                            <CameraIcon size={14} className="text-slate-500" />
+                            {cameraMode === 'DEVICE' ? 'Browser Device Webcam' : activeCameraObj?.name || 'Attendance Camera'}
+                          </span>
+
+                          {/* Pulsing Status Dot */}
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${
+                              streamStatus === 'CONNECTED'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : streamStatus === 'LOADING'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-red-50 text-red-700 border border-red-200'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                streamStatus === 'CONNECTED'
+                                  ? 'bg-emerald-500 animate-pulse'
+                                  : streamStatus === 'LOADING'
+                                  ? 'bg-amber-500'
+                                  : 'bg-red-500'
+                              }`}
+                            />
+                            {streamStatus === 'CONNECTED' ? 'Live' : streamStatus === 'LOADING' ? 'Connecting' : 'Offline'}
+                          </span>
+                        </div>
+
+                        {/* Camera Switcher & Mode Toggles */}
+                        <div className="flex items-center gap-2">
+                          {cameras.length > 1 && cameraMode === 'BACKEND' && (
+                            <select
+                              value={activeLiveCameraId}
+                              onChange={(e) => {
+                                setSelectedLiveCameraId(e.target.value);
+                                setStreamStatus('LOADING');
+                              }}
+                              className="text-xs border border-slate-300 rounded px-2 py-1 bg-white font-medium focus:ring-1 focus:ring-blue-500"
+                              title="Switch active camera"
+                            >
+                              {cameras.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (cameraMode === 'BACKEND') {
+                                setCameraMode('DEVICE');
+                              } else {
+                                setCameraMode('BACKEND');
+                                setStreamRetryKey((k) => k + 1);
+                                setStreamStatus('LOADING');
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition shadow-xs"
+                            title="Toggle between Server Camera Stream and Direct Browser Webcam"
+                          >
+                            <Video size={13} />
+                            <span>{cameraMode === 'DEVICE' ? 'Switch to Server Camera' : 'Use Direct Webcam'}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Video Viewport Container */}
+                      <div className="relative bg-slate-900 flex items-center justify-center overflow-hidden min-h-[360px] sm:min-h-[400px] flex-1">
+                        {cameraMode === 'DEVICE' ? (
+                          /* Direct HTML5 Web Browser Camera Stream */
+                          <>
+                            <video
+                              ref={videoRef}
+                              autoPlay
+                              playsInline
+                              muted
+                              className="w-full h-full object-cover"
+                            />
+                            {deviceCameraError && (
+                              <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center text-slate-200 gap-3">
+                                <VideoOff size={40} className="text-red-400" />
+                                <div>
+                                  <p className="font-semibold text-white text-base">Camera Access Restricted</p>
+                                  <p className="text-xs text-slate-400 mt-1 max-w-sm">{deviceCameraError}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setCameraMode('BACKEND')}
+                                  className="btn btn-secondary btn-sm bg-slate-800 text-white border-slate-700 hover:bg-slate-700"
+                                >
+                                  Back to Server Stream
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        ) : activeLiveCameraId && streamStatus !== 'ERROR' ? (
+                          /* Backend MJPEG Preview Stream */
+                          <>
+                            <img
+                              src={streamUrl}
+                              alt="Live Attendance Camera Feed"
+                              className="w-full h-full object-cover"
+                              onLoad={() => setStreamStatus('CONNECTED')}
+                              onError={() => setStreamStatus('ERROR')}
+                            />
+                            {streamStatus === 'LOADING' && (
+                              <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center">
+                                <div className="flex items-center gap-2 text-white text-xs font-medium">
+                                  <RefreshCw size={16} className="animate-spin text-blue-400" />
+                                  <span>Connecting live feed...</span>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         ) : (
-                          <div className="flex flex-col items-center justify-center text-slate-400 p-8 text-center gap-2">
-                            <CameraIcon size={44} className="text-slate-300" />
-                            <p className="text-base font-semibold text-slate-700">Attendance Camera Active</p>
+                          /* Fallback Diagnostic Card (Stream offline or no camera assigned) */
+                          <div className="flex flex-col items-center justify-center p-8 text-center gap-3 text-slate-300">
+                            <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400">
+                              <CameraIcon size={28} />
+                            </div>
+                            <div>
+                              <p className="text-base font-semibold text-white">Camera Stream Offline</p>
+                              <p className="text-xs text-slate-400 max-w-xs mt-1 leading-relaxed">
+                                {activeLiveCameraId
+                                  ? 'The backend camera stream could not be reached, or no physical stream adapter is active.'
+                                  : 'No active camera is assigned to this attendance session.'}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                              <button
+                                type="button"
+                                onClick={() => setCameraMode('DEVICE')}
+                                className="btn btn-primary btn-sm"
+                              >
+                                <Video size={14} />
+                                <span>Turn On Direct Webcam</span>
+                              </button>
+                              {activeLiveCameraId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setStreamStatus('LOADING');
+                                    setStreamRetryKey((k) => k + 1);
+                                  }}
+                                  className="btn btn-secondary btn-sm bg-slate-800 text-white border-slate-700 hover:bg-slate-700"
+                                >
+                                  <RotateCcw size={14} />
+                                  <span>Retry Stream</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
+
+                        {/* Stream Watermark / Live Badge */}
+                        <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-md text-[11px] font-mono text-slate-200 border border-white/10 flex items-center gap-2 pointer-events-none">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                          <span>{cameraMode === 'DEVICE' ? 'WEBCAM 720p' : (activeCameraObj as any)?.sourceType || 'STREAM'}</span>
+                          <span>•</span>
+                          <span>{activeSessionData.title}</span>
+                        </div>
                       </div>
                     </div>
 
                     {/* Current Resident Card */}
-                    <div className="attendance-resident-col bg-white border border-slate-200 rounded-xl p-6 shadow-sm justify-between min-h-[360px]">
+                    <div className="attendance-resident-col bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between min-h-[360px]">
                       <div>
                         <h3 className="text-sm font-semibold text-slate-500 mb-4">
                           Current Resident
@@ -686,7 +934,8 @@ export const AttendancePage: React.FC = () => {
                       placeholder="Search residents by code, name, or room..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="form-input"
+                      style={{ paddingLeft: '2.5rem' }}
                     />
                   </div>
 
@@ -695,7 +944,8 @@ export const AttendancePage: React.FC = () => {
                     <select
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
-                      className="text-sm border border-slate-300 rounded-lg px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                      className="form-select"
+                      style={{ width: 'auto', minWidth: '150px' }}
                     >
                       <option value="ALL">All Statuses</option>
                       <option value="PRESENT">Present</option>
@@ -705,99 +955,101 @@ export const AttendancePage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Roster Table */}
+                {/* Roster Table Card */}
                 <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                   <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
                     <h3 className="text-lg font-bold text-slate-900">Residents</h3>
                     <span className="text-sm text-slate-500 font-medium">{filteredRoster.length} resident records</span>
                   </div>
 
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50/70 text-slate-600 font-semibold">
-                      <tr>
-                        <th scope="col" className="px-6 py-3.5 text-left">
-                          Name
-                        </th>
-                        <th scope="col" className="px-6 py-3.5 text-left">
-                          Room
-                        </th>
-                        <th scope="col" className="px-6 py-3.5 text-left">
-                          Status
-                        </th>
-                        <th scope="col" className="px-6 py-3.5 text-left">
-                          Time
-                        </th>
-                        {canManage && (
-                          <th scope="col" className="px-6 py-3.5 text-right">
-                            Action
-                          </th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {filteredRoster.length === 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                      <thead className="bg-slate-50/70 text-slate-600 font-semibold">
                         <tr>
-                          <td colSpan={canManage ? 5 : 4} className="px-6 py-12 text-center text-slate-500">
-                            No resident attendance records matching current criteria.
-                          </td>
+                          <th scope="col" className="px-6 py-3.5 text-left">
+                            Name
+                          </th>
+                          <th scope="col" className="px-6 py-3.5 text-left">
+                            Room
+                          </th>
+                          <th scope="col" className="px-6 py-3.5 text-left">
+                            Status
+                          </th>
+                          <th scope="col" className="px-6 py-3.5 text-left">
+                            Time
+                          </th>
+                          {canManage && (
+                            <th scope="col" className="px-6 py-3.5 text-right">
+                              Action
+                            </th>
+                          )}
                         </tr>
-                      ) : (
-                        filteredRoster.map((item) => (
-                          <tr key={item.residentId} className="hover:bg-slate-50/70 transition h-16">
-                            <td className="px-6 py-3.5">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                  <img
-                                    src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(item.residentId) : `/api/v1/residents/${item.residentId}/profile-photo`}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                      (e.currentTarget as HTMLElement).style.display = 'none';
-                                    }}
-                                  />
-                                  <Users size={18} className="text-slate-400" />
-                                </div>
-                                <div>
-                                  <div className="font-semibold text-slate-900 text-15px">{item.fullName}</div>
-                                  <div className="text-13px text-slate-500 font-mono">{item.residentCode}</div>
-                                </div>
-                              </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {filteredRoster.length === 0 ? (
+                          <tr>
+                            <td colSpan={canManage ? 5 : 4} className="px-6 py-12 text-center text-slate-500">
+                              No resident attendance records matching current criteria.
                             </td>
-                            <td className="px-6 py-3.5 text-slate-700 font-medium text-15px">{item.roomGroup}</td>
-                            <td className="px-6 py-3.5">{renderStatusBadge(item.status)}</td>
-                            <td className="px-6 py-3.5 text-slate-600 font-mono text-14px">
-                              {item.markedAt
-                                ? new Date(item.markedAt).toLocaleTimeString([], {
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })
-                                : '—'}
-                            </td>
-                            {canManage && (
-                              <td className="px-6 py-3.5 text-right">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setCorrectingResident(item);
-                                    setTargetCorrectionStatus(
-                                      item.status === 'PRESENT' || item.status === 'CORRECTED_PRESENT'
-                                        ? 'ABSENT'
-                                        : 'PRESENT'
-                                    );
-                                    setCorrectionReason('');
-                                  }}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-13px font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none transition"
-                                >
-                                  <Edit2 size={13} />
-                                  <span>Correct</span>
-                                </button>
-                              </td>
-                            )}
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                        ) : (
+                          filteredRoster.map((item) => (
+                            <tr key={item.residentId} className="hover:bg-slate-50/70 transition h-16">
+                              <td className="px-6 py-3.5">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                                    <img
+                                      src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(item.residentId) : `/api/v1/residents/${item.residentId}/profile-photo`}
+                                      alt=""
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLElement).style.display = 'none';
+                                      }}
+                                    />
+                                    <Users size={18} className="text-slate-400" />
+                                  </div>
+                                  <div>
+                                    <div className="font-semibold text-slate-900 text-15px">{item.fullName}</div>
+                                    <div className="text-13px text-slate-500 font-mono">{item.residentCode}</div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-3.5 text-slate-700 font-medium text-15px">{item.roomGroup}</td>
+                              <td className="px-6 py-3.5">{renderStatusBadge(item.status)}</td>
+                              <td className="px-6 py-3.5 text-slate-600 font-mono text-14px">
+                                {item.markedAt
+                                  ? new Date(item.markedAt).toLocaleTimeString([], {
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })
+                                  : '—'}
+                              </td>
+                              {canManage && (
+                                <td className="px-6 py-3.5 text-right">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setCorrectingResident(item);
+                                      setTargetCorrectionStatus(
+                                        item.status === 'PRESENT' || item.status === 'CORRECTED_PRESENT'
+                                          ? 'ABSENT'
+                                          : 'PRESENT'
+                                      );
+                                      setCorrectionReason('');
+                                    }}
+                                    className="btn btn-secondary btn-sm"
+                                  >
+                                    <Edit2 size={13} />
+                                    <span>Correct</span>
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </>
             ) : (
@@ -816,7 +1068,7 @@ export const AttendancePage: React.FC = () => {
                     type="button"
                     onClick={() => setIsCreateModalOpen(true)}
                     aria-label="Start Attendance"
-                    className="inline-flex items-center gap-2 px-6 py-3 text-base font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm transition"
+                    className="btn btn-primary btn-md inline-flex items-center gap-2"
                   >
                     <Play size={18} />
                     <span>Start Attendance</span>
@@ -829,241 +1081,229 @@ export const AttendancePage: React.FC = () => {
       )}
 
       {/* Modal: Create Attendance Session */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-              <h3 className="text-lg font-bold text-slate-900">Create Attendance</h3>
-              <button
-                type="button"
-                onClick={() => setIsCreateModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateSession} className="space-y-4">
-              <div>
-                <label htmlFor="new-session-title" className="block text-sm font-semibold text-slate-700 mb-1">
-                  Attendance Name
-                </label>
-                <input
-                  id="new-session-title"
-                  type="text"
-                  value={newSessionTitle}
-                  onChange={(e) => setNewSessionTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Session Type
-                </label>
-                <select
-                  value={newSessionType}
-                  onChange={(e) => setNewSessionType(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  <option value="NIGHT">Night Attendance</option>
-                  <option value="GENERAL">General Assembly</option>
-                  <option value="CURFEW">Hostel Curfew Check</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={newSessionDate}
-                  onChange={(e) => setNewSessionDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">
-                    Start Time
-                  </label>
-                  <input
-                    type="time"
-                    value={newSessionStartTime}
-                    onChange={(e) => setNewSessionStartTime(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">
-                    End Time
-                  </label>
-                  <input
-                    type="time"
-                    value={newSessionEndTime}
-                    onChange={(e) => setNewSessionEndTime(e.target.value)}
-                    className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Camera (Optional)
-                </label>
-                <select
-                  value={newSessionCameraId}
-                  onChange={(e) => setNewSessionCameraId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  <option value="">Any Attendance Camera in Hostel</option>
-                  {cameras.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Create Attendance
-                </button>
-              </div>
-            </form>
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title="Create Attendance"
+        subtitle="Schedule roll call or daily night attendance session"
+        size="md"
+      >
+        <form onSubmit={handleCreateSession} className="space-y-4">
+          <div className="form-group">
+            <label htmlFor="new-session-title" className="form-label">
+              Attendance Name <span className="required-mark">*</span>
+            </label>
+            <input
+              id="new-session-title"
+              type="text"
+              value={newSessionTitle}
+              onChange={(e) => setNewSessionTitle(e.target.value)}
+              className="form-input"
+              required
+            />
           </div>
-        </div>
-      )}
+
+          <div className="form-group">
+            <label className="form-label">
+              Session Type
+            </label>
+            <select
+              value={newSessionType}
+              onChange={(e) => setNewSessionType(e.target.value)}
+              className="form-select"
+            >
+              <option value="NIGHT">Night Attendance</option>
+              <option value="GENERAL">General Assembly</option>
+              <option value="CURFEW">Hostel Curfew Check</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Date</label>
+            <input
+              type="date"
+              value={newSessionDate}
+              onChange={(e) => setNewSessionDate(e.target.value)}
+              className="form-input"
+              required
+            />
+          </div>
+
+          <div className="form-grid-2">
+            <div className="form-group">
+              <label className="form-label">
+                Start Time
+              </label>
+              <input
+                type="time"
+                value={newSessionStartTime}
+                onChange={(e) => setNewSessionStartTime(e.target.value)}
+                className="form-input"
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">
+                End Time
+              </label>
+              <input
+                type="time"
+                value={newSessionEndTime}
+                onChange={(e) => setNewSessionEndTime(e.target.value)}
+                className="form-input"
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">
+              Camera (Optional)
+            </label>
+            <select
+              value={newSessionCameraId}
+              onChange={(e) => setNewSessionCameraId(e.target.value)}
+              className="form-select"
+            >
+              <option value="">Any Attendance Camera in Hostel</option>
+              {cameras.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} {c.role ? `(${c.role})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="modal-actions-bar pt-3 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(false)}
+              className="btn btn-secondary btn-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="btn btn-primary btn-sm"
+            >
+              Create Attendance
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Modal: Close Attendance Confirmation */}
-      {isCloseConfirmOpen && activeSessionData && stats && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-center gap-3 text-red-600">
-              <AlertCircle size={24} />
-              <h3 className="text-lg font-bold text-slate-900">Close Night Attendance?</h3>
+      <Modal
+        isOpen={isCloseConfirmOpen && !!activeSessionData && !!stats}
+        onClose={() => setIsCloseConfirmOpen(false)}
+        title="Close Night Attendance?"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 text-red-600">
+            <AlertCircle size={24} />
+            <span className="font-semibold text-slate-900">Are you sure you want to end this session?</span>
+          </div>
+
+          <div className="text-sm text-slate-600 space-y-2">
+            <p>
+              Present: <strong className="text-slate-900">{stats?.presentCount}</strong>
+            </p>
+            <p>
+              Not yet marked: <strong className="text-red-600">{stats?.remainingCount}</strong>
+            </p>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs leading-relaxed">
+              Residents not marked will be recorded as absent upon closing this session.
+            </div>
+          </div>
+
+          <div className="modal-actions-bar pt-3 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={() => setIsCloseConfirmOpen(false)}
+              className="btn btn-secondary btn-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleCloseSession}
+              disabled={isSubmitting}
+              className="btn btn-danger btn-sm"
+            >
+              Close Attendance
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Manual Correction */}
+      <Modal
+        isOpen={!!correctingResident}
+        onClose={() => setCorrectingResident(null)}
+        title="Change attendance"
+        subtitle={correctingResident ? `Update attendance record for ${correctingResident.fullName}` : undefined}
+        size="sm"
+      >
+        {correctingResident && (
+          <form onSubmit={handleSaveCorrection} className="space-y-4">
+            <div className="text-sm text-slate-700 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+              <div>
+                Resident: <strong>{correctingResident.fullName}</strong> ({correctingResident.residentCode})
+              </div>
+              <div>
+                Current: <strong>{correctingResident.status}</strong>
+              </div>
             </div>
 
-            <div className="text-sm text-slate-600 space-y-2">
-              <p>
-                Present: <strong className="text-slate-900">{stats.presentCount}</strong>
-              </p>
-              <p>
-                Not yet marked: <strong className="text-red-600">{stats.remainingCount}</strong>
-              </p>
-              <p className="text-sm text-slate-600 bg-amber-50 border border-amber-200 p-3 rounded-lg text-amber-900">
-                Residents not marked will be recorded as absent upon closing this session.
-              </p>
+            <div className="form-group">
+              <label className="form-label">
+                Change to
+              </label>
+              <select
+                value={targetCorrectionStatus}
+                onChange={(e) => setTargetCorrectionStatus(e.target.value as any)}
+                className="form-select"
+              >
+                <option value="PRESENT">Present</option>
+                <option value="ABSENT">Absent</option>
+              </select>
             </div>
 
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
+            <div className="form-group">
+              <label className="form-label">
+                Reason (Mandatory) <span className="required-mark">*</span>
+              </label>
+              <textarea
+                rows={3}
+                value={correctionReason}
+                onChange={(e) => setCorrectionReason(e.target.value)}
+                placeholder="Explain why this attendance record is being changed..."
+                className="form-input"
+                style={{ height: 'auto', paddingTop: '10px' }}
+                required
+              />
+            </div>
+
+            <div className="modal-actions-bar pt-3 border-t border-slate-200">
               <button
                 type="button"
-                onClick={() => setIsCloseConfirmOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+                onClick={() => setCorrectingResident(null)}
+                className="btn btn-secondary btn-sm"
               >
                 Cancel
               </button>
               <button
-                type="button"
-                onClick={handleCloseSession}
+                type="submit"
                 disabled={isSubmitting}
-                className="px-5 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="btn btn-primary btn-sm"
               >
-                Close Attendance
+                Save correction
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Manual Correction */}
-      {correctingResident && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-              <h3 className="text-lg font-bold text-slate-900">Change attendance</h3>
-              <button
-                type="button"
-                onClick={() => setCorrectingResident(null)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveCorrection} className="space-y-4">
-              <div className="text-sm text-slate-700 space-y-1">
-                <div>
-                  Resident: <strong>{correctingResident.fullName}</strong> ({correctingResident.residentCode})
-                </div>
-                <div>
-                  Current: <strong>{correctingResident.status}</strong>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Change to
-                </label>
-                <select
-                  value={targetCorrectionStatus}
-                  onChange={(e) => setTargetCorrectionStatus(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                >
-                  <option value="PRESENT">Present</option>
-                  <option value="ABSENT">Absent</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1">
-                  Reason (Mandatory)
-                </label>
-                <textarea
-                  rows={3}
-                  value={correctionReason}
-                  onChange={(e) => setCorrectionReason(e.target.value)}
-                  placeholder="Explain why this attendance record is being changed..."
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setCorrectingResident(null)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Save correction
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+          </form>
+        )}
+      </Modal>
     </div>
   );
 };

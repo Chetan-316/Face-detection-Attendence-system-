@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, API_BASE_URL } from './client';
 import {
   SafeResident,
   PaginatedResult,
@@ -85,7 +85,7 @@ export const residentsApi = {
   },
 
   getProfilePhotoUrl(id: string): string {
-    return `/api/v1/residents/${encodeURIComponent(id)}/profile-photo`;
+    return `${API_BASE_URL}/residents/${encodeURIComponent(id)}/profile-photo`;
   },
 
   async uploadProfilePhoto(id: string, imageBase64: string): Promise<{ success: boolean; profilePhotoUrl: string }> {
