@@ -34,14 +34,16 @@ EMBEDDER_INFO = {
 }
 
 def get_models_dir() -> str:
-    # First check models/ at project root
+    env_dir = os.environ.get("MODELS_DIR")
+    if env_dir:
+        abs_env = os.path.abspath(env_dir)
+        os.makedirs(abs_env, exist_ok=True)
+        return abs_env
+
+    # Use models/ at project root
     cwd_models = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../models"))
-    if os.path.exists(cwd_models):
-        return cwd_models
-    
-    local_models = os.path.abspath(os.path.join(os.path.dirname(__file__), "models"))
-    os.makedirs(local_models, exist_ok=True)
-    return local_models
+    os.makedirs(cwd_models, exist_ok=True)
+    return cwd_models
 
 def ensure_models_downloaded(models_dir: str = None) -> tuple[str, str]:
     if models_dir is None:
@@ -51,12 +53,21 @@ def ensure_models_downloaded(models_dir: str = None) -> tuple[str, str]:
     yunet_path = os.path.join(models_dir, DETECTOR_INFO["filename"])
     sface_path = os.path.join(models_dir, EMBEDDER_INFO["filename"])
 
+    root_yunet = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../models", DETECTOR_INFO["filename"]))
+    root_sface = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../models", EMBEDDER_INFO["filename"]))
+
     if not os.path.exists(yunet_path) or os.path.getsize(yunet_path) < 100000:
-        sys.stderr.write(f"Downloading YuNet detector to {yunet_path}...\n")
-        urllib.request.urlretrieve(YUNET_URL, yunet_path)
+        if os.path.exists(root_yunet) and os.path.getsize(root_yunet) >= 100000:
+            yunet_path = root_yunet
+        else:
+            sys.stderr.write(f"Downloading YuNet detector to {yunet_path}...\n")
+            urllib.request.urlretrieve(YUNET_URL, yunet_path)
 
     if not os.path.exists(sface_path) or os.path.getsize(sface_path) < 1000000:
-        sys.stderr.write(f"Downloading SFace recognizer to {sface_path}...\n")
-        urllib.request.urlretrieve(SFACE_URL, sface_path)
+        if os.path.exists(root_sface) and os.path.getsize(root_sface) >= 1000000:
+            sface_path = root_sface
+        else:
+            sys.stderr.write(f"Downloading SFace recognizer to {sface_path}...\n")
+            urllib.request.urlretrieve(SFACE_URL, sface_path)
 
     return yunet_path, sface_path
