@@ -49,47 +49,46 @@ export const GatePage: React.FC = () => {
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [useBrowserWebcam, setUseBrowserWebcam] = useState<boolean>(true);
-  const [browserWebcamActive, setBrowserWebcamActive] = useState<boolean>(false);
-  const [browserWebcamError, setBrowserWebcamError] = useState<string | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let stream: MediaStream | null = null;
-    let isCancelled = false;
-
-    if (useBrowserWebcam && typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
-      navigator.mediaDevices
-        .getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-          audio: false,
-        })
-        .then((mediaStream) => {
-          if (isCancelled) {
-            mediaStream.getTracks().forEach((t) => t.stop());
-            return;
-          }
-          stream = mediaStream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = mediaStream;
-          }
-          setBrowserWebcamActive(true);
-          setBrowserWebcamError(null);
-        })
-        .catch((err: any) => {
-          console.warn('Browser webcam permission or access issue:', err);
-          setBrowserWebcamActive(false);
-          setBrowserWebcamError(err.message || 'Webcam permission denied');
-        });
-    }
-
-    return () => {
-      isCancelled = true;
-      if (stream) {
-        stream.getTracks().forEach((t) => t.stop());
+  const startLaptopCamera = useCallback(async () => {
+    try {
+      setCameraError(null);
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera is not supported or blocked in this browser context.');
       }
-      setBrowserWebcamActive(false);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false,
+      });
+      setLocalStream(stream);
+      setIsCameraActive(true);
+    } catch (err: any) {
+      console.warn('Webcam access error:', err);
+      setCameraError(err.message || 'Permission denied. Please allow camera access in browser address bar.');
+      setIsCameraActive(false);
+    }
+  }, []);
+
+  const stopLaptopCamera = useCallback(() => {
+    if (localStream) {
+      localStream.getTracks().forEach((t) => t.stop());
+      setLocalStream(null);
+    }
+    setIsCameraActive(false);
+  }, [localStream]);
+
+  // Auto-attempt start on mount
+  useEffect(() => {
+    startLaptopCamera();
+    return () => {
+      if (localStream) {
+        localStream.getTracks().forEach((t) => t.stop());
+      }
     };
-  }, [useBrowserWebcam]);
+  }, []);
 
   const handleRegisterVisitorSuccess = (newPerson: SafeResident, shouldEnrollFace: boolean) => {
     fetchMovementData();
@@ -352,10 +351,16 @@ export const GatePage: React.FC = () => {
         {/* Left Column: Live Camera Video Stream (Dominant 440-480px height) */}
         <div className="gate-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
           <div className="relative bg-slate-900 flex items-center justify-center overflow-hidden min-h-[440px] sm:min-h-[480px] h-full">
-            {useBrowserWebcam && browserWebcamActive ? (
+            {isCameraActive ? (
               <div className="relative w-full h-full min-h-[440px] sm:min-h-[480px]">
                 <video
-                  ref={videoRef}
+                  ref={(el) => {
+                    videoRef.current = el;
+                    if (el && localStream && el.srcObject !== localStream) {
+                      el.srcObject = localStream;
+                      el.play().catch(() => {});
+                    }
+                  }}
                   autoPlay
                   playsInline
                   muted
@@ -367,10 +372,10 @@ export const GatePage: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setUseBrowserWebcam(false)}
+                  onClick={stopLaptopCamera}
                   className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition"
                 >
-                  Switch to Server Stream
+                  Turn Off
                 </button>
               </div>
             ) : selectedCameraId && !streamError ? (
@@ -383,10 +388,7 @@ export const GatePage: React.FC = () => {
                 />
                 <button
                   type="button"
-                  onClick={() => {
-                    setStreamError(null);
-                    setUseBrowserWebcam(true);
-                  }}
+                  onClick={startLaptopCamera}
                   className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition flex items-center gap-1"
                 >
                   <CameraIcon size={12} />
@@ -398,17 +400,14 @@ export const GatePage: React.FC = () => {
                 <CameraIcon size={48} className="text-slate-500" />
                 <p className="text-base font-semibold text-slate-200">Laptop Camera Ready</p>
                 <p className="text-sm text-slate-400 max-w-xs">
-                  {browserWebcamError
-                    ? `Camera access: ${browserWebcamError}. Please allow camera permissions in browser.`
+                  {cameraError
+                    ? `Camera access: ${cameraError}`
                     : 'Click below to stream video directly from your laptop camera.'}
                 </p>
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => {
-                    setStreamError(null);
-                    setUseBrowserWebcam(true);
-                  }}
+                  onClick={startLaptopCamera}
                   className="mt-2"
                 >
                   Start Laptop Camera
