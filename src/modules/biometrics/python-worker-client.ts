@@ -32,6 +32,11 @@ export class PythonWorkerClient {
   }
 
   public async start(): Promise<void> {
+    if (this.mockMode) {
+      this.isReady = true;
+      return Promise.resolve();
+    }
+
     if (this.isReady && this.process) {
       return;
     }
@@ -146,6 +151,23 @@ export class PythonWorkerClient {
   }
 
   public async health(): Promise<BiometricHealthStatus> {
+    if (this.mockMode) {
+      return {
+        status: 'UP',
+        workerReady: true,
+        detectorLoaded: true,
+        embedderLoaded: true,
+        detectorName: 'YuNet (Mock)',
+        detectorVersion: '2023mar',
+        modelName: 'SFace',
+        modelVersion: '2021dec',
+        embeddingDimension: 128,
+        runtime: 'In-Memory Mock',
+        license: 'Apache-2.0',
+        mock: true,
+      };
+    }
+
     try {
       const res = await this.sendCommand<any>('health');
       return {
@@ -184,6 +206,20 @@ export class PythonWorkerClient {
     imageBufferOrBase64: Buffer | string,
     options?: { expectedPose?: string; mockPose?: string }
   ): Promise<FrameProcessingResult> {
+    if (this.mockMode) {
+      const mockEmbedding = Array.from({ length: 128 }, (_, i) => Math.round(Math.sin(i + 0.1) * 1000000) / 1000000);
+      return {
+        success: true,
+        quality: {
+          is_valid: true,
+          rejection_reason: null,
+          message: 'Face detected and verified',
+          face_count: 1,
+        },
+        embedding: mockEmbedding,
+      };
+    }
+
     const b64 = typeof imageBufferOrBase64 === 'string'
       ? imageBufferOrBase64
       : imageBufferOrBase64.toString('base64');
@@ -199,6 +235,27 @@ export class PythonWorkerClient {
     imageBufferOrBase64: Buffer | string,
     options?: { minFaceSize?: number; minConfidence?: number; mockFaces?: any[] }
   ): Promise<ExtractFacesResult> {
+    if (this.mockMode) {
+      const mockEmbedding = Array.from({ length: 128 }, (_, i) => Math.round(Math.sin(i + 0.1) * 1000000) / 1000000);
+      return {
+        success: true,
+        faces: [
+          {
+            faceIndex: 0,
+            bbox: { x: 200, y: 140, width: 240, height: 260 },
+            detectionConfidence: 0.95,
+            embedding: mockEmbedding,
+            quality: {
+              usable: true,
+              rejectionReason: null,
+              blurScore: 120.0,
+              brightness: 128.0,
+            },
+          },
+        ],
+      };
+    }
+
     const b64 = typeof imageBufferOrBase64 === 'string'
       ? imageBufferOrBase64
       : imageBufferOrBase64.toString('base64');
@@ -212,6 +269,32 @@ export class PythonWorkerClient {
   }
 
   public async aggregateEmbeddings(embeddings: number[][]): Promise<AggregationResult> {
+    if (this.mockMode) {
+      if (!embeddings || embeddings.length === 0) {
+        return { success: false, error: 'NO_EMBEDDINGS', template: [], samples_count: 0 };
+      }
+      const dim = 128;
+      const mean = new Array(dim).fill(0);
+      for (const emb of embeddings) {
+        for (let i = 0; i < dim; i++) {
+          mean[i] += emb[i] || 0;
+        }
+      }
+      for (let i = 0; i < dim; i++) {
+        mean[i] /= embeddings.length;
+      }
+      let sumSq = 0;
+      for (let i = 0; i < dim; i++) sumSq += mean[i] * mean[i];
+      const norm = Math.sqrt(sumSq);
+      const normalized = norm > 1e-6 ? mean.map((x) => Math.round((x / norm) * 1000000) / 1000000) : mean;
+      return {
+        success: true,
+        template: normalized,
+        samples_count: embeddings.length,
+        consistency_score: 0.98,
+      };
+    }
+
     return this.sendCommand<AggregationResult>('aggregate_embeddings', { embeddings });
   }
 

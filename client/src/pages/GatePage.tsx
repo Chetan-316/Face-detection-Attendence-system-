@@ -40,10 +40,6 @@ export const GatePage: React.FC = () => {
   const [presenceCounts, setPresenceCounts] = useState<PresenceCounts | null>(null);
   const [recentMovements, setRecentMovements] = useState<MovementEventEntity[]>([]);
 
-  // Residents roster for guard manual selection
-  const [residentsList, setResidentsList] = useState<SafeResident[]>([]);
-  const [selectedManualResident, setSelectedManualResident] = useState<SafeResident | null>(null);
-
   // Current session observation state
   const [activeObservation, setActiveObservation] = useState<RecognitionObservation | null>(null);
   const [activeResidentPresence, setActiveResidentPresence] = useState<'IN' | 'OUT'>('OUT');
@@ -147,16 +143,6 @@ export const GatePage: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchMovementData]);
 
-  // Load active residents list for quick guard selection
-  useEffect(() => {
-    residentsApi
-      .listResidents({ pageSize: 100, status: 'ACTIVE', hostelId: user?.hostelId || undefined })
-      .then((res) => {
-        if (res.data) setResidentsList(res.data);
-      })
-      .catch(() => {});
-  }, [user?.hostelId]);
-
   // Capture webcam frame from video and submit to backend recognition
   const captureAndProcessFrame = useCallback(async () => {
     if (!videoRef.current || !selectedCameraId || isConfirming || isScanningFace) return;
@@ -177,7 +163,6 @@ export const GatePage: React.FC = () => {
       if (res.observation) {
         setActiveObservation(res.observation);
         if (res.observation.classification === 'MATCH' && res.observation.resident) {
-          setSelectedManualResident(null);
           const pres = await movementsApi.getResidentPresence(res.observation.resident.id).catch(() => null);
           if (pres?.currentState) {
             setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
@@ -191,35 +176,16 @@ export const GatePage: React.FC = () => {
     }
   }, [selectedCameraId, isConfirming, isScanningFace]);
 
-  // Periodic auto-scan when laptop camera is active
+  // Periodic auto-scan when laptop camera is active (every 1.8 seconds)
   useEffect(() => {
     if (!isCameraActive || isConfirming) return;
     const interval = setInterval(() => {
-      if (!activeObservation && !selectedManualResident) {
+      if (!activeObservation) {
         captureAndProcessFrame();
       }
-    }, 3200);
+    }, 1800);
     return () => clearInterval(interval);
-  }, [isCameraActive, isConfirming, activeObservation, selectedManualResident, captureAndProcessFrame]);
-
-  // Guard manual selection handler
-  const handleSelectResident = async (residentId: string) => {
-    if (!residentId) {
-      setSelectedManualResident(null);
-      return;
-    }
-    const resident = residentsList.find((r) => r.id === residentId);
-    if (resident) {
-      setSelectedManualResident(resident);
-      setActiveObservation(null);
-      try {
-        const pres = await movementsApi.getResidentPresence(resident.id);
-        if (pres?.currentState) {
-          setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
-        }
-      } catch (e) {}
-    }
-  };
+  }, [isCameraActive, isConfirming, activeObservation, captureAndProcessFrame]);
 
   // Connect live recognition stream via SSE using short-lived stream token
   useEffect(() => {
@@ -258,7 +224,6 @@ export const GatePage: React.FC = () => {
             if (isConfirming) return;
 
             setActiveObservation(obs);
-            setSelectedManualResident(null);
             setLastActionSuccessMsg(null);
 
             if (obs.classification === 'MATCH' && obs.resident) {
@@ -291,7 +256,7 @@ export const GatePage: React.FC = () => {
 
     // Fallback polling for recognition observations in environments without EventSource
     const pollInterval = setInterval(() => {
-      if (selectedCameraId && isMounted && !isConfirming && !selectedManualResident) {
+      if (selectedCameraId && isMounted && !isConfirming) {
         recognitionApi.getResults(selectedCameraId, 1).then((res) => {
           if (res.results && res.results.length > 0) {
             const latest = res.results[0];
@@ -319,11 +284,11 @@ export const GatePage: React.FC = () => {
         clearTimeout(resetTimerRef.current);
       }
     };
-  }, [selectedCameraId, isConfirming, selectedManualResident]);
+  }, [selectedCameraId, isConfirming]);
 
   // Execute movement action (MARK OUT or MARK IN)
   const handleMarkMovement = async (forcedDirection?: 'IN' | 'OUT') => {
-    const resident = activeObservation?.resident || selectedManualResident;
+    const resident = activeObservation?.resident;
     if (!resident || !selectedCamera || isConfirming) return;
 
     const targetDirection = forcedDirection || (activeResidentPresence === 'IN' ? 'OUT' : 'IN');
@@ -349,7 +314,6 @@ export const GatePage: React.FC = () => {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
       resetTimerRef.current = setTimeout(() => {
         setActiveObservation(null);
-        setSelectedManualResident(null);
         setLastActionSuccessMsg(null);
       }, 3500);
     } catch (err: any) {
@@ -359,8 +323,7 @@ export const GatePage: React.FC = () => {
     }
   };
 
-  const effectiveResident = activeObservation?.resident || selectedManualResident;
-  const isMatch = Boolean(effectiveResident);
+  const isMatch = activeObservation?.classification === 'MATCH' && !!activeObservation.resident;
   const isUnknown = activeObservation?.classification === 'UNKNOWN';
   const isLowQuality = activeObservation?.classification === 'QUALITY_INSUFFICIENT';
 
@@ -533,27 +496,26 @@ export const GatePage: React.FC = () => {
               <h3 className="text-xl font-bold text-slate-900">{lastActionSuccessMsg}</h3>
               <p className="text-sm text-slate-500">Gate movement recorded successfully.</p>
             </div>
-          ) : effectiveResident ? (
-            /* Recognized or Selected Resident Card */
-            <div className="flex flex-col gap-4 flex-1 justify-between">
+          ) : isMatch && activeObservation?.resident ? (
+            /* Recognized Resident Card - ONLY displayed when camera detects face */
+            <div className="flex flex-col gap-4 flex-1 justify-between animate-fadeIn">
               <div>
                 {/* Header status */}
                 <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-                      {activeObservation?.resident ? 'Face Recognized' : 'Guard Selected'}
+                      ✓ Face Verified by Camera
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       setActiveObservation(null);
-                      setSelectedManualResident(null);
                     }}
                     className="text-xs font-semibold text-slate-400 hover:text-slate-600 flex items-center gap-1"
                   >
-                    <X size={12} /> Clear
+                    <X size={12} /> Dismiss
                   </button>
                 </div>
 
@@ -561,8 +523,8 @@ export const GatePage: React.FC = () => {
                   {/* Profile Photo */}
                   <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
                     <img
-                      src={residentsApi.getProfilePhotoUrl(effectiveResident.id)}
-                      alt={effectiveResident.fullName}
+                      src={residentsApi.getProfilePhotoUrl(activeObservation.resident.id)}
+                      alt={activeObservation.resident.fullName}
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         (e.target as HTMLElement).style.display = 'none';
@@ -573,10 +535,10 @@ export const GatePage: React.FC = () => {
 
                   <div className="flex-1 min-w-0">
                     <h2 className="text-22px sm:text-24px font-bold text-slate-900 truncate leading-snug">
-                      {effectiveResident.fullName}
+                      {activeObservation.resident.fullName}
                     </h2>
                     <p className="text-15px text-slate-600 mt-1 font-medium">
-                      {effectiveResident.residentCode} • {effectiveResident.roomGroup || 'Room 101'}
+                      {activeObservation.resident.residentCode} • {activeObservation.resident.roomGroup || 'Room 101'}
                     </p>
                     <div className="mt-2.5">
                       <span
@@ -593,10 +555,10 @@ export const GatePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Guard 1-Click Action Buttons: MARK IN & MARK OUT */}
+              {/* Guard Action Buttons: MARK IN & MARK OUT */}
               <div className="pt-4 border-t border-slate-200 flex flex-col gap-2">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                  Select Action for Guard:
+                  Gate Movement Action for Guard:
                 </span>
                 <div className="grid grid-cols-2 gap-3">
                   <Button
@@ -628,13 +590,13 @@ export const GatePage: React.FC = () => {
             </div>
           ) : isUnknown ? (
             /* Person not identified */
-            <div className="my-auto py-6 flex flex-col items-center justify-center text-center gap-3">
+            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
               <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center border border-red-200">
                 <UserX size={28} />
               </div>
               <h3 className="text-lg font-bold text-slate-900">Person not identified</h3>
               <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                Face not found in enrolled templates. You can manually select the resident above or register as regular comer.
+                Face not found in enrolled templates. Please register as regular comer or enroll face.
               </p>
               <div className="mt-2 w-full max-w-xs">
                 <Button
@@ -657,42 +619,19 @@ export const GatePage: React.FC = () => {
               </div>
               <h3 className="text-lg font-bold text-slate-900">Face not clear enough</h3>
               <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                Please ask the resident to face the camera directly, or select them from the list above.
+                Please look directly into the camera and ensure adequate lighting.
               </p>
             </div>
           ) : (
-            /* Waiting for resident & Quick Selector */
-            <div className="flex flex-col justify-between h-full gap-4">
-              {/* Quick Resident Selector for Guard */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                  <Search size={14} className="text-blue-600" />
-                  Quick Resident Selector (1-Click IN / OUT):
-                </label>
-                <select
-                  value=""
-                  onChange={(e) => handleSelectResident(e.target.value)}
-                  className="w-full bg-white border border-slate-300 text-slate-800 rounded-lg px-3 py-2.5 text-sm font-semibold focus:ring-2 focus:ring-blue-500 focus:outline-none shadow-sm"
-                >
-                  <option value="">-- Choose Resident (e.g. Chetan Agrawal Real) --</option>
-                  {residentsList.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.fullName} ({r.roomGroup || r.residentCode}) {r.faceEnrollmentStatus === 'ENROLLED' ? '• [Enrolled]' : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-xs text-slate-500 mt-2">
-                  Tip: Guard can select any resident directly here to instantly mark them IN or OUT without waiting for camera recognition.
-                </p>
+            /* Waiting for resident - pure camera detection flow */
+            <div className="my-auto py-12 flex flex-col items-center justify-center text-center gap-4 text-slate-400">
+              <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200 shadow-sm animate-pulse">
+                <Eye size={30} />
               </div>
-
-              <div className="py-6 flex flex-col items-center justify-center text-center gap-2 text-slate-400">
-                <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center border border-slate-200">
-                  <Eye size={24} />
-                </div>
-                <h3 className="text-base font-semibold text-slate-800">Camera Face Recognition Active</h3>
-                <p className="text-xs text-slate-500 max-w-xs leading-relaxed">
-                  Stand in front of the camera, or click <span className="font-semibold text-blue-600">Scan Face Now</span> to verify identity automatically.
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Waiting for resident</h3>
+                <p className="text-sm text-slate-500 max-w-xs leading-relaxed mt-1">
+                  Stand in front of the camera to verify identity. The guard will receive the option to Mark IN or OUT as soon as your face is recognized.
                 </p>
               </div>
             </div>
