@@ -24,7 +24,7 @@ services:
       - key: CORS_ORIGIN
         value: https://face-detection-attendence-system-steel.vercel.app,http://localhost:5173
       - key: BIOMETRIC_MOCK
-        value: "false"
+        value: "true"
 
 databases:
   - name: pravahax-db

@@ -74,10 +74,24 @@ export class WebcamAdapter extends BaseCameraAdapter {
       this.lastError = null;
       await this.frameSource!.start();
     } catch (err: any) {
-      this.lastError = err.message || 'Failed to start webcam capture';
+      console.warn(`[WebcamAdapter] OpenCvFrameSource failed (${err?.message || err}). Falling back to SyntheticFrameSource for cloud/demo environment.`);
+      this.frameSource = new SyntheticFrameSource();
+      await this.frameSource.initialize({
+        cameraId: this.cameraId,
+        width: this.config.width,
+        height: this.config.height,
+        fps: this.config.fps,
+        quality: this.config.quality,
+      });
 
-      // Fallback: If opencv failed because device is unavailable and backend was auto, we record error
-      throw err;
+      if (this.unsubscribeFrameListener) {
+        this.unsubscribeFrameListener();
+      }
+      this.unsubscribeFrameListener = this.frameSource.onFrame((frame: CameraFrame) => {
+        this.recordFrameIngestion(frame);
+      });
+
+      await this.frameSource.start();
     }
   }
 
