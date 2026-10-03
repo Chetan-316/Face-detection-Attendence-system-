@@ -86,7 +86,12 @@ export function createFaceEnrollmentRouter(
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const residentId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-        const result = await service.captureFrame(residentId, req.user!, req.body?.targetPose);
+        const result = await service.captureFrame(
+          residentId,
+          req.user!,
+          req.body?.targetPose,
+          req.body?.imageBase64
+        );
         res.status(200).json({ data: result });
       } catch (err) {
         next(err);

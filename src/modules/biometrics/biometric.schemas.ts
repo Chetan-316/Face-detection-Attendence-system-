@@ -11,6 +11,7 @@ export const startEnrollmentSchema = z
 export const captureFrameSchema = z
   .object({
     targetPose: z.enum(['FRONT', 'LEFT', 'RIGHT', 'UP', 'DOWN']).optional(),
+    imageBase64: z.string().optional(),
   })
   .strict()
   .optional()

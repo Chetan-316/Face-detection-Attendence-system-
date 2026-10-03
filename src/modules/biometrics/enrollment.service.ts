@@ -207,7 +207,8 @@ export class EnrollmentService {
   public async captureFrame(
     residentId: string,
     actor?: AuthenticatedActor,
-    targetPose?: EnrollmentPose
+    targetPose?: EnrollmentPose,
+    imageBase64?: string
   ): Promise<{
     sessionStatus: EnrollmentStatusResponse;
     quality: BiometricQualityResult;
@@ -232,10 +233,17 @@ export class EnrollmentService {
       throw new EnrollmentSessionError(`Enrollment session is already ${session.status}`);
     }
 
-    // Capture strictly fresh live snapshot from camera service using session's validated camera
-    const snapshot = await this.cameraService.captureFreshSnapshot(session.cameraId);
-    if (!snapshot || !snapshot.frameBuffer) {
-      throw new ValidationError('Camera failed to deliver snapshot frame');
+    // Source frame buffer: from client webcam imageBase64 if provided, or from server camera snapshot
+    let frameBuffer: Buffer;
+    if (imageBase64) {
+      const cleanBase64 = imageBase64.includes(',') ? imageBase64.split(',')[1] : imageBase64;
+      frameBuffer = Buffer.from(cleanBase64, 'base64');
+    } else {
+      const snapshot = await this.cameraService.captureFreshSnapshot(session.cameraId);
+      if (!snapshot || !snapshot.frameBuffer) {
+        throw new ValidationError('Camera failed to deliver snapshot frame');
+      }
+      frameBuffer = snapshot.frameBuffer;
     }
 
     const requiredPose = targetPose || (
@@ -244,8 +252,8 @@ export class EnrollmentService {
         : null
     );
 
-    // Run server frame through Python worker
-    const processResult = await this.workerClient.processFrame(snapshot.frameBuffer, {
+    // Run frame through Python worker
+    const processResult = await this.workerClient.processFrame(frameBuffer, {
       expectedPose: requiredPose || undefined,
     });
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import { SafeResident } from '../../types/resident.types';
@@ -77,6 +77,38 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
   const [isStreamLoaded, setIsStreamLoaded] = useState<boolean>(false);
   const [streamRetryKey, setStreamRetryKey] = useState<number>(0);
   const [isCameraStarting, setIsCameraStarting] = useState<boolean>(true);
+
+  // Direct Laptop Browser Webcam Support
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [isWebcamActive, setIsWebcamActive] = useState<boolean>(false);
+
+  const startWebcam = useCallback(async () => {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false,
+      });
+      setLocalStream(stream);
+      setIsWebcamActive(true);
+      setIsStreamLoaded(true);
+      setIsCameraStarting(false);
+    } catch (err: any) {
+      console.warn('Webcam direct stream warning:', err);
+      // Non-blocking fallback to server preview
+    }
+  }, []);
+
+  const stopWebcam = useCallback(() => {
+    if (localStream) {
+      localStream.getTracks().forEach((t) => t.stop());
+      setLocalStream(null);
+    }
+    setIsWebcamActive(false);
+  }, [localStream]);
 
   const isEnrolled = resident?.faceEnrollmentStatus === 'ENROLLED';
 
@@ -157,12 +189,14 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       }
     };
 
+    startWebcam();
     init();
 
     return () => {
       isMounted = false;
+      stopWebcam();
     };
-  }, [isOpen, resident, toastError]);
+  }, [isOpen, resident, toastError, startWebcam, stopWebcam]);
 
   // Handler for manual one-click capture with pose stabilization & session auto-healing
   const handleCaptureCurrentPose = async () => {
@@ -183,10 +217,25 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         }
       }
 
-      // Resilient capture call with transparent session re-establishment
+      // Resilient capture call with transparent session re-establishment & client frame capture
       const callCapture = async () => {
+        let b64: string | undefined = undefined;
+        if (videoRef.current && videoRef.current.videoWidth > 0) {
+          try {
+            const video = videoRef.current;
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.min(640, video.videoWidth);
+            canvas.height = Math.min(480, video.videoHeight);
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+              b64 = canvas.toDataURL('image/jpeg', 0.85);
+            }
+          } catch (e) {}
+        }
+
         try {
-          return await biometricsApi.captureFrame(resident.id, activePoseKey);
+          return await biometricsApi.captureFrame(resident.id, activePoseKey, b64);
         } catch (captureErr: any) {
           const isSessionMissing =
             captureErr?.message?.includes('Active enrollment session') ||
@@ -198,7 +247,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
             // Re-establish session seamlessly
             const sessionRes = await biometricsApi.startEnrollment(resident.id, selectedCameraId);
             setSession(sessionRes.data);
-            return await biometricsApi.captureFrame(resident.id, activePoseKey);
+            return await biometricsApi.captureFrame(resident.id, activePoseKey, b64);
           }
           throw captureErr;
         }
@@ -355,8 +404,23 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       <div className="face-enrollment-container flex flex-col gap-5 max-w-xl mx-auto w-full">
         {/* Live Camera View with subtle neutral guide */}
         <div className="relative bg-slate-900 rounded-xl overflow-hidden w-full h-[320px] sm:h-[360px] flex items-center justify-center border border-slate-700 shadow-inner">
-          {/* Active stream image */}
-          {selectedCameraId && (
+          {/* Active direct browser webcam stream */}
+          {isWebcamActive && localStream ? (
+            <video
+              ref={(el) => {
+                videoRef.current = el;
+                if (el && localStream && el.srcObject !== localStream) {
+                  el.srcObject = localStream;
+                  el.play().catch(() => {});
+                }
+              }}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+          ) : selectedCameraId && (
+            /* Fallback server preview stream image */
             <img
               key={`${selectedCameraId}-${streamRetryKey}`}
               src={previewStreamUrl}
@@ -377,7 +441,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           )}
 
           {/* Loading overlay when stream is connecting or hardware is starting */}
-          {(!isStreamLoaded || !selectedCameraId) && (
+          {!isWebcamActive && (!isStreamLoaded || !selectedCameraId) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-slate-300 gap-3 z-10">
               <RefreshCw className="animate-spin text-blue-400" size={28} />
               <div className="flex flex-col items-center gap-1 text-center px-4">
@@ -401,7 +465,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           )}
 
           {/* Live stream status badge */}
-          {isStreamLoaded && (
+          {(isStreamLoaded || isWebcamActive) && (
             <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 backdrop-blur-sm rounded-full text-white text-xs font-medium tracking-wider pointer-events-none">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>LIVE CAMERA</span>
@@ -409,7 +473,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           )}
 
           {/* Subtle face centering guide */}
-          {isStreamLoaded && (
+          {(isStreamLoaded || isWebcamActive) && (
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
               <div className="w-48 h-60 sm:w-56 sm:h-72 border-2 border-dashed border-white/40 rounded-full" />
             </div>
