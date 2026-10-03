@@ -47,6 +47,50 @@ export const GatePage: React.FC = () => {
   const eventSourceRef = useRef<EventSource | null>(null);
   const resetTimerRef = useRef<any>(null);
 
+  // Direct Laptop Browser Webcam Support
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [useBrowserWebcam, setUseBrowserWebcam] = useState<boolean>(true);
+  const [browserWebcamActive, setBrowserWebcamActive] = useState<boolean>(false);
+  const [browserWebcamError, setBrowserWebcamError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let isCancelled = false;
+
+    if (useBrowserWebcam && typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+          audio: false,
+        })
+        .then((mediaStream) => {
+          if (isCancelled) {
+            mediaStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          stream = mediaStream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = mediaStream;
+          }
+          setBrowserWebcamActive(true);
+          setBrowserWebcamError(null);
+        })
+        .catch((err: any) => {
+          console.warn('Browser webcam permission or access issue:', err);
+          setBrowserWebcamActive(false);
+          setBrowserWebcamError(err.message || 'Webcam permission denied');
+        });
+    }
+
+    return () => {
+      isCancelled = true;
+      if (stream) {
+        stream.getTracks().forEach((t) => t.stop());
+      }
+      setBrowserWebcamActive(false);
+    };
+  }, [useBrowserWebcam]);
+
   const handleRegisterVisitorSuccess = (newPerson: SafeResident, shouldEnrollFace: boolean) => {
     fetchMovementData();
     if (shouldEnrollFace) {
@@ -307,23 +351,68 @@ export const GatePage: React.FC = () => {
       <div className="gate-operations-layout">
         {/* Left Column: Live Camera Video Stream (Dominant 440-480px height) */}
         <div className="gate-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-          <div className="relative bg-slate-100 flex items-center justify-center overflow-hidden min-h-[440px] sm:min-h-[480px] h-full">
-            {selectedCameraId && !streamError ? (
-              <img
-                src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
-                alt="Gate Live Feed"
-                className="w-full h-full object-cover"
-                onError={() => setStreamError('Stream interrupted')}
-              />
+          <div className="relative bg-slate-900 flex items-center justify-center overflow-hidden min-h-[440px] sm:min-h-[480px] h-full">
+            {useBrowserWebcam && browserWebcamActive ? (
+              <div className="relative w-full h-full min-h-[440px] sm:min-h-[480px]">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Live Laptop Camera</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUseBrowserWebcam(false)}
+                  className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition"
+                >
+                  Switch to Server Stream
+                </button>
+              </div>
+            ) : selectedCameraId && !streamError ? (
+              <div className="relative w-full h-full">
+                <img
+                  src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
+                  alt="Gate Live Feed"
+                  className="w-full h-full object-cover"
+                  onError={() => setStreamError('Stream interrupted')}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStreamError(null);
+                    setUseBrowserWebcam(true);
+                  }}
+                  className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition flex items-center gap-1"
+                >
+                  <CameraIcon size={12} />
+                  <span>Use Laptop Camera</span>
+                </button>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center text-slate-400 p-8 text-center gap-3">
-                <CameraIcon size={48} className="text-slate-300" />
-                <p className="text-base font-semibold text-slate-700">Camera Feed Connecting</p>
-                <p className="text-sm text-slate-500 max-w-xs">
-                  {cameras.length === 0
-                    ? 'No camera configured for this gate.'
-                    : 'Awaiting video frames from camera service...'}
+                <CameraIcon size={48} className="text-slate-500" />
+                <p className="text-base font-semibold text-slate-200">Laptop Camera Ready</p>
+                <p className="text-sm text-slate-400 max-w-xs">
+                  {browserWebcamError
+                    ? `Camera access: ${browserWebcamError}. Please allow camera permissions in browser.`
+                    : 'Click below to stream video directly from your laptop camera.'}
                 </p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    setStreamError(null);
+                    setUseBrowserWebcam(true);
+                  }}
+                  className="mt-2"
+                >
+                  Start Laptop Camera
+                </Button>
               </div>
             )}
           </div>
