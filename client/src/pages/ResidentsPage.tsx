@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { residentsApi } from '../api/residents.api';
 import {
   SafeResident,
@@ -18,13 +19,13 @@ import { ResidentCreateModal } from '../features/residents/ResidentCreateModal';
 import { ResidentEditModal } from '../features/residents/ResidentEditModal';
 import { ResidentDeactivateModal } from '../features/residents/ResidentDeactivateModal';
 import { ResidentReactivateModal } from '../features/residents/ResidentReactivateModal';
-import { ResidentDetailModal } from '../features/residents/ResidentDetailModal';
 import { FaceEnrollmentModal } from '../features/residents/FaceEnrollmentModal';
 import { FaceRevokeModal } from '../features/residents/FaceRevokeModal';
 import { Plus, RefreshCw, AlertCircle } from 'lucide-react';
 
 export const ResidentsPage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { error: toastError } = useToast();
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'WARDEN';
@@ -54,7 +55,6 @@ export const ResidentsPage: React.FC = () => {
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedResident, setSelectedResident] = useState<SafeResident | null>(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeactivateOpen, setIsDeactivateOpen] = useState(false);
   const [isReactivateOpen, setIsReactivateOpen] = useState(false);
@@ -205,8 +205,7 @@ export const ResidentsPage: React.FC = () => {
           residents={residents}
           isLoading={isLoading}
           onSelect={(resident: SafeResident) => {
-            setSelectedResident(resident);
-            setIsDetailOpen(true);
+            navigate(`/residents/${resident.id}`);
           }}
           onEdit={(resident: SafeResident) => {
             setSelectedResident(resident);
@@ -290,33 +289,6 @@ export const ResidentsPage: React.FC = () => {
           onSuccess={handleResidentUpdated}
         />
       )}
-
-      {/* Detail Modal */}
-      <ResidentDetailModal
-        isOpen={isDetailOpen}
-        resident={selectedResident}
-        onClose={() => setIsDetailOpen(false)}
-        onEdit={(r: SafeResident) => {
-          setSelectedResident(r);
-          setIsEditOpen(true);
-        }}
-        onDeactivate={(r: SafeResident) => {
-          setSelectedResident(r);
-          setIsDeactivateOpen(true);
-        }}
-        onReactivate={(r: SafeResident) => {
-          setSelectedResident(r);
-          setIsReactivateOpen(true);
-        }}
-        onEnrollFace={(r: SafeResident) => {
-          setSelectedResident(r);
-          setIsFaceEnrollOpen(true);
-        }}
-        onRevokeFace={(r: SafeResident) => {
-          setSelectedResident(r);
-          setIsFaceRevokeOpen(true);
-        }}
-      />
 
       {/* Face Enrollment Modal */}
       {canManage && (
