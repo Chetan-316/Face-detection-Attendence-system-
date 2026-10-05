@@ -61,7 +61,7 @@ describe('Role-Aware UI Permissions', () => {
     });
   });
 
-  it('allows WARDEN to see "Add Resident", Edit, and Deactivate buttons', async () => {
+  it('allows WARDEN to add residents and access profile/enrollment actions', async () => {
     (authApi.getMe as any).mockResolvedValueOnce({
       user: {
         id: 'warden-1',
@@ -86,8 +86,8 @@ describe('Role-Aware UI Permissions', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /add resident/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /edit alex kumar/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /deactivate alex kumar/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /view details for alex kumar/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /enroll face for alex kumar/i })).toBeInTheDocument();
     });
   });
 
@@ -121,8 +121,7 @@ describe('Role-Aware UI Permissions', () => {
     // Guard MUST NOT see Add Resident button
     expect(screen.queryByRole('button', { name: /add resident/i })).not.toBeInTheDocument();
 
-    // Guard MUST NOT see Edit or Deactivate buttons
-    expect(screen.queryByRole('button', { name: /edit alex kumar/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /deactivate alex kumar/i })).not.toBeInTheDocument();
+    // Guard MUST NOT see resident enrollment or mutation actions
+    expect(screen.queryByRole('button', { name: /enroll face for alex kumar/i })).not.toBeInTheDocument();
   });
 });
