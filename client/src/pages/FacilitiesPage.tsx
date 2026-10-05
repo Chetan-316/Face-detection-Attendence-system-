@@ -27,8 +27,21 @@ export const FacilitiesPage: React.FC = () => {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  const [returnDeadlineTime, setReturnDeadlineTime] = useState('21:00');
 
   const isOrganizationAdmin = !user?.hostelId;
+
+  const minutesToTime = (minutes = 1260) => {
+    const safeMinutes = Math.min(Math.max(minutes, 0), 1439);
+    const hours = Math.floor(safeMinutes / 60);
+    const mins = safeMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  };
+
+  const timeToMinutes = (value: string) => {
+    const [hours, minutes] = value.split(':').map(Number);
+    return hours * 60 + minutes;
+  };
 
   const fetchFacilities = useCallback(async () => {
     setIsLoading(true);
@@ -49,6 +62,7 @@ export const FacilitiesPage: React.FC = () => {
   const resetForm = () => {
     setName('');
     setCode('');
+    setReturnDeadlineTime('21:00');
     setFormError(null);
   };
 
@@ -56,6 +70,7 @@ export const FacilitiesPage: React.FC = () => {
     setEditing(facility);
     setName(facility.name);
     setCode(facility.code);
+    setReturnDeadlineTime(minutesToTime(facility.returnDeadlineMinutes));
     setFormError(null);
   };
 
@@ -71,6 +86,7 @@ export const FacilitiesPage: React.FC = () => {
       await facilitiesApi.createFacility({
         name: name.trim(),
         code: code.trim().toUpperCase(),
+        returnDeadlineMinutes: timeToMinutes(returnDeadlineTime),
       });
       setIsCreateOpen(false);
       resetForm();
@@ -96,6 +112,7 @@ export const FacilitiesPage: React.FC = () => {
       await facilitiesApi.updateFacility(editing.id, {
         name: name.trim(),
         code: code.trim().toUpperCase(),
+        returnDeadlineMinutes: timeToMinutes(returnDeadlineTime),
       });
       setEditing(null);
       resetForm();
@@ -272,6 +289,16 @@ export const FacilitiesPage: React.FC = () => {
                 </span>
               </div>
 
+              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 flex items-center justify-between text-sm">
+                <span className="text-blue-800 font-medium">Return deadline</span>
+                <span className="font-bold text-blue-900">
+                  {new Date(`1970-01-01T${minutesToTime(facility.returnDeadlineMinutes)}:00`).toLocaleTimeString([], {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-lg bg-slate-50 p-3">
                   <Users size={16} className="text-slate-500 mb-1.5" />
@@ -356,6 +383,14 @@ export const FacilitiesPage: React.FC = () => {
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="Example: GHA"
           hint="Short unique code used internally."
+          required
+        />
+        <Input
+          label="Return Deadline"
+          type="time"
+          value={returnDeadlineTime}
+          onChange={(e) => setReturnDeadlineTime(e.target.value)}
+          hint="Residents still outside after this time appear as Not Returned."
           required
         />
         {formError && (
@@ -495,6 +530,14 @@ export const FacilitiesPage: React.FC = () => {
           label="Facility Code"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
+          required
+        />
+        <Input
+          label="Return Deadline"
+          type="time"
+          value={returnDeadlineTime}
+          onChange={(e) => setReturnDeadlineTime(e.target.value)}
+          hint="Used by the automatic return-status dashboard."
           required
         />
         {formError && (
