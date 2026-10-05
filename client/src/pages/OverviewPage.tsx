@@ -3,9 +3,11 @@ import { Link, Navigate } from 'react-router-dom';
 import { residentsApi } from '../api/residents.api';
 import { movementsApi } from '../api/movements.api';
 import { reportsApi } from '../api/reports.api';
+import { camerasApi } from '../api/cameras.api';
 import { SafeResident, ResidentSummary } from '../types/resident.types';
 import { PresenceCounts } from '../types/movement.types';
 import { MovementReportItem } from '../types/reports.types';
+import { CameraEntity } from '../types/camera.types';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
@@ -18,6 +20,8 @@ import {
   AlertCircle,
   ArrowRight,
   ShieldAlert,
+  Video,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const OverviewPage: React.FC = () => {
@@ -29,12 +33,14 @@ export const OverviewPage: React.FC = () => {
   }
 
   const isWarden = user?.role === 'WARDEN';
+  const isAdmin = user?.role === 'ADMIN';
 
   // State for metrics & summaries
   const [summary, setSummary] = useState<ResidentSummary | null>(null);
   const [presenceCounts, setPresenceCounts] = useState<PresenceCounts | null>(null);
   const [recentMovements, setRecentMovements] = useState<MovementReportItem[]>([]);
   const [outsideResidents, setOutsideResidents] = useState<SafeResident[]>([]);
+  const [cameras, setCameras] = useState<CameraEntity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -48,11 +54,14 @@ export const OverviewPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [resSummary, presRes, movRes, outRes] = await Promise.allSettled([
+      const [resSummary, presRes, movRes, outRes, camRes] = await Promise.allSettled([
         residentsApi.getSummary ? residentsApi.getSummary(user?.hostelId || undefined) : Promise.resolve(null),
         movementsApi.getPresenceCounts ? movementsApi.getPresenceCounts(user?.hostelId || undefined) : Promise.resolve(null),
         reportsApi.getMovements ? reportsApi.getMovements({ pageSize: 8, hostelId: user?.hostelId || undefined }) : Promise.resolve({ data: [] }),
         residentsApi.listResidents ? residentsApi.listResidents({ presence: 'OUT', pageSize: 6 }) : Promise.resolve({ data: [] }),
+        isAdmin && camerasApi.listCameras
+          ? camerasApi.listCameras(user?.hostelId || undefined)
+          : Promise.resolve({ data: [] }),
       ]);
 
       if (resSummary.status === 'fulfilled' && resSummary.value) {
@@ -67,12 +76,15 @@ export const OverviewPage: React.FC = () => {
       if (outRes.status === 'fulfilled' && outRes.value?.data && Array.isArray(outRes.value.data)) {
         setOutsideResidents(outRes.value.data);
       }
+      if (camRes.status === 'fulfilled' && camRes.value?.data && Array.isArray(camRes.value.data)) {
+        setCameras(camRes.value.data);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard operational overview');
     } finally {
       setIsLoading(false);
     }
-  }, [user?.hostelId]);
+  }, [user?.hostelId, isAdmin]);
 
   useEffect(() => {
     fetchOverviewData();
@@ -87,6 +99,9 @@ export const OverviewPage: React.FC = () => {
   const currentlyIn = presenceCounts?.currentlyIn ?? summary?.currentlyIn ?? 0;
   const currentlyOut = presenceCounts?.currentlyOut ?? summary?.currentlyOut ?? 0;
   const notEnrolledCount = summary?.notEnrolled ?? 0;
+  const enrolledCount = summary?.faceEnrolled ?? 0;
+  const onlineCameras = cameras.filter((camera) => camera.healthStatus === 'ONLINE').length;
+  const cameraAttentionCount = Math.max(cameras.length - onlineCameras, 0);
 
   const isAfterReturnDeadline = now.getHours() >= RETURN_DEADLINE_HOUR;
   const outsideSectionTitle = isAfterReturnDeadline
@@ -97,11 +112,11 @@ export const OverviewPage: React.FC = () => {
   return (
     <div className="overview-page flex flex-col gap-7 max-w-7xl mx-auto w-full">
       <PageHeader
-        title={isWarden ? 'Dashboard' : 'Hostel Overview'}
+        title={isWarden ? 'Warden Dashboard' : 'Admin Overview'}
         subtitle={
           isWarden
-            ? `Welcome back, ${user?.fullName || 'Warden'}. Facility occupancy and hostel activity at a glance.`
-            : `Welcome back, ${user?.fullName || 'System Administrator'}. Facility occupancy and hostel activity at a glance.`
+            ? `Live hostel presence, return status, and residents who need attention.`
+            : `Resident coverage, live presence, and operational readiness across your accessible hostel scope.`
         }
         actions={
           <Button
@@ -234,6 +249,8 @@ export const OverviewPage: React.FC = () => {
                     <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/70 text-sm">
                       <th className="py-3.5 px-6 font-semibold">Resident</th>
                       <th className="py-3.5 px-6 font-semibold">Room</th>
+                      <th className="py-3.5 px-6 font-semibold">Last Out</th>
+                      <th className="py-3.5 px-6 font-semibold">Phone</th>
                       <th className="py-3.5 px-6 font-semibold text-right">Status</th>
                     </tr>
                   </thead>
@@ -247,6 +264,17 @@ export const OverviewPage: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-3.5 px-6 text-slate-700 font-medium">{res.roomGroup}</td>
+                        <td className="py-3.5 px-6 text-slate-600 text-sm">
+                          {res.presence?.lastMovementTime
+                            ? new Date(res.presence.lastMovementTime).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '—'}
+                        </td>
+                        <td className="py-3.5 px-6 text-slate-600 text-sm">
+                          {res.contactPhone || '—'}
+                        </td>
                         <td className="py-3.5 px-6 text-right">
                           <span className="inline-flex items-center px-3 py-1 rounded-md text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                             <span className="sr-only">OUT</span>
@@ -322,27 +350,81 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Pending Face Enrollment Box */}
-        <div className="overview-side-col">
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between gap-6">
-            <div>
-              <div className="flex items-center gap-2.5 text-amber-600 mb-2">
-                <ShieldAlert size={20} />
-                <h3 className="text-lg font-bold text-slate-900">Pending Face Enrollment</h3>
+        {/* Right Column: Role-specific operational panel */}
+        <div className="overview-side-col flex flex-col gap-4">
+          {isWarden ? (
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between gap-6">
+              <div>
+                <div className="flex items-center gap-2.5 text-amber-600 mb-2">
+                  <ShieldAlert size={20} />
+                  <h3 className="text-lg font-bold text-slate-900">Residents Needing Enrollment</h3>
+                </div>
+                <p className="text-[15px] text-slate-600 leading-relaxed mt-2">
+                  {notEnrolledCount} {notEnrolledCount === 1 ? 'resident still needs' : 'residents still need'} face enrollment.
+                </p>
               </div>
-              <p className="text-[15px] text-slate-600 leading-relaxed mt-2">
-                {notEnrolledCount} {notEnrolledCount === 1 ? 'resident needs' : 'residents need'} face enrollment.
-              </p>
+
+              <Link to="/residents">
+                <Button variant="primary" size="md" className="w-full justify-center h-11 text-[15px] font-semibold" rightIcon={<ArrowRight size={16} />}>
+                  Open Resident Roster
+                </Button>
+              </Link>
             </div>
+          ) : (
+            <>
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <CheckCircle2 size={20} className="text-emerald-600" />
+                  <h3 className="text-lg font-bold text-slate-900">Operational Readiness</h3>
+                </div>
 
-            <Link to="/residents">
-              <Button variant="primary" size="md" className="w-full justify-center h-11 text-[15px] font-semibold" rightIcon={<ArrowRight size={16} />}>
-                View Residents
-              </Button>
-            </Link>
-          </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Face enrollment</span>
+                    <span className="font-semibold text-slate-900">
+                      {enrolledCount} / {totalResidents}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Cameras online</span>
+                    <span className="font-semibold text-slate-900">
+                      {onlineCameras} / {cameras.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-slate-600">Camera attention</span>
+                    <span className={`font-semibold ${cameraAttentionCount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      {cameraAttentionCount}
+                    </span>
+                  </div>
+                </div>
 
-          {/* Diagnostics Section (Retained for automated test contracts; visually hidden from clean commercial Overview) */}
+                <div className="grid grid-cols-2 gap-2 mt-5">
+                  <Link to="/residents">
+                    <Button variant="outline" size="sm" className="w-full justify-center">
+                      Residents
+                    </Button>
+                  </Link>
+                  <Link to="/cameras">
+                    <Button variant="primary" size="sm" className="w-full justify-center" leftIcon={<Video size={14} />}>
+                      Cameras
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <div className="text-sm font-semibold text-slate-900">Enrollment follow-up</div>
+                <div className="text-sm text-slate-600 mt-1">
+                  {notEnrolledCount === 0
+                    ? 'All active residents are enrolled.'
+                    : `${notEnrolledCount} ${notEnrolledCount === 1 ? 'resident needs' : 'residents need'} enrollment follow-up.`}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Diagnostics Section retained for automated contracts, not normal UI */}
           {!isWarden && (
             <div className="sr-only" aria-hidden="true">
               <h3>System Status</h3>
