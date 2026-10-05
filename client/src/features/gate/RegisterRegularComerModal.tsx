@@ -6,22 +6,22 @@ import { Select } from '../../components/Select';
 import { residentsApi } from '../../api/residents.api';
 import { SafeResident } from '../../types/resident.types';
 import { useToast } from '../../components/ToastContext';
-import { UserPlus, Camera, CheckSquare, Shield } from 'lucide-react';
+import { UserPlus, Shield, DoorOpen } from 'lucide-react';
 
 interface RegisterRegularComerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (newPerson: SafeResident, shouldEnrollFace: boolean) => void;
+  onSuccess: (newPerson: SafeResident) => void;
   hostelId?: string;
 }
 
 const CATEGORY_OPTIONS = [
-  { value: 'Delivery / Courier', label: 'Delivery / Courier (Swiggy, Zomato, Amazon, etc.)' },
-  { value: 'Daily Vendor', label: 'Daily Vendor (Milk, Newspaper, Laundry, Food)' },
-  { value: 'Maintenance / Staff', label: 'Maintenance / Contractor / Housekeeping' },
-  { value: 'Regular Visitor', label: 'Regular Visitor / Family' },
-  { value: 'Official Guest', label: 'Official Guest / External Personnel' },
-  { value: 'Other Non-Resident', label: 'Other Regular Comer' },
+  { value: 'Delivery / Courier', label: 'Delivery / Courier' },
+  { value: 'Vendor / Service', label: 'Vendor / Service' },
+  { value: 'Maintenance / Contractor', label: 'Maintenance / Contractor' },
+  { value: 'Family / Guest', label: 'Family / Guest' },
+  { value: 'Official Visitor', label: 'Official Visitor' },
+  { value: 'Other Visitor', label: 'Other' },
 ];
 
 export const RegisterRegularComerModal: React.FC<RegisterRegularComerModalProps> = ({
@@ -35,9 +35,7 @@ export const RegisterRegularComerModal: React.FC<RegisterRegularComerModalProps>
   const [fullName, setFullName] = useState('');
   const [category, setCategory] = useState('Delivery / Courier');
   const [contactPhone, setContactPhone] = useState('');
-  const [code, setCode] = useState('');
   const [markInNow, setMarkInNow] = useState(true);
-  const [enrollFaceNow, setEnrollFaceNow] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [formErrors, setFormErrors] = useState<{ fullName?: string; contactPhone?: string }>({});
@@ -64,16 +62,15 @@ export const RegisterRegularComerModal: React.FC<RegisterRegularComerModalProps>
         fullName: fullName.trim(),
         category,
         contactPhone: contactPhone.trim() || undefined,
-        code: code.trim() || undefined,
         markInNow,
         hostelId,
       });
 
-      success(`${newPerson.fullName} registered successfully${markInNow ? ' and marked IN' : ''}.`);
-      onSuccess(newPerson, enrollFaceNow);
+      success(`${newPerson.fullName} recorded successfully${markInNow ? ' and marked inside' : ''}.`);
+      onSuccess(newPerson);
       handleClose();
     } catch (err: any) {
-      toastError(err.message || 'Failed to register regular comer');
+      toastError(err.message || 'Failed to record gate visitor');
     } finally {
       setIsLoading(false);
     }
@@ -83,9 +80,7 @@ export const RegisterRegularComerModal: React.FC<RegisterRegularComerModalProps>
     setFullName('');
     setCategory('Delivery / Courier');
     setContactPhone('');
-    setCode('');
     setMarkInNow(true);
-    setEnrollFaceNow(false);
     setFormErrors({});
     onClose();
   };
@@ -94,8 +89,8 @@ export const RegisterRegularComerModal: React.FC<RegisterRegularComerModalProps>
     <Modal
       isOpen={isOpen}
       onClose={handleClose}
-      title="Register Regular Visitor / Non-Resident"
-      subtitle="Quick-register frequent gate visitors (delivery, vendors, maintenance, guests)"
+      title="Visitor / Gate Exception"
+      subtitle="Record a non-resident person entering through the gate."
       size="md"
       footer={
         <div className="flex items-center justify-end gap-3 w-full">
@@ -108,23 +103,22 @@ export const RegisterRegularComerModal: React.FC<RegisterRegularComerModalProps>
             isLoading={isLoading}
             leftIcon={<UserPlus size={18} />}
           >
-            Register & Confirm Entry
+            Record Visitor
           </Button>
         </div>
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2.5 text-xs text-blue-800">
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2.5 text-sm text-blue-800">
           <Shield size={16} className="text-blue-600 shrink-0 mt-0.5" />
           <div>
-            <strong>Gate Visitor Log:</strong> This person will be registered as an authorized regular non-resident.
-            Their entry is recorded immediately upon registration.
+            Use this when the person is not an enrolled resident. Keep the entry simple and record only the details needed at the gate.
           </div>
         </div>
 
         <Input
           label="Full Name *"
-          placeholder="e.g. Ramesh Kumar (Milk Delivery)"
+          placeholder="Enter visitor name"
           value={fullName}
           onChange={(e) => setFullName(e.target.value)}
           error={formErrors.fullName}
@@ -132,50 +126,36 @@ export const RegisterRegularComerModal: React.FC<RegisterRegularComerModalProps>
         />
 
         <Select
-          label="Visitor Category *"
+          label="Visit Type *"
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           options={CATEGORY_OPTIONS}
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input
-            label="Mobile Number"
-            placeholder="e.g. 9876543210"
-            value={contactPhone}
-            onChange={(e) => setContactPhone(e.target.value)}
-            error={formErrors.contactPhone}
-          />
+        <Input
+          label="Mobile Number (Optional)"
+          placeholder="Enter mobile number"
+          value={contactPhone}
+          onChange={(e) => setContactPhone(e.target.value)}
+          error={formErrors.contactPhone}
+        />
 
-          <Input
-            label="Visitor Code (Optional)"
-            placeholder="Auto-generated (e.g. VIS-4021)"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-          />
-        </div>
-
-        <div className="pt-2 border-t border-slate-200 flex flex-col gap-3">
-          <label className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer select-none">
+        <div className="pt-2 border-t border-slate-200">
+          <label className="flex items-start gap-3 text-sm text-slate-700 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={markInNow}
               onChange={(e) => setMarkInNow(e.target.checked)}
-              className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+              className="w-4 h-4 mt-0.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
             />
-            <span className="font-medium">Mark IN immediately upon registration</span>
-          </label>
-
-          <label className="flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={enrollFaceNow}
-              onChange={(e) => setEnrollFaceNow(e.target.checked)}
-              className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
-            />
-            <span className="font-medium flex items-center gap-1.5 text-emerald-800">
-              <Camera size={16} className="text-emerald-600" />
-              Enroll Face Biometrics now via Gate Camera (for automatic identification on future visits)
+            <span>
+              <span className="font-semibold flex items-center gap-1.5">
+                <DoorOpen size={15} className="text-blue-600" />
+                Visitor is entering now
+              </span>
+              <span className="text-xs text-slate-500 block mt-0.5">
+                Keep this selected to record the visitor as currently inside.
+              </span>
             </span>
           </label>
         </div>
