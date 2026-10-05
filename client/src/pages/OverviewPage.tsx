@@ -5,7 +5,7 @@ import { movementsApi } from '../api/movements.api';
 import { reportsApi } from '../api/reports.api';
 import { SafeResident, ResidentSummary } from '../types/resident.types';
 import { PresenceCounts } from '../types/movement.types';
-import { AttendanceSessionReportItem, MovementReportItem } from '../types/reports.types';
+import { MovementReportItem } from '../types/reports.types';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
@@ -13,7 +13,7 @@ import {
   Users,
   LogIn,
   LogOut,
-  CalendarCheck,
+  Clock,
   RefreshCw,
   AlertCircle,
   ArrowRight,
@@ -33,20 +33,24 @@ export const OverviewPage: React.FC = () => {
   // State for metrics & summaries
   const [summary, setSummary] = useState<ResidentSummary | null>(null);
   const [presenceCounts, setPresenceCounts] = useState<PresenceCounts | null>(null);
-  const [latestSession, setLatestSession] = useState<AttendanceSessionReportItem | null>(null);
   const [recentMovements, setRecentMovements] = useState<MovementReportItem[]>([]);
   const [outsideResidents, setOutsideResidents] = useState<SafeResident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => new Date());
+
+  // Night return is derived from live ResidentPresence. No separate night-attendance
+  // session is required: residents still OUT after the deadline are "Not Returned".
+  const RETURN_DEADLINE_HOUR = 21;
+  const RETURN_DEADLINE_LABEL = '9:00 PM';
 
   const fetchOverviewData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [resSummary, presRes, attRes, movRes, outRes] = await Promise.allSettled([
+      const [resSummary, presRes, movRes, outRes] = await Promise.allSettled([
         residentsApi.getSummary ? residentsApi.getSummary(user?.hostelId || undefined) : Promise.resolve(null),
         movementsApi.getPresenceCounts ? movementsApi.getPresenceCounts(user?.hostelId || undefined) : Promise.resolve(null),
-        reportsApi.getAttendanceSessions ? reportsApi.getAttendanceSessions({ pageSize: 1, hostelId: user?.hostelId || undefined }) : Promise.resolve({ data: [] }),
         reportsApi.getMovements ? reportsApi.getMovements({ pageSize: 8, hostelId: user?.hostelId || undefined }) : Promise.resolve({ data: [] }),
         residentsApi.listResidents ? residentsApi.listResidents({ presence: 'OUT', pageSize: 6 }) : Promise.resolve({ data: [] }),
       ]);
@@ -56,9 +60,6 @@ export const OverviewPage: React.FC = () => {
       }
       if (presRes.status === 'fulfilled' && presRes.value) {
         setPresenceCounts(presRes.value);
-      }
-      if (attRes.status === 'fulfilled' && attRes.value?.data && Array.isArray(attRes.value.data) && attRes.value.data.length > 0) {
-        setLatestSession(attRes.value.data[0]);
       }
       if (movRes.status === 'fulfilled' && movRes.value?.data && Array.isArray(movRes.value.data)) {
         setRecentMovements(movRes.value.data);
@@ -77,19 +78,21 @@ export const OverviewPage: React.FC = () => {
     fetchOverviewData();
   }, [fetchOverviewData]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const totalResidents = summary?.total ?? summary?.active ?? 0;
   const currentlyIn = presenceCounts?.currentlyIn ?? summary?.currentlyIn ?? 0;
   const currentlyOut = presenceCounts?.currentlyOut ?? summary?.currentlyOut ?? 0;
   const notEnrolledCount = summary?.notEnrolled ?? 0;
 
-  let attendanceMetric = 'No Session';
-  if (latestSession) {
-    if (latestSession.expectedResidents > 0) {
-      attendanceMetric = `${Math.round(latestSession.attendanceRate)}%`;
-    } else {
-      attendanceMetric = `${latestSession.presentCount} Present`;
-    }
-  }
+  const isAfterReturnDeadline = now.getHours() >= RETURN_DEADLINE_HOUR;
+  const outsideSectionTitle = isAfterReturnDeadline
+    ? 'Residents Not Returned'
+    : 'Residents Currently Outside';
+  const outsideStatusLabel = isAfterReturnDeadline ? 'Not Returned' : 'Outside';
 
   return (
     <div className="overview-page flex flex-col gap-7 max-w-7xl mx-auto w-full">
@@ -155,19 +158,54 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Attendance */}
+        {/* Return Deadline */}
         <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between h-32">
           <div className="flex items-center justify-between text-slate-600">
-            <span className="text-[15px] font-semibold text-slate-600">Attendance</span>
-            <CalendarCheck size={20} className="text-blue-600" />
+            <span className="text-[15px] font-semibold text-slate-600">
+              {isAfterReturnDeadline ? 'Not Returned' : 'Return Deadline'}
+            </span>
+            <Clock size={20} className={isAfterReturnDeadline ? 'text-red-600' : 'text-blue-600'} />
           </div>
           <div>
-            <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">{attendanceMetric}</span>
+            <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">
+              {isAfterReturnDeadline ? currentlyOut : RETURN_DEADLINE_LABEL}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Main Content: Residents Outside, Recent Gate Activity, Pending Face Enrollments */}
+      <div
+        className={`rounded-xl border px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+          isAfterReturnDeadline
+            ? 'bg-red-50 border-red-200 text-red-900'
+            : 'bg-blue-50 border-blue-200 text-blue-900'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          {isAfterReturnDeadline ? (
+            <AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600" />
+          ) : (
+            <Clock size={20} className="mt-0.5 shrink-0 text-blue-600" />
+          )}
+          <div>
+            <div className="font-bold text-[15px]">
+              {isAfterReturnDeadline
+                ? `${currentlyOut} ${currentlyOut === 1 ? 'resident has' : 'residents have'} not returned`
+                : `Return deadline is ${RETURN_DEADLINE_LABEL}`}
+            </div>
+            <div className="text-sm mt-0.5 opacity-80">
+              {isAfterReturnDeadline
+                ? 'This list updates automatically from the live IN / OUT presence state as residents return.'
+                : `${currentlyOut} ${currentlyOut === 1 ? 'resident is' : 'residents are'} currently outside. No separate night attendance is required.`}
+            </div>
+          </div>
+        </div>
+        <Link to="/residents" className="text-sm font-semibold underline underline-offset-2 whitespace-nowrap">
+          View residents
+        </Link>
+      </div>
+
+      {/* Main Content: Live presence, recent gate activity, pending face enrollments */}
       <div className="overview-content-row">
         {/* Left Column: Residents Currently Outside & Recent Gate Activity */}
         <div className="overview-main-col">
@@ -176,17 +214,19 @@ export const OverviewPage: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <LogOut size={18} className="text-amber-600" />
-                <h3 className="text-lg font-bold text-slate-900">Residents Currently Outside</h3>
+                <h3 className="text-lg font-bold text-slate-900">{outsideSectionTitle}</h3>
               </div>
               <span className="text-sm font-semibold px-3 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
-                {currentlyOut} Outside
+                {currentlyOut} {outsideStatusLabel}
               </span>
             </div>
 
             <div className="overflow-x-auto">
               {outsideResidents.length === 0 ? (
                 <div className="p-8 text-center text-slate-500 text-[15px]">
-                  All residents are currently inside the hostel.
+                  {isAfterReturnDeadline
+                    ? 'All residents have returned to the hostel.'
+                    : 'All residents are currently inside the hostel.'}
                 </div>
               ) : (
                 <table className="w-full text-left text-[15px] border-collapse">
@@ -210,7 +250,7 @@ export const OverviewPage: React.FC = () => {
                         <td className="py-3.5 px-6 text-right">
                           <span className="inline-flex items-center px-3 py-1 rounded-md text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                             <span className="sr-only">OUT</span>
-                            <span>Outside</span>
+                            <span>{outsideStatusLabel}</span>
                           </span>
                         </td>
                       </tr>
