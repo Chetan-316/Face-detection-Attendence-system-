@@ -712,7 +712,7 @@ export const GatePage: React.FC = () => {
                 <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/50">
                   <th className="py-3.5 px-6 text-sm font-semibold">Time</th>
                   <th className="py-3.5 px-6 text-sm font-semibold">Resident</th>
-                  <th className="py-3.5 px-6 text-sm font-semibold">Code</th>
+                  <th className="py-3.5 px-6 text-sm font-semibold">Room</th>
                   <th className="py-3.5 px-6 text-sm font-semibold text-right">Movement</th>
                 </tr>
               </thead>
@@ -730,8 +730,8 @@ export const GatePage: React.FC = () => {
                       <td className="py-3.5 px-6 font-semibold text-slate-900">
                         {mov.resident?.fullName || mov.residentId}
                       </td>
-                      <td className="py-3.5 px-6 text-slate-600 font-mono text-sm">
-                        {mov.resident?.residentCode || '—'}
+                      <td className="py-3.5 px-6 text-slate-600 text-sm">
+                        {mov.resident?.roomGroup || '—'}
                       </td>
                       <td className="py-3.5 px-6 text-right">
                         <span
@@ -741,7 +741,7 @@ export const GatePage: React.FC = () => {
                               : 'bg-amber-50 text-amber-800 border border-amber-200'
                           }`}
                         >
-                          {mov.movementType}
+                          {isIN ? 'Entered' : 'Left'}
                         </span>
                       </td>
                     </tr>
