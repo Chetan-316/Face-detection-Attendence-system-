@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { facilitiesApi, Facility } from '../api/facilities.api';
+import { facilitiesApi, Facility, FacilityLocation } from '../api/facilities.api';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input } from '../components/Input';
 import { useToast } from '../components/ToastContext';
-import { Building2, Camera, Plus, RefreshCw, Shield, Users } from 'lucide-react';
+import { Building2, Camera, MapPin, Plus, RefreshCw, Shield, Users } from 'lucide-react';
 
 export const FacilitiesPage: React.FC = () => {
   const { user } = useAuth();
@@ -16,6 +16,13 @@ export const FacilitiesPage: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Facility | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [locationFacility, setLocationFacility] = useState<Facility | null>(null);
+  const [locations, setLocations] = useState<FacilityLocation[]>([]);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+  const [locationName, setLocationName] = useState('');
+  const [locationCode, setLocationCode] = useState('');
+  const [locationType, setLocationType] = useState<FacilityLocation['locationType']>('GATE');
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
@@ -98,6 +105,62 @@ export const FacilitiesPage: React.FC = () => {
       setFormError(err.message || 'Unable to update facility.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const openLocations = async (facility: Facility) => {
+    setLocationFacility(facility);
+    setIsLoadingLocations(true);
+    setLocationError(null);
+    try {
+      const res = await facilitiesApi.listLocations(facility.id);
+      setLocations(res.data || []);
+    } catch (err: any) {
+      setLocationError(err.message || 'Unable to load gate locations.');
+    } finally {
+      setIsLoadingLocations(false);
+    }
+  };
+
+  const handleCreateLocation = async () => {
+    if (!locationFacility) return;
+    if (!locationName.trim() || !locationCode.trim()) {
+      setLocationError('Location name and code are required.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setLocationError(null);
+      await facilitiesApi.createLocation(locationFacility.id, {
+        name: locationName.trim(),
+        code: locationCode.trim().toUpperCase(),
+        locationType,
+      });
+      setLocationName('');
+      setLocationCode('');
+      setLocationType('GATE');
+      const res = await facilitiesApi.listLocations(locationFacility.id);
+      setLocations(res.data || []);
+      success('Gate / location added successfully.');
+    } catch (err: any) {
+      setLocationError(err.message || 'Unable to add gate / location.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleLocationStatus = async (location: FacilityLocation) => {
+    if (!locationFacility) return;
+    try {
+      await facilitiesApi.updateLocation(locationFacility.id, location.id, {
+        isActive: !location.isActive,
+      });
+      const res = await facilitiesApi.listLocations(locationFacility.id);
+      setLocations(res.data || []);
+      success(`${location.name} ${location.isActive ? 'deactivated' : 'reactivated'}.`);
+    } catch (err: any) {
+      setLocationError(err.message || 'Unable to update location.');
     }
   };
 
@@ -227,7 +290,16 @@ export const FacilitiesPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openLocations(facility)}
+                  className="flex-1"
+                  leftIcon={<MapPin size={14} />}
+                >
+                  Gates & Locations
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => openEdit(facility)} className="flex-1">
                   Edit
                 </Button>
@@ -291,6 +363,102 @@ export const FacilitiesPage: React.FC = () => {
             {formError}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={!!locationFacility}
+        onClose={() => !isSubmitting && setLocationFacility(null)}
+        title="Gates & Locations"
+        subtitle={locationFacility ? locationFacility.name : undefined}
+        size="lg"
+        footer={
+          <div className="flex justify-end w-full">
+            <Button variant="outline" onClick={() => setLocationFacility(null)} disabled={isSubmitting}>
+              Close
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <h3 className="text-base font-bold text-slate-900 mb-3">Configured Locations</h3>
+            {isLoadingLocations ? (
+              <div className="text-sm text-slate-500 py-4">Loading locations...</div>
+            ) : locations.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 p-5 text-sm text-slate-500">
+                No gates or locations have been configured yet.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {locations.map((location) => (
+                  <div
+                    key={location.id}
+                    className="rounded-lg border border-slate-200 bg-white p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-900">{location.name}</div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {location.code} • {location.locationType.replaceAll('_', ' ')}
+                      </div>
+                    </div>
+                    <Button
+                      variant={location.isActive ? 'ghost' : 'secondary'}
+                      size="sm"
+                      onClick={() => handleLocationStatus(location)}
+                    >
+                      {location.isActive ? 'Deactivate' : 'Reactivate'}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-base font-bold text-slate-900 mb-3">Add Gate / Location</h3>
+            <Input
+              label="Name"
+              value={locationName}
+              onChange={(e) => setLocationName(e.target.value)}
+              placeholder="Example: Main Gate"
+            />
+            <Input
+              label="Code"
+              value={locationCode}
+              onChange={(e) => setLocationCode(e.target.value.toUpperCase())}
+              placeholder="Example: MAIN-GATE"
+            />
+            <div className="form-group">
+              <label className="form-label" htmlFor="location-type">Type</label>
+              <select
+                id="location-type"
+                className="form-select"
+                value={locationType}
+                onChange={(e) => setLocationType(e.target.value as FacilityLocation['locationType'])}
+              >
+                <option value="GATE">Gate</option>
+                <option value="ENTRANCE">Entrance</option>
+                <option value="COMMON_AREA">Common Area</option>
+              </select>
+            </div>
+
+            {locationError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 mb-3">
+                {locationError}
+              </div>
+            )}
+
+            <Button
+              variant="primary"
+              onClick={handleCreateLocation}
+              isLoading={isSubmitting}
+              className="w-full justify-center"
+              leftIcon={<Plus size={15} />}
+            >
+              Add Location
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal
