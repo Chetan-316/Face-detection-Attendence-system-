@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, X, Filter } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { FaceEnrollmentStatus, PresenceState, ResidentStatus } from '../../types/resident.types';
 
 interface ResidentFilterBarProps {
@@ -40,7 +40,7 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
           <input
             type="text"
             className="filter-search-input"
-            placeholder="Search code or full name..."
+            placeholder="Search residents..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             aria-label="Search residents by name or code"
@@ -62,7 +62,7 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
           <input
             type="text"
             className="filter-select"
-            placeholder="Filter room/group..."
+            placeholder="Room / group"
             value={roomGroup}
             onChange={(e) => onRoomGroupChange(e.target.value)}
             aria-label="Filter by room or group"
@@ -77,9 +77,9 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
             onChange={(e) => onPresenceChange(e.target.value as PresenceState | '')}
             aria-label="Filter by presence"
           >
-            <option value="">Presence: All</option>
-            <option value="IN">IN HOSTEL</option>
-            <option value="OUT">OUTSIDE</option>
+            <option value="">All presence</option>
+            <option value="IN">Inside hostel</option>
+            <option value="OUT">Outside hostel</option>
           </select>
         </div>
 
@@ -91,11 +91,11 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
             onChange={(e) => onFaceEnrollmentChange(e.target.value as FaceEnrollmentStatus | '')}
             aria-label="Filter by face enrollment"
           >
-            <option value="">Face Status: All</option>
-            <option value="ENROLLED">Enrolled</option>
-            <option value="NOT_ENROLLED">Not Enrolled</option>
-            <option value="NEEDS_REENROLLMENT">Needs Re-enrollment</option>
-            <option value="REVOKED">Revoked</option>
+            <option value="">All enrollment</option>
+            <option value="ENROLLED">Face enrolled</option>
+            <option value="NOT_ENROLLED">Needs enrollment</option>
+            <option value="NEEDS_REENROLLMENT">Re-enrollment required</option>
+            <option value="REVOKED">Enrollment revoked</option>
           </select>
         </div>
 
@@ -107,7 +107,7 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
             onChange={(e) => onStatusChange(e.target.value as ResidentStatus | '')}
             aria-label="Filter by account status"
           >
-            <option value="">Status: All</option>
+            <option value="">All resident status</option>
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive</option>
             <option value="SUSPENDED">Suspended</option>
@@ -121,10 +121,10 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
             type="button"
             className="btn-filter-reset"
             onClick={onReset}
-            title="Reset all filters"
+            title="Clear all filters"
           >
-            <Filter size={14} />
-            <span>Reset</span>
+            <X size={14} />
+            <span>Clear filters</span>
           </button>
         )}
       </div>
