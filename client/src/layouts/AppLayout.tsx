@@ -151,6 +151,15 @@ export const AppLayout: React.FC = () => {
                       <UserCog size={18} />
                       <span>Staff</span>
                     </NavLink>
+
+                    <NavLink
+                      to="/facilities"
+                      className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                      onClick={closeMobileMenu}
+                    >
+                      <Building2 size={18} />
+                      <span>Facilities</span>
+                    </NavLink>
                   </>
                 )}
               </>
