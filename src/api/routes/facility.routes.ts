@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient, StaffRole } from '@prisma/client';
+import { LocationType, PrismaClient, StaffRole } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
 import { OrganizationService } from '../../modules/organizations/organization.service';
@@ -100,6 +100,136 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
         staffCount: 0,
         cameraCount: 0,
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/:id/locations', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = requireAdmin(req);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+      const facility = await db.hostel.findUnique({ where: { id } });
+      if (!facility || facility.organizationId !== actor.organizationId) {
+        throw new NotFoundError('Facility', id);
+      }
+      if (actor.hostelId && actor.hostelId !== facility.id) {
+        throw new ForbiddenError('This Administrator can only manage their assigned facility');
+      }
+
+      const locations = await db.location.findMany({
+        where: { hostelId: facility.id },
+        orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
+      });
+
+      res.status(200).json({ data: locations });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/:id/locations', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = requireAdmin(req);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+      const facility = await db.hostel.findUnique({ where: { id } });
+      if (!facility || facility.organizationId !== actor.organizationId) {
+        throw new NotFoundError('Facility', id);
+      }
+      if (actor.hostelId && actor.hostelId !== facility.id) {
+        throw new ForbiddenError('This Administrator can only manage their assigned facility');
+      }
+
+      const name = String(req.body?.name || '').trim();
+      const code = String(req.body?.code || '').trim().toUpperCase();
+      const typeValue = String(req.body?.locationType || 'GATE').toUpperCase();
+
+      if (name.length < 2) throw new ValidationError('Location name is required');
+      if (!/^[A-Z0-9_-]{2,20}$/.test(code)) {
+        throw new ValidationError('Location code must be 2-20 letters, numbers, hyphens, or underscores');
+      }
+      if (!Object.values(LocationType).includes(typeValue as LocationType)) {
+        throw new ValidationError('Invalid location type');
+      }
+
+      const location = await organizationService.createLocation({
+        hostelId: facility.id,
+        code,
+        name,
+        locationType: typeValue as LocationType,
+        createdByUserId: actor.id,
+      });
+
+      res.status(201).json(location);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch('/:id/locations/:locationId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = requireAdmin(req);
+      const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const locationId = Array.isArray(req.params.locationId) ? req.params.locationId[0] : req.params.locationId;
+
+      const facility = await db.hostel.findUnique({ where: { id } });
+      if (!facility || facility.organizationId !== actor.organizationId) {
+        throw new NotFoundError('Facility', id);
+      }
+      if (actor.hostelId && actor.hostelId !== facility.id) {
+        throw new ForbiddenError('This Administrator can only manage their assigned facility');
+      }
+
+      const existing = await db.location.findUnique({ where: { id: locationId } });
+      if (!existing || existing.hostelId !== facility.id) {
+        throw new NotFoundError('Location', locationId);
+      }
+
+      const nextName = req.body?.name === undefined ? existing.name : String(req.body.name || '').trim();
+      const nextCode = req.body?.code === undefined ? existing.code : String(req.body.code || '').trim().toUpperCase();
+      const nextActive = typeof req.body?.isActive === 'boolean' ? req.body.isActive : existing.isActive;
+
+      if (nextName.length < 2) throw new ValidationError('Location name is required');
+      if (!/^[A-Z0-9_-]{2,20}$/.test(nextCode)) {
+        throw new ValidationError('Location code must be 2-20 letters, numbers, hyphens, or underscores');
+      }
+
+      if (!nextActive) {
+        const enabledCameraCount = await db.camera.count({
+          where: { locationId: existing.id, isEnabled: true },
+        });
+        if (enabledCameraCount > 0) {
+          throw new ValidationError('Reassign or disable cameras before deactivating this gate/location');
+        }
+      }
+
+      const updated = await db.$transaction(async (tx) => {
+        const location = await tx.location.update({
+          where: { id: existing.id },
+          data: { name: nextName, code: nextCode, isActive: nextActive },
+        });
+
+        await auditService.record(
+          {
+            organizationId: actor.organizationId,
+            hostelId: facility.id,
+            entityType: 'LOCATION',
+            entityId: location.id,
+            action: 'UPDATE',
+            performedByUserId: actor.id,
+            performedByRole: actor.role,
+            oldValues: { name: existing.name, code: existing.code, isActive: existing.isActive },
+            newValues: { name: location.name, code: location.code, isActive: location.isActive },
+          },
+          tx
+        );
+
+        return location;
+      });
+
+      res.status(200).json(updated);
     } catch (error) {
       next(error);
     }
