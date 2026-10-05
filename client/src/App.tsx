@@ -12,6 +12,7 @@ import { GatePage } from './pages/GatePage';
 import { CamerasPage } from './pages/CamerasPage';
 import { RecognitionPage } from './pages/RecognitionPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { StaffPage } from './pages/StaffPage';
 
 type StaffRole = 'ADMIN' | 'WARDEN' | 'GUARD';
 
@@ -75,6 +76,15 @@ export const App: React.FC = () => {
                 element={
                   <RoleRoute allowed={['ADMIN', 'WARDEN']}>
                     <ReportsPage />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="staff"
+                element={
+                  <RoleRoute allowed={['ADMIN']}>
+                    <StaffPage />
                   </RoleRoute>
                 }
               />
