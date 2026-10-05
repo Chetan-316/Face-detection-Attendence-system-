@@ -8,7 +8,7 @@ import { Input } from '../components/Input';
 import { Select } from '../components/Select';
 import { Badge } from '../components/Badge';
 import { useToast } from '../components/ToastContext';
-import { Plus, RefreshCw, Users, ShieldCheck } from 'lucide-react';
+import { Edit2, KeyRound, Plus, RefreshCw, Users, ShieldCheck } from 'lucide-react';
 
 type HostelOption = { id: string; code: string; name: string };
 
@@ -19,6 +19,9 @@ export const StaffPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editing, setEditing] = useState<StaffAccount | null>(null);
+  const [resettingPasswordFor, setResettingPasswordFor] = useState<StaffAccount | null>(null);
+  const [newPassword, setNewPassword] = useState('');
 
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
@@ -62,6 +65,74 @@ export const StaffPage: React.FC = () => {
     setRole('WARDEN');
     setHostelId(hostels[0]?.id || '');
     setFormError(null);
+  };
+
+  const openEdit = (member: StaffAccount) => {
+    setEditing(member);
+    setFullName(member.fullName);
+    setEmail(member.email || '');
+    setRole(member.role as 'WARDEN' | 'GUARD');
+    setHostelId(member.hostelId || hostels[0]?.id || '');
+    setFormError(null);
+  };
+
+  const handleUpdate = async () => {
+    if (!editing) return;
+    if (!fullName.trim() || !hostelId) {
+      setFormError('Name and hostel are required.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setFormError(null);
+      await staffApi.updateStaff(editing.id, {
+        fullName: fullName.trim(),
+        email: email.trim() || undefined,
+        role,
+        hostelId,
+      });
+      setEditing(null);
+      resetForm();
+      await fetchData();
+      success('Staff account updated successfully.');
+    } catch (err: any) {
+      setFormError(err.message || 'Unable to update staff account.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleStatusChange = async (member: StaffAccount) => {
+    const nextStatus = member.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    try {
+      await staffApi.updateStaff(member.id, { status: nextStatus });
+      await fetchData();
+      success(`${member.fullName} is now ${nextStatus === 'ACTIVE' ? 'active' : 'inactive'}.`);
+    } catch (err: any) {
+      toastError(err.message || 'Unable to update staff status.');
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resettingPasswordFor) return;
+    if (newPassword.length < 8) {
+      setFormError('Temporary password must be at least 8 characters.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setFormError(null);
+      await staffApi.resetPassword(resettingPasswordFor.id, newPassword);
+      success(`Temporary password updated for ${resettingPasswordFor.fullName}.`);
+      setResettingPasswordFor(null);
+      setNewPassword('');
+    } catch (err: any) {
+      setFormError(err.message || 'Unable to reset password.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleCreate = async () => {
@@ -154,6 +225,7 @@ export const StaffPage: React.FC = () => {
                 <th>Role</th>
                 <th>Hostel</th>
                 <th>Status</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -174,12 +246,124 @@ export const StaffPage: React.FC = () => {
                   <td>
                     <Badge type="status" value={member.status} />
                   </td>
+                  <td className="text-right">
+                    <div className="inline-flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openEdit(member)} leftIcon={<Edit2 size={14} />}>
+                        Edit
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        setResettingPasswordFor(member);
+                        setNewPassword('');
+                        setFormError(null);
+                      }} leftIcon={<KeyRound size={14} />}>
+                        Password
+                      </Button>
+                      <Button
+                        variant={member.status === 'ACTIVE' ? 'ghost' : 'secondary'}
+                        size="sm"
+                        onClick={() => handleStatusChange(member)}
+                      >
+                        {member.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
+                      </Button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      <Modal
+        isOpen={!!editing}
+        onClose={() => !isSubmitting && setEditing(null)}
+        title="Edit Staff Member"
+        subtitle={editing ? `@${editing.username}` : undefined}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button variant="outline" onClick={() => {
+              setEditing(null);
+              resetForm();
+            }} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleUpdate} isLoading={isSubmitting}>
+              Save Changes
+            </Button>
+          </div>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label="Full Name"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            required
+          />
+          <Input
+            label="Email (Optional)"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Select
+            label="Role"
+            value={role}
+            onChange={(e) => setRole(e.target.value as 'WARDEN' | 'GUARD')}
+            options={[
+              { value: 'WARDEN', label: 'Warden' },
+              { value: 'GUARD', label: 'Guard' },
+            ]}
+            required
+          />
+          <Select
+            label="Hostel"
+            value={hostelId}
+            onChange={(e) => setHostelId(e.target.value)}
+            options={hostelOptions}
+            required
+          />
+        </div>
+        {formError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {formError}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={!!resettingPasswordFor}
+        onClose={() => !isSubmitting && setResettingPasswordFor(null)}
+        title="Reset Temporary Password"
+        subtitle={resettingPasswordFor ? resettingPasswordFor.fullName : undefined}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button variant="outline" onClick={() => setResettingPasswordFor(null)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleResetPassword} isLoading={isSubmitting}>
+              Update Password
+            </Button>
+          </div>
+        }
+      >
+        <Input
+          label="New Temporary Password"
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          placeholder="Minimum 8 characters"
+          hint="Share this temporary password securely with the staff member."
+          required
+        />
+        {formError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {formError}
+          </div>
+        )}
+      </Modal>
 
       <Modal
         isOpen={isCreateOpen}
