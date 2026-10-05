@@ -35,4 +35,30 @@ export const staffApi = {
       body: JSON.stringify(payload),
     });
   },
+
+  async updateStaff(
+    id: string,
+    payload: {
+      fullName?: string;
+      email?: string;
+      role?: 'WARDEN' | 'GUARD';
+      hostelId?: string;
+      status?: UserStatus;
+    }
+  ): Promise<StaffAccount> {
+    return apiClient<StaffAccount>(`/staff/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async resetPassword(id: string, password: string): Promise<{ success: boolean; message: string }> {
+    return apiClient<{ success: boolean; message: string }>(
+      `/staff/${encodeURIComponent(id)}/reset-password`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      }
+    );
+  },
 };
