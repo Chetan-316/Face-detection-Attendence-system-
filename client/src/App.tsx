@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './auth/AuthContext';
+import { AuthProvider, useAuth } from './auth/AuthContext';
 import { ToastProvider } from './components/ToastContext';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { AppLayout } from './layouts/AppLayout';
@@ -14,22 +14,25 @@ import { RecognitionPage } from './pages/RecognitionPage';
 import { AttendancePage } from './pages/AttendancePage';
 import { ReportsPage } from './pages/ReportsPage';
 
-import { useAuth } from './auth/AuthContext';
+type StaffRole = 'ADMIN' | 'WARDEN' | 'GUARD';
 
-const GateRoute: React.FC = () => {
-  const { user } = useAuth();
-  if (user && user.role !== 'GUARD') {
-    return <Navigate to="/" replace />;
-  }
-  return <GatePage />;
-};
+interface RoleRouteProps {
+  allowed: StaffRole[];
+  children: React.ReactElement;
+}
 
-const RecognitionRoute: React.FC = () => {
+const RoleRoute: React.FC<RoleRouteProps> = ({ allowed, children }) => {
   const { user } = useAuth();
-  if (user?.role === 'GUARD') {
-    return <Navigate to="/gate" replace />;
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
   }
-  return <RecognitionPage />;
+
+  if (!allowed.includes(user.role as StaffRole)) {
+    return <Navigate to={user.role === 'GUARD' ? '/gate' : '/'} replace />;
+  }
+
+  return children;
 };
 
 export const App: React.FC = () => {
@@ -38,10 +41,8 @@ export const App: React.FC = () => {
       <ToastProvider>
         <AuthProvider>
           <Routes>
-            {/* Public Auth Route */}
             <Route path="/login" element={<LoginPage />} />
 
-            {/* Authenticated Protected Shell */}
             <Route
               path="/"
               element={
@@ -51,16 +52,71 @@ export const App: React.FC = () => {
               }
             >
               <Route index element={<OverviewPage />} />
-              <Route path="residents" element={<ResidentsPage />} />
-              <Route path="residents/:id" element={<ResidentDetailPage />} />
-              <Route path="attendance" element={<AttendancePage />} />
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="cameras" element={<CamerasPage />} />
-              <Route path="gate" element={<GateRoute />} />
-              <Route path="recognition" element={<RecognitionRoute />} />
+
+              <Route
+                path="residents"
+                element={
+                  <RoleRoute allowed={['ADMIN', 'WARDEN']}>
+                    <ResidentsPage />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="residents/:id"
+                element={
+                  <RoleRoute allowed={['ADMIN', 'WARDEN']}>
+                    <ResidentDetailPage />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="reports"
+                element={
+                  <RoleRoute allowed={['ADMIN', 'WARDEN']}>
+                    <ReportsPage />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="attendance"
+                element={
+                  <RoleRoute allowed={['ADMIN']}>
+                    <AttendancePage />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="cameras"
+                element={
+                  <RoleRoute allowed={['ADMIN']}>
+                    <CamerasPage />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="gate"
+                element={
+                  <RoleRoute allowed={['GUARD']}>
+                    <GatePage />
+                  </RoleRoute>
+                }
+              />
+
+              <Route
+                path="recognition"
+                element={
+                  <RoleRoute allowed={['ADMIN', 'WARDEN']}>
+                    <RecognitionPage />
+                  </RoleRoute>
+                }
+              />
             </Route>
 
-            {/* Fallback */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AuthProvider>
