@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { residentsApi } from '../api/residents.api';
+import { reportsApi } from '../api/reports.api';
+import { MovementReportItem } from '../types/reports.types';
 import { SafeResident } from '../types/resident.types';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
@@ -37,6 +39,7 @@ export const ResidentDetailPage: React.FC = () => {
   const [resident, setResident] = useState<SafeResident | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recentMovements, setRecentMovements] = useState<MovementReportItem[]>([]);
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeactivateOpen, setIsDeactivateOpen] = useState(false);
@@ -52,8 +55,12 @@ export const ResidentDetailPage: React.FC = () => {
     setError(null);
 
     try {
-      const data = await residentsApi.getResident(id);
+      const [data, movementRes] = await Promise.all([
+        residentsApi.getResident(id),
+        reportsApi.getResidentMovements(id, 8).catch(() => ({ data: [] })),
+      ]);
       setResident(data);
+      setRecentMovements(movementRes.data || []);
     } catch (err: any) {
       setError(err.message || 'Resident record not found or inaccessible under current scope');
     } finally {
@@ -140,7 +147,7 @@ export const ResidentDetailPage: React.FC = () => {
       {/* Prominent Hero Status Card */}
       <div className={`presence-hero-banner ${isCurrentlyIn ? 'is-in' : 'is-out'}`}>
         <div className="presence-hero-content">
-          <span className="presence-hero-caption">CURRENT REAL-TIME PRESENCE</span>
+          <span className="presence-hero-caption">CURRENT PRESENCE</span>
           <h2 className="presence-hero-state">
             {isCurrentlyIn ? 'Currently Inside Hostel' : 'Currently Outside Hostel'}
           </h2>
@@ -158,7 +165,7 @@ export const ResidentDetailPage: React.FC = () => {
       {/* Onboarding Checklist Summary */}
       <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
         <span className="text-sm font-semibold text-slate-700 block mb-3">
-          Resident Onboarding Checklist
+          Resident Profile Status
         </span>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
           <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white border border-slate-200 shadow-sm">
@@ -176,7 +183,7 @@ export const ResidentDetailPage: React.FC = () => {
               <XCircle size={18} className="text-amber-600 shrink-0" />
             )}
             <div>
-              <span className="font-semibold block text-slate-800">Staff Profile Photo</span>
+              <span className="font-semibold block text-slate-800">Profile Photo</span>
               <span className={hasProfilePhoto ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
                 {hasProfilePhoto ? 'Photo Attached' : 'Missing Photo'}
               </span>
@@ -190,9 +197,9 @@ export const ResidentDetailPage: React.FC = () => {
               <XCircle size={18} className="text-slate-400 shrink-0" />
             )}
             <div>
-              <span className="font-semibold block text-slate-800">Face Biometrics</span>
+              <span className="font-semibold block text-slate-800">Face Enrollment</span>
               <span className={isFaceEnrolled ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
-                {isFaceEnrolled ? '5-Pose Enrolled' : 'Not Enrolled'}
+                {isFaceEnrolled ? 'Enrolled' : 'Not Enrolled'}
               </span>
             </div>
           </div>
@@ -252,12 +259,12 @@ export const ResidentDetailPage: React.FC = () => {
         </Card>
 
         {/* Biometrics and Security Scope */}
-        <Card title="Biometrics & Enrollment" subtitle="Face recognition capability tracking">
+        <Card title="Face Enrollment" subtitle="Resident recognition setup">
           <div className="biometric-status-card p-4 rounded-xl border border-slate-200 bg-white">
             <div className="biometric-status-header flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ScanFace size={18} className="text-blue-600" />
-                <span className="font-semibold text-sm text-slate-900">Face Recognition Status</span>
+                <span className="font-semibold text-sm text-slate-900">Enrollment Status</span>
               </div>
               <Badge type="enrollment" value={resident.faceEnrollmentStatus} />
             </div>
@@ -297,6 +304,51 @@ export const ResidentDetailPage: React.FC = () => {
           </div>
         </Card>
       </div>
+
+      <Card title="Recent Movement History" subtitle="Latest verified hostel entry and exit events">
+        {recentMovements.length === 0 ? (
+          <p className="text-sm text-slate-500 py-4">No movement history recorded yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-slate-500">
+                  <th className="py-3 pr-4 font-semibold">Date & Time</th>
+                  <th className="py-3 pr-4 font-semibold">Movement</th>
+                  <th className="py-3 pr-4 font-semibold">Gate</th>
+                  <th className="py-3 font-semibold">Record</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {recentMovements.map((movement) => (
+                  <tr key={movement.id}>
+                    <td className="py-3 pr-4 text-slate-600">
+                      {formatDateTime(movement.timestamp)}
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className={`inline-flex px-2.5 py-1 rounded-md text-xs font-semibold ${
+                        movement.direction === 'IN'
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                      }`}>
+                        {movement.direction === 'IN' ? 'Entered' : 'Left'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-slate-700">{movement.gateName || 'Gate'}</td>
+                    <td className="py-3">
+                      {movement.isCorrection ? (
+                        <span className="text-xs font-semibold text-blue-700">Corrected</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-slate-500">Verified</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       {/* Modals */}
       {canManage && (
