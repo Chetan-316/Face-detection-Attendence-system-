@@ -5,6 +5,7 @@ export interface Facility {
   code: string;
   name: string;
   isActive: boolean;
+  returnDeadlineMinutes?: number;
   createdAt?: string;
   residentCount?: number;
   staffCount?: number;
@@ -26,7 +27,7 @@ export const facilitiesApi = {
     return apiClient<{ data: Facility[] }>('/facilities');
   },
 
-  async createFacility(payload: { name: string; code: string }): Promise<Facility> {
+  async createFacility(payload: { name: string; code: string; returnDeadlineMinutes?: number }): Promise<Facility> {
     return apiClient<Facility>('/facilities', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -35,12 +36,21 @@ export const facilitiesApi = {
 
   async updateFacility(
     id: string,
-    payload: { name?: string; code?: string; isActive?: boolean }
+    payload: { name?: string; code?: string; isActive?: boolean; returnDeadlineMinutes?: number }
   ): Promise<Facility> {
     return apiClient<Facility>(`/facilities/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
+  },
+
+  async getOperationalSettings(hostelId?: string): Promise<{
+    data: { hostelId: string | null; returnDeadlineMinutes: number; scoped: boolean };
+  }> {
+    const query = hostelId ? `?hostelId=${encodeURIComponent(hostelId)}` : '';
+    return apiClient<{
+      data: { hostelId: string | null; returnDeadlineMinutes: number; scoped: boolean };
+    }>(`/facilities/settings${query}`);
   },
 
   async listLocations(facilityId: string): Promise<{ data: FacilityLocation[] }> {
