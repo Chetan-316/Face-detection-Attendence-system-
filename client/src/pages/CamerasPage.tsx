@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Badge } from '../components/Badge';
 import { camerasApi } from '../api/cameras.api';
+import { facilitiesApi, Facility, FacilityLocation } from '../api/facilities.api';
 import { CameraEntity, CameraDiagnostics, CameraTestResult } from '../types/camera.types';
 import {
   Video,
@@ -34,6 +35,13 @@ export const CamerasPage: React.FC = () => {
   const isAdmin = user?.role === 'ADMIN';
 
   const [cameras, setCameras] = useState<CameraEntity[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [newCameraFacilityId, setNewCameraFacilityId] = useState(user?.hostelId || '');
+  const [newCameraLocations, setNewCameraLocations] = useState<FacilityLocation[]>([]);
+  const [newCameraLocationId, setNewCameraLocationId] = useState('');
+  const [editCameraFacilityId, setEditCameraFacilityId] = useState('');
+  const [editCameraLocations, setEditCameraLocations] = useState<FacilityLocation[]>([]);
+  const [editCameraLocationId, setEditCameraLocationId] = useState('');
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [selectedCamera, setSelectedCamera] = useState<CameraEntity | null>(null);
   const [diagnostics, setDiagnostics] = useState<CameraDiagnostics | null>(null);
@@ -145,6 +153,57 @@ export const CamerasPage: React.FC = () => {
   }, []);
 
   const pollIntervalRef = useRef<number | null>(null);
+
+  const fetchFacilities = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const res = await facilitiesApi.listFacilities();
+      const activeFacilities = (res.data || []).filter((facility) => facility.isActive);
+      setFacilities(activeFacilities);
+      const initialFacilityId = user?.hostelId || activeFacilities[0]?.id || '';
+      setNewCameraFacilityId((current) => current || initialFacilityId);
+      if (initialFacilityId) {
+        const locationRes = await facilitiesApi.listLocations(initialFacilityId);
+        setNewCameraLocations((locationRes.data || []).filter((location) => location.isActive));
+      }
+    } catch (err: any) {
+      toastError(err.message || 'Failed to load facilities');
+    }
+  }, [isAdmin, user?.hostelId, toastError]);
+
+  const loadNewCameraLocations = useCallback(async (facilityId: string) => {
+    setNewCameraFacilityId(facilityId);
+    setNewCameraLocationId('');
+    if (!facilityId) {
+      setNewCameraLocations([]);
+      return;
+    }
+    try {
+      const res = await facilitiesApi.listLocations(facilityId);
+      setNewCameraLocations((res.data || []).filter((location) => location.isActive));
+    } catch {
+      setNewCameraLocations([]);
+    }
+  }, []);
+
+  const loadEditCameraLocations = useCallback(async (facilityId: string, selectedLocationId?: string | null) => {
+    setEditCameraFacilityId(facilityId);
+    setEditCameraLocationId(selectedLocationId || '');
+    if (!facilityId) {
+      setEditCameraLocations([]);
+      return;
+    }
+    try {
+      const res = await facilitiesApi.listLocations(facilityId);
+      setEditCameraLocations((res.data || []).filter((location) => location.isActive || location.id === selectedLocationId));
+    } catch {
+      setEditCameraLocations([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFacilities();
+  }, [fetchFacilities]);
 
   // Fetch cameras list
   const fetchCameras = useCallback(async () => {
@@ -322,6 +381,10 @@ export const CamerasPage: React.FC = () => {
       toastError('Camera name is required');
       return;
     }
+    if (!newCameraFacilityId) {
+      toastError('Select a facility for this camera');
+      return;
+    }
 
     try {
       setIsSubmittingCamera(true);
@@ -352,7 +415,8 @@ export const CamerasPage: React.FC = () => {
         name: newCameraName.trim(),
         sourceType: newCameraSourceType,
         role: newCameraRole,
-        hostelId: user?.hostelId || undefined,
+        hostelId: newCameraFacilityId,
+        locationId: newCameraLocationId || null,
         configMetadata,
       });
 
@@ -363,6 +427,7 @@ export const CamerasPage: React.FC = () => {
       setNewCameraRtspUrl('');
       setNewCameraUsername('');
       setNewCameraPassword('');
+      setNewCameraLocationId('');
       setModalTestResult(null);
       fetchCameras();
     } catch (err: any) {
@@ -376,6 +441,7 @@ export const CamerasPage: React.FC = () => {
     setEditCameraName(camera.name);
     setEditCameraRole(camera.role);
     setEditCameraMovementAutomation(camera.configMetadata?.movementAutomationEnabled !== false);
+    loadEditCameraLocations(camera.hostelId, camera.locationId);
 
     const host = camera.configMetadata?.host;
     const port = camera.configMetadata?.port ?? 554;
@@ -427,6 +493,7 @@ export const CamerasPage: React.FC = () => {
       await camerasApi.updateCamera(selectedCamera.id, {
         name: editCameraName.trim(),
         role: editCameraRole,
+        locationId: editCameraLocationId || null,
         configMetadata: Object.keys(deltaConfig).length > 0 ? deltaConfig : undefined,
       });
 
@@ -1065,6 +1132,44 @@ export const CamerasPage: React.FC = () => {
                   />
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="form-group">
+                    <label htmlFor="cam-facility" className="form-label">
+                      Facility <span className="required">*</span>
+                    </label>
+                    <select
+                      id="cam-facility"
+                      className="form-control"
+                      value={newCameraFacilityId}
+                      onChange={(e) => loadNewCameraLocations(e.target.value)}
+                      disabled={!!user?.hostelId}
+                      required
+                    >
+                      <option value="">Select facility</option>
+                      {facilities.map((facility) => (
+                        <option key={facility.id} value={facility.id}>{facility.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="cam-location" className="form-label">Gate / Location</label>
+                    <select
+                      id="cam-location"
+                      className="form-control"
+                      value={newCameraLocationId}
+                      onChange={(e) => setNewCameraLocationId(e.target.value)}
+                      disabled={!newCameraFacilityId}
+                    >
+                      <option value="">Not assigned</option>
+                      {newCameraLocations.map((location) => (
+                        <option key={location.id} value={location.id}>{location.name}</option>
+                      ))}
+                    </select>
+                    <small className="form-hint">Assign the camera to the physical gate or entrance it monitors.</small>
+                  </div>
+                </div>
+
                 <div className="form-group">
                   <label htmlFor="cam-source" className="form-label">
                     Camera Type <span className="required">*</span>
@@ -1212,7 +1317,7 @@ export const CamerasPage: React.FC = () => {
                           }`}
                         >
                           {modalTestResult.reachable ? (
-                            <span>Connected ({modalTestResult.resolution?.width}x{modalTestResult.resolution?.height}, {modalTestResult.fps} FPS, {modalTestResult.latencyMs}ms)</span>
+                            <span>Connection successful. The camera is reachable and ready to add.</span>
                           ) : (
                             <span>{modalTestResult.message || 'Could not connect. Check camera address, credentials and network.'}</span>
                           )}
@@ -1297,6 +1402,40 @@ export const CamerasPage: React.FC = () => {
                     onChange={(e) => setEditCameraName(e.target.value)}
                     required
                   />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="form-group">
+                    <label htmlFor="edit-facility" className="form-label">Facility</label>
+                    <select
+                      id="edit-facility"
+                      className="form-control"
+                      value={editCameraFacilityId}
+                      onChange={(e) => loadEditCameraLocations(e.target.value)}
+                      disabled
+                    >
+                      {facilities
+                        .filter((facility) => facility.id === editCameraFacilityId)
+                        .map((facility) => (
+                          <option key={facility.id} value={facility.id}>{facility.name}</option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="edit-location" className="form-label">Gate / Location</label>
+                    <select
+                      id="edit-location"
+                      className="form-control"
+                      value={editCameraLocationId}
+                      onChange={(e) => setEditCameraLocationId(e.target.value)}
+                    >
+                      <option value="">Not assigned</option>
+                      {editCameraLocations.map((location) => (
+                        <option key={location.id} value={location.id}>{location.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="form-group">
