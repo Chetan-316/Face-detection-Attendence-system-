@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient, StaffRole, MovementType, MovementSource } from '@prisma/client';
+import { PrismaClient, StaffRole, MovementType, MovementSource, PresenceState } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
 import { MovementDecisionService } from '../../modules/movement-decision/movement-decision.service';
@@ -164,6 +164,77 @@ export function createMovementRouter(
         success: true,
         data: movementEvent,
         message: `Movement confirmed: ${resident.fullName} marked ${finalType}`,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/v1/movements/corrections
+   * Admin/Warden correction for a missed gate IN or OUT event.
+   * Preserves immutable movement history and writes an audited correction event.
+   */
+  router.post('/corrections', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = getActor(req);
+
+      if (actor.role !== StaffRole.ADMIN && actor.role !== StaffRole.WARDEN) {
+        throw new ForbiddenError('Only Administrators and Wardens can correct resident presence');
+      }
+
+      const { residentId, targetState, effectiveTimestamp, reason } = req.body;
+
+      if (!residentId) {
+        throw new ValidationError('residentId is required');
+      }
+
+      const normalizedTarget = String(targetState || '').toUpperCase();
+      if (normalizedTarget !== PresenceState.IN && normalizedTarget !== PresenceState.OUT) {
+        throw new ValidationError("targetState must be either 'IN' or 'OUT'");
+      }
+
+      if (!reason || String(reason).trim().length === 0) {
+        throw new ValidationError('A correction reason is required');
+      }
+
+      const effectiveTime = new Date(effectiveTimestamp);
+      if (!effectiveTimestamp || Number.isNaN(effectiveTime.getTime())) {
+        throw new ValidationError('A valid effectiveTimestamp is required');
+      }
+
+      const resident = await db.resident.findUnique({
+        where: { id: residentId },
+        include: { presence: true },
+      });
+
+      if (!resident || resident.organizationId !== actor.organizationId) {
+        throw new NotFoundError('Resident', residentId);
+      }
+
+      if (
+        actor.role === StaffRole.WARDEN &&
+        actor.hostelId &&
+        resident.hostelId !== actor.hostelId
+      ) {
+        throw new ForbiddenError('Cannot correct presence for a resident of another hostel');
+      }
+
+      const movementEvent = await movService.executeWardenCorrection({
+        residentId: resident.id,
+        targetState: normalizedTarget as PresenceState,
+        hostelId: resident.hostelId,
+        effectiveTimestamp: effectiveTime,
+        reason: String(reason).trim(),
+        authorizedByUserId: actor.id,
+        authorizedByRole: actor.role,
+        notes: `Presence corrected by ${actor.role}: ${String(reason).trim()}`,
+      });
+
+      res.status(201).json({
+        success: true,
+        data: movementEvent,
+        message: `Presence corrected: ${resident.fullName} is now ${normalizedTarget === 'IN' ? 'inside' : 'outside'}`,
       });
     } catch (err) {
       next(err);
