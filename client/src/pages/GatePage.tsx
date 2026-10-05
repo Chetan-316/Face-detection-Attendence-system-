@@ -6,9 +6,7 @@ import { residentsApi } from '../api/residents.api';
 import { CameraEntity } from '../types/camera.types';
 import { RecognitionObservation } from '../types/recognition.types';
 import { MovementEventEntity, PresenceCounts } from '../types/movement.types';
-import { SafeResident } from '../types/resident.types';
 import { RegisterRegularComerModal } from '../features/gate/RegisterRegularComerModal';
-import { FaceEnrollmentModal } from '../features/residents/FaceEnrollmentModal';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Button } from '../components/Button';
@@ -48,7 +46,6 @@ export const GatePage: React.FC = () => {
 
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isRegisterVisitorOpen, setIsRegisterVisitorOpen] = useState(false);
-  const [enrollingVisitor, setEnrollingVisitor] = useState<SafeResident | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const resetTimerRef = useRef<any>(null);
 
@@ -115,11 +112,8 @@ export const GatePage: React.FC = () => {
     startLaptopCamera();
   }, [startLaptopCamera]);
 
-  const handleRegisterVisitorSuccess = (newPerson: SafeResident, shouldEnrollFace: boolean) => {
+  const handleRegisterVisitorSuccess = () => {
     fetchMovementData();
-    if (shouldEnrollFace) {
-      setEnrollingVisitor(newPerson);
-    }
   };
 
   // Fetch gate cameras
@@ -766,17 +760,6 @@ export const GatePage: React.FC = () => {
         hostelId={user?.hostelId || undefined}
       />
 
-      {enrollingVisitor && (
-        <FaceEnrollmentModal
-          isOpen={!!enrollingVisitor}
-          resident={enrollingVisitor}
-          onClose={() => setEnrollingVisitor(null)}
-          onSuccess={(updated) => {
-            setEnrollingVisitor(null);
-            success(`Face enrollment completed for ${updated.fullName}. Future visits will be auto-recognized.`);
-          }}
-        />
-      )}
     </div>
   );
 };
