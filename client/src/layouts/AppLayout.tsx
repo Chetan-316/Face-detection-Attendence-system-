@@ -15,6 +15,7 @@ import {
   Building2,
   Eye,
   FileText,
+  UserCog,
 } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -140,6 +141,15 @@ export const AppLayout: React.FC = () => {
                     >
                       <Video size={18} />
                       <span>Cameras</span>
+                    </NavLink>
+
+                    <NavLink
+                      to="/staff"
+                      className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                      onClick={closeMobileMenu}
+                    >
+                      <UserCog size={18} />
+                      <span>Staff</span>
                     </NavLink>
                   </>
                 )}
