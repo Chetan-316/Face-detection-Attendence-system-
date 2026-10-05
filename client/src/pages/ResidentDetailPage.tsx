@@ -2,13 +2,16 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { residentsApi } from '../api/residents.api';
 import { reportsApi } from '../api/reports.api';
+import { movementsApi } from '../api/movements.api';
 import { MovementReportItem } from '../types/reports.types';
 import { SafeResident } from '../types/resident.types';
 import { useAuth } from '../auth/AuthContext';
+import { useToast } from '../components/ToastContext';
 import { PageHeader } from '../components/PageHeader';
 import { Card } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
+import { Modal } from '../components/Modal';
 import { ResidentEditModal } from '../features/residents/ResidentEditModal';
 import { ResidentDeactivateModal } from '../features/residents/ResidentDeactivateModal';
 import { ResidentReactivateModal } from '../features/residents/ResidentReactivateModal';
@@ -30,11 +33,13 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 export const ResidentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { success, error: toastError } = useToast();
 
   const [resident, setResident] = useState<SafeResident | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,8 +51,24 @@ export const ResidentDetailPage: React.FC = () => {
   const [isReactivateOpen, setIsReactivateOpen] = useState(false);
   const [isFaceEnrollOpen, setIsFaceEnrollOpen] = useState(false);
   const [isFaceRevokeOpen, setIsFaceRevokeOpen] = useState(false);
+  const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
+  const [correctionTime, setCorrectionTime] = useState('');
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
+  const [isCorrecting, setIsCorrecting] = useState(false);
 
   const canManage = user?.role === 'ADMIN' || user?.role === 'WARDEN';
+
+  const openPresenceCorrection = () => {
+    const now = new Date();
+    const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
+      .toISOString()
+      .slice(0, 16);
+    setCorrectionTime(localIso);
+    setCorrectionReason('');
+    setCorrectionError(null);
+    setIsCorrectionOpen(true);
+  };
 
   const fetchResident = useCallback(async () => {
     if (!id) return;
@@ -71,6 +92,42 @@ export const ResidentDetailPage: React.FC = () => {
   useEffect(() => {
     fetchResident();
   }, [fetchResident]);
+
+  const handlePresenceCorrection = async () => {
+    if (!resident) return;
+
+    const reason = correctionReason.trim();
+    if (!reason) {
+      setCorrectionError('Please enter the reason for this correction.');
+      return;
+    }
+    if (!correctionTime) {
+      setCorrectionError('Please choose when the missed movement happened.');
+      return;
+    }
+
+    const targetState = resident.presence?.currentState === 'IN' ? 'OUT' : 'IN';
+
+    try {
+      setIsCorrecting(true);
+      setCorrectionError(null);
+      await movementsApi.correctPresence({
+        residentId: resident.id,
+        targetState,
+        effectiveTimestamp: new Date(correctionTime).toISOString(),
+        reason,
+      });
+      setIsCorrectionOpen(false);
+      await fetchResident();
+      success(`Presence corrected to ${targetState === 'IN' ? 'Inside hostel' : 'Outside hostel'}.`);
+    } catch (err: any) {
+      const message = err.message || 'Unable to correct resident presence.';
+      setCorrectionError(message);
+      toastError(message);
+    } finally {
+      setIsCorrecting(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -161,6 +218,19 @@ export const ResidentDetailPage: React.FC = () => {
           <Badge type="presence" value={resident.presence?.currentState || 'OUT'} size="md" />
         </div>
       </div>
+
+      {canManage && (
+        <div className="flex justify-end -mt-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openPresenceCorrection}
+            leftIcon={<RefreshCw size={14} />}
+          >
+            Correct Presence
+          </Button>
+        </div>
+      )}
 
       {/* Onboarding Checklist Summary */}
       <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
@@ -349,6 +419,79 @@ export const ResidentDetailPage: React.FC = () => {
           </div>
         )}
       </Card>
+
+      <Modal
+        isOpen={isCorrectionOpen}
+        onClose={() => !isCorrecting && setIsCorrectionOpen(false)}
+        title="Correct Resident Presence"
+        subtitle={`${resident.fullName} • currently ${isCurrentlyIn ? 'Inside hostel' : 'Outside hostel'}`}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button
+              variant="outline"
+              onClick={() => setIsCorrectionOpen(false)}
+              disabled={isCorrecting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handlePresenceCorrection}
+              isLoading={isCorrecting}
+              disabled={isCorrecting}
+            >
+              Apply Correction
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Use this only when a genuine gate IN / OUT movement was missed. The correction is added to the audit history; existing movement records are not deleted.
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+            <span className="block text-xs font-semibold text-slate-500 mb-1">Correct presence to</span>
+            <span className="font-bold text-slate-900">
+              {isCurrentlyIn ? 'Outside hostel' : 'Inside hostel'}
+            </span>
+          </div>
+
+          <div>
+            <label htmlFor="correction-time" className="block text-sm font-semibold text-slate-700 mb-1.5">
+              When did the missed movement happen?
+            </label>
+            <input
+              id="correction-time"
+              type="datetime-local"
+              className="form-control w-full"
+              value={correctionTime}
+              max={new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)}
+              onChange={(e) => setCorrectionTime(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="correction-reason" className="block text-sm font-semibold text-slate-700 mb-1.5">
+              Reason
+            </label>
+            <textarea
+              id="correction-reason"
+              className="form-control w-full min-h-24"
+              placeholder="Example: Resident returned through the gate but the camera event was missed."
+              value={correctionReason}
+              onChange={(e) => setCorrectionReason(e.target.value)}
+            />
+          </div>
+
+          {correctionError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {correctionError}
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Modals */}
       {canManage && (
