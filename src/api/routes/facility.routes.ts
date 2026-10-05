@@ -13,6 +13,52 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
   const { requireAuth, requirePermission } = createAuthMiddleware(db);
 
   router.use(requireAuth);
+
+  router.get('/settings', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const actor = req.user!;
+      const requestedHostelId =
+        actor.role === StaffRole.ADMIN && typeof req.query.hostelId === 'string'
+          ? req.query.hostelId
+          : actor.hostelId;
+
+      if (!requestedHostelId) {
+        res.status(200).json({
+          data: {
+            hostelId: null,
+            returnDeadlineMinutes: 1260,
+            scoped: false,
+          },
+        });
+        return;
+      }
+
+      const hostel = await db.hostel.findUnique({ where: { id: requestedHostelId } });
+      if (!hostel || hostel.organizationId !== actor.organizationId) {
+        throw new NotFoundError('Facility', requestedHostelId);
+      }
+      if (
+        (actor.role === StaffRole.WARDEN || actor.role === StaffRole.GUARD) &&
+        actor.hostelId !== hostel.id
+      ) {
+        throw new ForbiddenError('Cannot view settings for another facility');
+      }
+      if (actor.role === StaffRole.ADMIN && actor.hostelId && actor.hostelId !== hostel.id) {
+        throw new ForbiddenError('Cannot view settings for another facility');
+      }
+
+      res.status(200).json({
+        data: {
+          hostelId: hostel.id,
+          returnDeadlineMinutes: hostel.returnDeadlineMinutes,
+          scoped: true,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.use(requirePermission('USER_MANAGE'));
 
   const requireAdmin = (req: Request) => {
@@ -36,6 +82,7 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
           id: true,
           code: true,
           name: true,
+          returnDeadlineMinutes: true,
           isActive: true,
           createdAt: true,
           _count: {
@@ -54,6 +101,7 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
           id: facility.id,
           code: facility.code,
           name: facility.name,
+          returnDeadlineMinutes: facility.returnDeadlineMinutes,
           isActive: facility.isActive,
           createdAt: facility.createdAt,
           residentCount: facility._count.residents,
@@ -76,6 +124,10 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
 
       const name = String(req.body?.name || '').trim();
       const code = String(req.body?.code || '').trim().toUpperCase();
+      const returnDeadlineMinutes =
+        req.body?.returnDeadlineMinutes === undefined
+          ? 1260
+          : Number(req.body.returnDeadlineMinutes);
 
       if (name.length < 2) {
         throw new ValidationError('Facility name is required');
@@ -83,11 +135,19 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
       if (!/^[A-Z0-9_-]{2,20}$/.test(code)) {
         throw new ValidationError('Facility code must be 2-20 letters, numbers, hyphens, or underscores');
       }
+      if (
+        !Number.isInteger(returnDeadlineMinutes) ||
+        returnDeadlineMinutes < 0 ||
+        returnDeadlineMinutes > 1439
+      ) {
+        throw new ValidationError('Return deadline must be a valid time of day');
+      }
 
       const facility = await organizationService.createHostel({
         organizationId: actor.organizationId,
         code,
         name,
+        returnDeadlineMinutes,
         createdByUserId: actor.id,
       });
 
@@ -95,6 +155,7 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
         id: facility.id,
         code: facility.code,
         name: facility.name,
+        returnDeadlineMinutes: facility.returnDeadlineMinutes,
         isActive: facility.isActive,
         residentCount: 0,
         staffCount: 0,
@@ -269,12 +330,23 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
           : String(req.body.code || '').trim().toUpperCase();
       const nextActive =
         typeof req.body?.isActive === 'boolean' ? req.body.isActive : existing.isActive;
+      const nextReturnDeadlineMinutes =
+        req.body?.returnDeadlineMinutes === undefined
+          ? existing.returnDeadlineMinutes
+          : Number(req.body.returnDeadlineMinutes);
 
       if (nextName.length < 2) {
         throw new ValidationError('Facility name is required');
       }
       if (!/^[A-Z0-9_-]{2,20}$/.test(nextCode)) {
         throw new ValidationError('Facility code must be 2-20 letters, numbers, hyphens, or underscores');
+      }
+      if (
+        !Number.isInteger(nextReturnDeadlineMinutes) ||
+        nextReturnDeadlineMinutes < 0 ||
+        nextReturnDeadlineMinutes > 1439
+      ) {
+        throw new ValidationError('Return deadline must be a valid time of day');
       }
 
       if (nextCode !== existing.code) {
@@ -309,6 +381,7 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
           data: {
             name: nextName,
             code: nextCode,
+            returnDeadlineMinutes: nextReturnDeadlineMinutes,
             isActive: nextActive,
           },
         });
@@ -325,11 +398,13 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
             oldValues: {
               name: existing.name,
               code: existing.code,
+              returnDeadlineMinutes: existing.returnDeadlineMinutes,
               isActive: existing.isActive,
             },
             newValues: {
               name: facility.name,
               code: facility.code,
+              returnDeadlineMinutes: facility.returnDeadlineMinutes,
               isActive: facility.isActive,
             },
           },
@@ -343,6 +418,7 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
         id: updated.id,
         code: updated.code,
         name: updated.name,
+        returnDeadlineMinutes: updated.returnDeadlineMinutes,
         isActive: updated.isActive,
       });
     } catch (error) {
