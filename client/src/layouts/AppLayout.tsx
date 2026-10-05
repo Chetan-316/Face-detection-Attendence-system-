@@ -14,7 +14,6 @@ import {
   Shield,
   Building2,
   Eye,
-  CalendarCheck,
   FileText,
 } from 'lucide-react';
 
@@ -132,15 +131,6 @@ export const AppLayout: React.FC = () => {
 
                 {user?.role === 'ADMIN' && (
                   <>
-                    <NavLink
-                      to="/attendance"
-                      className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                      onClick={closeMobileMenu}
-                    >
-                      <CalendarCheck size={18} />
-                      <span>Attendance</span>
-                    </NavLink>
-
                     <NavLink
                       to="/cameras"
                       className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
