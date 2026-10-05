@@ -12,6 +12,7 @@ import { residentsApi } from '../api/residents.api';
 import { camerasApi } from '../api/cameras.api';
 import { movementsApi } from '../api/movements.api';
 import { reportsApi } from '../api/reports.api';
+import { facilitiesApi } from '../api/facilities.api';
 import { authApi } from '../api/auth.api';
 import { SafeResident } from '../types/resident.types';
 
@@ -35,6 +36,7 @@ vi.mock('../api/cameras.api', () => ({
 vi.mock('../api/movements.api', () => ({
   movementsApi: {
     getPresenceCounts: vi.fn(),
+    correctPresence: vi.fn(),
   },
 }));
 
@@ -42,6 +44,13 @@ vi.mock('../api/reports.api', () => ({
   reportsApi: {
     getAttendanceSessions: vi.fn(),
     getMovements: vi.fn(),
+    getResidentMovements: vi.fn(),
+  },
+}));
+
+vi.mock('../api/facilities.api', () => ({
+  facilitiesApi: {
+    getOperationalSettings: vi.fn(),
   },
 }));
 
@@ -80,12 +89,16 @@ describe('Product Wording and Clean Operational Interface Verification', () => {
     localStorage.setItem('pravahax_access_token', 'valid-test-token');
 
     (authApi.getMe as any).mockResolvedValue({
-      id: 'user-admin',
-      username: 'admin',
-      fullName: 'System Administrator',
-      role: 'ADMIN',
-      hostelId: null,
-      organizationId: 'org-1',
+      user: {
+        id: 'user-admin',
+        username: 'admin',
+        fullName: 'System Administrator',
+        email: null,
+        role: 'ADMIN',
+        hostelId: null,
+        organizationId: 'org-1',
+        status: 'ACTIVE',
+      },
     });
 
     (residentsApi.getSummary as any).mockResolvedValue({
@@ -113,6 +126,14 @@ describe('Product Wording and Clean Operational Interface Verification', () => {
     (reportsApi.getMovements as any).mockResolvedValue({
       data: [],
       count: 0,
+    });
+
+    (reportsApi.getResidentMovements as any).mockResolvedValue({
+      data: [],
+    });
+
+    (facilitiesApi.getOperationalSettings as any).mockResolvedValue({
+      data: { hostelId: null, returnDeadlineMinutes: 1260, scoped: false },
     });
 
     (camerasApi.listCameras as any).mockResolvedValue({
@@ -179,6 +200,8 @@ describe('Product Wording and Clean Operational Interface Verification', () => {
 
     expect(screen.getByText('Residents')).toBeInTheDocument();
     expect(screen.getByText('Cameras')).toBeInTheDocument();
+    expect(screen.getByText('Staff')).toBeInTheDocument();
+    expect(screen.getByText('Facilities')).toBeInTheDocument();
     expect(screen.queryByText('Attendance')).not.toBeInTheDocument();
     expect(screen.getByText('Reports')).toBeInTheDocument();
 
@@ -229,8 +252,8 @@ describe('Product Wording and Clean Operational Interface Verification', () => {
       expect(screen.getAllByText('Morgan Patel').length).toBeGreaterThanOrEqual(1);
     });
 
-    expect(screen.getByText('Face Recognition Status')).toBeInTheDocument();
-    expect(screen.getByText('Resident Onboarding Checklist')).toBeInTheDocument();
+    expect(screen.getByText('Enrollment Status')).toBeInTheDocument();
+    expect(screen.getByText('Resident Profile Status')).toBeInTheDocument();
 
     // Verify stale deferral notices are NOT present
     expect(screen.queryByText(/intentionally deferred/i)).not.toBeInTheDocument();
