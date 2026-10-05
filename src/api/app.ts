@@ -25,6 +25,7 @@ import { AttendanceRecognitionBridge } from '../modules/attendance-decision/atte
 import { createAttendanceRouter } from './routes/attendance.routes';
 import { ReportService } from '../modules/reports/report.service';
 import { createReportRouter } from './routes/report.routes';
+import { createStaffRouter } from './routes/staff.routes';
 
 export interface CreateAppOptions {
   enrollmentService?: EnrollmentService;
@@ -139,6 +140,7 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   app.use('/api/v1/movements', createMovementRouter(db, movementDecisionService));
   app.use('/api/v1/attendance', createAttendanceRouter(db, attendanceService, attendanceDecisionService));
   app.use('/api/v1/reports', createReportRouter(db, reportService));
+  app.use('/api/v1/staff', createStaffRouter(db));
 
   // Static frontend serving if client/dist exists (production / single-server mode)
   const clientDistPath = path.resolve(__dirname, '../../../client/dist');
