@@ -139,10 +139,14 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
       isOpen={isOpen}
       onClose={handleClose}
       title="Add Resident"
-      subtitle="Register a new student or hostel resident"
+      subtitle="Add resident details, then optionally continue directly to face enrollment."
       size="md"
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
+        <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+          <div className="text-sm font-semibold text-blue-900">Resident details</div>
+          <div className="text-xs text-blue-700 mt-0.5">Create the resident profile first. Face enrollment can follow immediately or be completed later.</div>
+        </div>
         {formError && (
           <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg border border-red-200 flex items-center gap-2">
             <AlertCircle size={16} className="shrink-0" />
@@ -243,14 +247,14 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
         </div>
 
         <Select
-          label="Initial Presence State"
+          label="Current Location"
           id="initialPresence"
           name="initialPresence"
           value={initialPresence}
           onChange={(e) => setInitialPresence(e.target.value as PresenceState)}
           options={[
-            { value: 'OUT', label: 'Outside Hostel (OUT)' },
-            { value: 'IN', label: 'Inside Hostel (IN)' },
+            { value: 'OUT', label: 'Outside hostel' },
+            { value: 'IN', label: 'Inside hostel' },
           ]}
         />
 
@@ -266,7 +270,7 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
             isLoading={isSubmitting && !enrollAfterSave}
             disabled={isSubmitting}
           >
-            Save Resident
+            Save for Later
           </Button>
           <Button
             type="submit"
@@ -275,7 +279,7 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
             isLoading={isSubmitting && enrollAfterSave}
             disabled={isSubmitting}
           >
-            Save & Enroll Face
+            Save & Continue to Face Enrollment
           </Button>
         </div>
       </form>
