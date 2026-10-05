@@ -444,7 +444,7 @@ export const CamerasPage: React.FC = () => {
     }
   };
 
-  const canManageCameras = user?.role === 'ADMIN' || user?.role === 'WARDEN';
+  const canManageCameras = user?.role === 'ADMIN';
   const isStreaming = diagnostics?.isActive ?? false;
 
   return (
@@ -453,7 +453,7 @@ export const CamerasPage: React.FC = () => {
       <div className="page-header">
         <div className="header-text">
           <h1 className="page-title">Cameras</h1>
-          <p className="page-subtitle">Manage hostel cameras and live feeds.</p>
+          <p className="page-subtitle">Monitor camera health, preview live feeds, and manage camera connections.</p>
         </div>
         <div className="header-actions">
           <button
@@ -477,7 +477,7 @@ export const CamerasPage: React.FC = () => {
               }}
             >
               <Plus size={16} />
-              <span>Register Camera</span>
+              <span>Add Camera</span>
             </button>
           )}
         </div>
@@ -488,8 +488,8 @@ export const CamerasPage: React.FC = () => {
         {/* Left Column: Camera Devices List */}
         <div className="camera-list-pane">
           <div className="pane-header">
-            <h3 className="pane-title">Configured Cameras</h3>
-            <span className="camera-count-badge">{cameras.length} Devices</span>
+            <h3 className="pane-title">Camera Setup</h3>
+            <span className="camera-count-badge">{cameras.length} Cameras</span>
           </div>
 
           {isLoading && cameras.length === 0 ? (
@@ -500,8 +500,8 @@ export const CamerasPage: React.FC = () => {
           ) : cameras.length === 0 ? (
             <div className="empty-state-card">
               <VideoOff size={36} className="empty-icon" />
-              <h4>No Cameras Configured</h4>
-              <p>Register your IP network camera or webcam to preview video feeds.</p>
+              <h4>No Cameras Added</h4>
+              <p>Add a gate IP camera or webcam to start previewing the live feed.</p>
               {canManageCameras && (
                 <button
                   type="button"
@@ -509,7 +509,7 @@ export const CamerasPage: React.FC = () => {
                   onClick={() => setIsRegisterModalOpen(true)}
                 >
                   <Plus size={14} />
-                  <span>Register First Camera</span>
+                  <span>Add First Camera</span>
                 </button>
               )}
             </div>
@@ -552,7 +552,7 @@ export const CamerasPage: React.FC = () => {
                           size="sm"
                         />
                       </span>
-                      <span className="meta-tag role-tag">Role: {camera.role}</span>
+                      <span className="meta-tag role-tag">Purpose: {camera.role}</span>
                       {camera.location && (
                         <span className="meta-tag location-tag">{camera.location.name}</span>
                       )}
@@ -604,12 +604,12 @@ export const CamerasPage: React.FC = () => {
                     <div className="selected-camera-sub">
                       <span>Connection: <strong>{selectedCamera.sourceType === 'RTSP' ? 'Network Camera (RTSP)' : selectedCamera.sourceType}</strong></span>
                       <span className="separator">•</span>
-                      <span>Role: <strong>{selectedCamera.role}</strong></span>
+                      <span>Purpose: <strong>{selectedCamera.role}</strong></span>
                       {(selectedCamera.role === 'IN' || selectedCamera.role === 'OUT') && (
                         <>
                           <span className="separator">•</span>
                           <span>
-                            Gate Automation:{' '}
+                            Automatic Movement:{' '}
                             <strong
                               className={
                                 selectedCamera.configMetadata?.movementAutomationEnabled !== false
@@ -1050,7 +1050,7 @@ export const CamerasPage: React.FC = () => {
             <div className="modal-header">
               <div className="modal-title-group">
                 <Video size={20} className="modal-icon" />
-                <h3 className="modal-title">Register Camera Device</h3>
+                <h3 className="modal-title">Add Camera</h3>
               </div>
               <button
                 type="button"
@@ -1072,7 +1072,7 @@ export const CamerasPage: React.FC = () => {
                     id="cam-name"
                     type="text"
                     className="form-control"
-                    placeholder="e.g. Main Gate IN or Corridor 2"
+                    placeholder="e.g. Main Gate Camera 1"
                     value={newCameraName}
                     onChange={(e) => setNewCameraName(e.target.value)}
                     required
@@ -1081,7 +1081,7 @@ export const CamerasPage: React.FC = () => {
 
                 <div className="form-group">
                   <label htmlFor="cam-source" className="form-label">
-                    Source Type <span className="required">*</span>
+                    Camera Type <span className="required">*</span>
                   </label>
                   <select
                     id="cam-source"
@@ -1089,15 +1089,15 @@ export const CamerasPage: React.FC = () => {
                     value={newCameraSourceType}
                     onChange={(e) => setNewCameraSourceType(e.target.value as any)}
                   >
-                    <option value="RTSP">Network Camera (RTSP / IP Camera)</option>
-                    <option value="WEBCAM">Webcam (USB / Laptop DirectShow)</option>
-                    <option value="SMART_CAMERA">Smart Camera (Edge AI Device)</option>
+                    <option value="RTSP">IP / Network Camera</option>
+                    <option value="WEBCAM">USB / Laptop Webcam</option>
+                    <option value="SMART_CAMERA">Smart / Edge Camera</option>
                   </select>
                 </div>
 
                 <div className="form-group">
                   <label htmlFor="cam-role" className="form-label">
-                    Camera Role
+                    Camera Purpose
                   </label>
                   <select
                     id="cam-role"
@@ -1105,10 +1105,10 @@ export const CamerasPage: React.FC = () => {
                     value={newCameraRole}
                     onChange={(e) => setNewCameraRole(e.target.value as any)}
                   >
-                    <option value="GENERAL">GENERAL (Surveillance / Monitoring)</option>
-                    <option value="IN">IN (Hostel Gate Ingress)</option>
-                    <option value="OUT">OUT (Hostel Gate Egress)</option>
-                    <option value="ATTENDANCE">ATTENDANCE (Assembly / Roll Call Checkpoint)</option>
+                    <option value="GENERAL">General Monitoring</option>
+                    <option value="IN">Gate Entry</option>
+                    <option value="OUT">Gate Exit</option>
+                    <option value="ATTENDANCE">Existing Attendance Checkpoint</option>
                   </select>
                 </div>
 
@@ -1122,7 +1122,7 @@ export const CamerasPage: React.FC = () => {
                       onChange={(e) => setNewCameraMovementAutomation(e.target.checked)}
                     />
                     <label htmlFor="cam-movement-auto" className="text-sm text-slate-300 font-medium">
-                      Enable Gate Movement Automation (Create IN/OUT records on stable MATCH)
+                      Automatically record IN / OUT after a confirmed face match
                     </label>
                   </div>
                 )}
@@ -1131,7 +1131,7 @@ export const CamerasPage: React.FC = () => {
                   <>
                     <div className="form-group">
                       <label htmlFor="cam-rtsp" className="form-label">
-                        RTSP Stream Address <span className="required">*</span>
+                        Camera Stream Address <span className="required">*</span>
                       </label>
                       <input
                         id="cam-rtsp"
@@ -1143,7 +1143,7 @@ export const CamerasPage: React.FC = () => {
                         required
                       />
                       <small className="form-hint">
-                        Prefer an RTSP substream for optimal recognition latency.
+                        Use the camera network stream address. A lower-resolution substream is preferred when available.
                       </small>
                     </div>
 
@@ -1153,7 +1153,7 @@ export const CamerasPage: React.FC = () => {
                         onClick={() => setShowAdvancedRegister(!showAdvancedRegister)}
                         className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
                       >
-                        <span>Advanced Settings (Transport Protocol, Frame Rate)</span>
+                        <span>Advanced connection settings</span>
                         {showAdvancedRegister ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
 
@@ -1161,7 +1161,7 @@ export const CamerasPage: React.FC = () => {
                         <div className="mt-3 pt-3 border-t border-slate-700/60 space-y-3">
                           <div className="form-group mb-0">
                             <label htmlFor="cam-transport" className="form-label text-xs">
-                              RTSP Transport Protocol
+                              Stream Transport
                             </label>
                             <select
                               id="cam-transport"
@@ -1169,8 +1169,8 @@ export const CamerasPage: React.FC = () => {
                               value={newCameraTransport}
                               onChange={(e) => setNewCameraTransport(e.target.value as any)}
                             >
-                              <option value="tcp">TCP (Recommended — reliable packet ordering)</option>
-                              <option value="udp">UDP (Low overhead)</option>
+                              <option value="tcp">TCP (Recommended)</option>
+                              <option value="udp">UDP</option>
                             </select>
                           </div>
                         </div>
