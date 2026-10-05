@@ -41,7 +41,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
-type ReportTab = 'movement' | 'residents';
+type ReportTab = 'attendance' | 'movement' | 'residents';
 
 export const ReportsPage: React.FC = () => {
   const { user } = useAuth();
