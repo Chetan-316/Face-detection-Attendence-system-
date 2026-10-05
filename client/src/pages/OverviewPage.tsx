@@ -4,6 +4,7 @@ import { residentsApi } from '../api/residents.api';
 import { movementsApi } from '../api/movements.api';
 import { reportsApi } from '../api/reports.api';
 import { camerasApi } from '../api/cameras.api';
+import { facilitiesApi } from '../api/facilities.api';
 import { SafeResident, ResidentSummary } from '../types/resident.types';
 import { PresenceCounts } from '../types/movement.types';
 import { MovementReportItem } from '../types/reports.types';
@@ -44,17 +45,26 @@ export const OverviewPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
+  const [returnDeadlineMinutes, setReturnDeadlineMinutes] = useState(1260);
+  const [hasScopedReturnDeadline, setHasScopedReturnDeadline] = useState(Boolean(user?.hostelId));
 
-  // Night return is derived from live ResidentPresence. No separate night-attendance
-  // session is required: residents still OUT after the deadline are "Not Returned".
-  const RETURN_DEADLINE_HOUR = 21;
-  const RETURN_DEADLINE_LABEL = '9:00 PM';
+  // Night return is derived from live ResidentPresence. Each facility owns its
+  // return deadline; residents still OUT after that time are "Not Returned".
+  const deadlineHours = Math.floor(returnDeadlineMinutes / 60);
+  const deadlineMinutes = returnDeadlineMinutes % 60;
+  const returnDeadlineLabel = new Date(
+    1970,
+    0,
+    1,
+    deadlineHours,
+    deadlineMinutes
+  ).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   const fetchOverviewData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [resSummary, presRes, movRes, outRes, camRes] = await Promise.allSettled([
+      const [resSummary, presRes, movRes, outRes, camRes, settingsRes] = await Promise.allSettled([
         residentsApi.getSummary ? residentsApi.getSummary(user?.hostelId || undefined) : Promise.resolve(null),
         movementsApi.getPresenceCounts ? movementsApi.getPresenceCounts(user?.hostelId || undefined) : Promise.resolve(null),
         reportsApi.getMovements ? reportsApi.getMovements({ pageSize: 8, hostelId: user?.hostelId || undefined }) : Promise.resolve({ data: [] }),
@@ -62,6 +72,9 @@ export const OverviewPage: React.FC = () => {
         isAdmin && camerasApi.listCameras
           ? camerasApi.listCameras(user?.hostelId || undefined)
           : Promise.resolve({ data: [] }),
+        user?.hostelId
+          ? facilitiesApi.getOperationalSettings(user.hostelId)
+          : Promise.resolve({ data: { hostelId: null, returnDeadlineMinutes: 1260, scoped: false } }),
       ]);
 
       if (resSummary.status === 'fulfilled' && resSummary.value) {
@@ -78,6 +91,10 @@ export const OverviewPage: React.FC = () => {
       }
       if (camRes.status === 'fulfilled' && camRes.value?.data && Array.isArray(camRes.value.data)) {
         setCameras(camRes.value.data);
+      }
+      if (settingsRes.status === 'fulfilled' && settingsRes.value?.data) {
+        setReturnDeadlineMinutes(settingsRes.value.data.returnDeadlineMinutes ?? 1260);
+        setHasScopedReturnDeadline(Boolean(settingsRes.value.data.scoped));
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard operational overview');
@@ -103,7 +120,8 @@ export const OverviewPage: React.FC = () => {
   const onlineCameras = cameras.filter((camera) => camera.healthStatus === 'ONLINE').length;
   const cameraAttentionCount = Math.max(cameras.length - onlineCameras, 0);
 
-  const isAfterReturnDeadline = now.getHours() >= RETURN_DEADLINE_HOUR;
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const isAfterReturnDeadline = hasScopedReturnDeadline && currentMinutes >= returnDeadlineMinutes;
   const outsideSectionTitle = isAfterReturnDeadline
     ? 'Residents Not Returned'
     : 'Residents Currently Outside';
@@ -177,13 +195,21 @@ export const OverviewPage: React.FC = () => {
         <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between h-32">
           <div className="flex items-center justify-between text-slate-600">
             <span className="text-[15px] font-semibold text-slate-600">
-              {isAfterReturnDeadline ? 'Not Returned' : 'Return Deadline'}
+              {!hasScopedReturnDeadline
+                ? 'Return Deadlines'
+                : isAfterReturnDeadline
+                ? 'Not Returned'
+                : 'Return Deadline'}
             </span>
             <Clock size={20} className={isAfterReturnDeadline ? 'text-red-600' : 'text-blue-600'} />
           </div>
           <div>
             <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">
-              {isAfterReturnDeadline ? currentlyOut : RETURN_DEADLINE_LABEL}
+              {!hasScopedReturnDeadline
+                ? 'Per facility'
+                : isAfterReturnDeadline
+                ? currentlyOut
+                : returnDeadlineLabel}
             </span>
           </div>
         </div>
@@ -204,12 +230,16 @@ export const OverviewPage: React.FC = () => {
           )}
           <div>
             <div className="font-bold text-[15px]">
-              {isAfterReturnDeadline
+              {!hasScopedReturnDeadline
+                ? 'Return deadlines are configured per facility'
+                : isAfterReturnDeadline
                 ? `${currentlyOut} ${currentlyOut === 1 ? 'resident has' : 'residents have'} not returned`
-                : `Return deadline is ${RETURN_DEADLINE_LABEL}`}
+                : `Return deadline is ${returnDeadlineLabel}`}
             </div>
             <div className="text-sm mt-0.5 opacity-80">
-              {isAfterReturnDeadline
+              {!hasScopedReturnDeadline
+                ? 'Open Facilities to review or change each hostel return deadline. Current outside counts remain live across your accessible scope.'
+                : isAfterReturnDeadline
                 ? 'This list updates automatically from the live IN / OUT presence state as residents return.'
                 : `${currentlyOut} ${currentlyOut === 1 ? 'resident is' : 'residents are'} currently outside. No separate night attendance is required.`}
             </div>
