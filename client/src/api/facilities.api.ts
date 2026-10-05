@@ -11,6 +11,16 @@ export interface Facility {
   cameraCount?: number;
 }
 
+export interface FacilityLocation {
+  id: string;
+  hostelId: string;
+  code: string;
+  name: string;
+  locationType: 'GATE' | 'ENTRANCE' | 'ATTENDANCE_POINT' | 'COMMON_AREA';
+  isActive: boolean;
+  createdAt?: string;
+}
+
 export const facilitiesApi = {
   async listFacilities(): Promise<{ data: Facility[] }> {
     return apiClient<{ data: Facility[] }>('/facilities');
@@ -31,5 +41,32 @@ export const facilitiesApi = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     });
+  },
+
+  async listLocations(facilityId: string): Promise<{ data: FacilityLocation[] }> {
+    return apiClient<{ data: FacilityLocation[] }>(
+      `/facilities/${encodeURIComponent(facilityId)}/locations`
+    );
+  },
+
+  async createLocation(
+    facilityId: string,
+    payload: { name: string; code: string; locationType: FacilityLocation['locationType'] }
+  ): Promise<FacilityLocation> {
+    return apiClient<FacilityLocation>(
+      `/facilities/${encodeURIComponent(facilityId)}/locations`,
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+  },
+
+  async updateLocation(
+    facilityId: string,
+    locationId: string,
+    payload: { name?: string; code?: string; isActive?: boolean }
+  ): Promise<FacilityLocation> {
+    return apiClient<FacilityLocation>(
+      `/facilities/${encodeURIComponent(facilityId)}/locations/${encodeURIComponent(locationId)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) }
+    );
   },
 };
