@@ -40,6 +40,8 @@ export const AppLayout: React.FC = () => {
             className="mobile-menu-btn"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label="Toggle navigation menu"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="primary-navigation"
           >
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -86,7 +88,7 @@ export const AppLayout: React.FC = () => {
           />
         )}
 
-        <aside className={`app-sidebar ${isMobileMenuOpen ? 'is-open' : ''}`}>
+        <aside id="primary-navigation" className={`app-sidebar ${isMobileMenuOpen ? 'is-open' : ''}`}>
           <div className="sidebar-section-title">Navigation</div>
 
           <nav className="sidebar-nav">
