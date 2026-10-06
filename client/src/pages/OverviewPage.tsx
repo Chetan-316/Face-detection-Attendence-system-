@@ -465,14 +465,6 @@ export const OverviewPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-                <div className="text-sm font-semibold text-slate-900">Enrollment follow-up</div>
-                <div className="text-sm text-slate-600 mt-1">
-                  {notEnrolledCount === 0
-                    ? 'All active residents are enrolled.'
-                    : `${notEnrolledCount} ${notEnrolledCount === 1 ? 'resident needs' : 'residents need'} enrollment follow-up.`}
-                </div>
-              </div>
             </>
           )}
 
