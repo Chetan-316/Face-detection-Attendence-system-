@@ -38,7 +38,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
 
     try {
       await biometricsApi.revokeEnrollment(resident.id, reason.trim());
-      success(`Biometric face profile revoked for ${resident.fullName}`);
+      success(`Face enrollment revoked for ${resident.fullName}`);
       const updated: SafeResident = {
         ...resident,
         faceEnrollmentStatus: 'REVOKED',
@@ -46,7 +46,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
       onSuccess(updated);
       onClose();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to revoke biometric profile');
+      setErrorMsg(err.message || 'Failed to revoke face enrollment');
       toastError(err.message || 'Failed to revoke biometric profile');
     } finally {
       setIsSubmitting(false);
@@ -57,7 +57,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Revoke Face Profile"
+      title="Revoke Face Enrollment"
       subtitle={`Code: ${resident.residentCode} • ${resident.fullName}`}
       size="md"
     >
@@ -66,7 +66,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
           <ShieldAlert size={20} className="shrink-0 text-amber-500" />
           <div className="text-xs">
             <strong className="block mb-1">Privacy & Security Safeguard:</strong>
-            Revoking this enrollment will immediately deactivate face recognition for this resident and permanently remove the stored biometric template from active matching.
+            Revoking this enrollment will immediately stop face recognition for this resident and remove the saved face enrollment from active matching.
           </div>
         </div>
 
@@ -83,11 +83,11 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
           </label>
           <textarea
             id="revoke-reason"
-            className="form-textarea w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-amber-500"
+            className="form-control min-h-28"
             rows={3}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g., Requested resident biometric reset, template quality concern, or manual security revocation"
+            placeholder="Example: Resident requested a reset, face enrollment needs replacement, or access was revoked."
             required
             disabled={isSubmitting}
           />
