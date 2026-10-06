@@ -366,7 +366,15 @@ export const GatePage: React.FC = () => {
   const isLowQuality = activeObservation?.classification === 'QUALITY_INSUFFICIENT';
   const isUncertain = activeObservation?.classification === 'UNCERTAIN';
   const cameraHealth = selectedCamera?.healthStatus || 'OFFLINE';
-  const cameraIsOnline = cameraHealth === 'ONLINE';
+  const isBrowserWebcam = selectedCamera?.sourceType === 'WEBCAM';
+  const cameraIsOnline = isBrowserWebcam ? isCameraActive : cameraHealth === 'ONLINE';
+  const cameraStatusLabel = isBrowserWebcam
+    ? isCameraActive
+      ? 'Camera Active'
+      : 'Camera Not Started'
+    : cameraIsOnline
+    ? 'Camera Online'
+    : 'Camera Attention';
 
   return (
     <div className="gate-page flex flex-col gap-6 max-w-7xl mx-auto w-full">
@@ -389,7 +397,7 @@ export const GatePage: React.FC = () => {
                   cameraIsOnline ? 'bg-emerald-500' : 'bg-amber-500'
                 }`}
               />
-              {cameraIsOnline ? 'Camera Online' : 'Camera Attention'}
+              {cameraStatusLabel}
             </span>
           </div>
           <p className="text-15px text-slate-500 mt-0.5">Live resident movement and gate exceptions</p>
