@@ -642,14 +642,14 @@ textarea.form-control {
 /* Presence */
 .badge-presence-in {
   background: var(--success-subtle);
-  color: var(--success-500);
+  color: #15803D;
   border: 1px solid var(--success-border);
 }
 .badge-presence-in .badge-dot { background: var(--success-500); }
 
 .badge-presence-out {
   background: var(--warning-subtle);
-  color: var(--warning-500);
+  color: #B45309;
   border: 1px solid var(--warning-border);
 }
 .badge-presence-out .badge-dot { background: var(--warning-500); }
@@ -671,14 +671,14 @@ textarea.form-control {
 
 .badge-enroll-needs {
   background: var(--warning-subtle);
-  color: var(--warning-500);
+  color: #B45309;
   border: 1px solid var(--warning-border);
 }
 .badge-enroll-needs .badge-dot { background: var(--warning-500); }
 
 .badge-enroll-revoked {
   background: var(--danger-subtle);
-  color: var(--danger-500);
+  color: #B91C1C;
   border: 1px solid var(--danger-border);
 }
 .badge-enroll-revoked .badge-dot { background: var(--danger-500); }
@@ -686,21 +686,21 @@ textarea.form-control {
 /* Status */
 .badge-status-active {
   background: var(--success-subtle);
-  color: var(--success-500);
+  color: #15803D;
   border: 1px solid var(--success-border);
 }
 .badge-status-active .badge-dot { background: var(--success-500); }
 
 .badge-status-inactive {
   background: var(--danger-subtle);
-  color: var(--danger-500);
+  color: #B91C1C;
   border: 1px solid var(--danger-border);
 }
 .badge-status-inactive .badge-dot { background: var(--danger-500); }
 
 .badge-status-suspended {
   background: var(--warning-subtle);
-  color: var(--warning-500);
+  color: #B45309;
   border: 1px solid var(--warning-border);
 }
 .badge-status-suspended .badge-dot { background: var(--warning-500); }
@@ -722,14 +722,14 @@ textarea.form-control {
 
 .badge-role-warden {
   background: var(--success-subtle);
-  color: var(--success-500);
+  color: #15803D;
   border: 1px solid var(--success-border);
 }
 .badge-role-warden .badge-dot { background: var(--success-500); }
 
 .badge-role-guard {
   background: var(--warning-subtle);
-  color: var(--warning-500);
+  color: #B45309;
   border: 1px solid var(--warning-border);
 }
 .badge-role-guard .badge-dot { background: var(--warning-500); }
