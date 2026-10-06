@@ -49,7 +49,7 @@ export const FacilitiesPage: React.FC = () => {
       const res = await facilitiesApi.listFacilities();
       setFacilities(res.data || []);
     } catch (err: any) {
-      toastError(err.message || 'Unable to load facilities');
+      toastError(err.message || 'Unable to load hostels');
     } finally {
       setIsLoading(false);
     }
@@ -76,7 +76,7 @@ export const FacilitiesPage: React.FC = () => {
 
   const handleCreate = async () => {
     if (!name.trim() || !code.trim()) {
-      setFormError('Facility name and code are required.');
+      setFormError('Hostel name and code are required.');
       return;
     }
 
@@ -102,7 +102,7 @@ export const FacilitiesPage: React.FC = () => {
   const handleUpdate = async () => {
     if (!editing) return;
     if (!name.trim() || !code.trim()) {
-      setFormError('Facility name and code are required.');
+      setFormError('Hostel name and code are required.');
       return;
     }
 
