@@ -220,7 +220,7 @@ export const OverviewPage: React.FC = () => {
           <div>
             <span className="overview-stat-value">
               {!hasScopedReturnDeadline
-                ? 'Per facility'
+                ? 'Per hostel'
                 : isAfterReturnDeadline
                 ? currentlyOut
                 : returnDeadlineLabel}
@@ -245,7 +245,7 @@ export const OverviewPage: React.FC = () => {
           <div>
             <div className="font-bold text-[15px]">
               {!hasScopedReturnDeadline
-                ? 'Return deadlines are configured per facility'
+                ? 'Return deadlines are configured per hostel'
                 : isAfterReturnDeadline
                 ? `${currentlyOut} ${currentlyOut === 1 ? 'resident has' : 'residents have'} not returned`
                 : `Return deadline is ${returnDeadlineLabel}`}
@@ -255,7 +255,7 @@ export const OverviewPage: React.FC = () => {
                 ? 'Open Hostels to review or change each return deadline. Current presence counts include all hostels in your organization.'
                 : isAfterReturnDeadline
                 ? 'This list updates automatically from the live IN / OUT presence state as residents return.'
-                : `${currentlyOut} ${currentlyOut === 1 ? 'resident is' : 'residents are'} currently outside. No separate night attendance is required.`}
+                : `${currentlyOut} ${currentlyOut === 1 ? 'resident is' : 'residents are'} currently outside. No separate nightly check is required.`}
             </div>
           </div>
         </div>
