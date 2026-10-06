@@ -339,7 +339,7 @@ export const ReportsPage: React.FC = () => {
       />
 
       {/* Primary Tab Navigation */}
-      <div className="reports-tab-nav mb-6 flex border-b border-border">
+      <div className="reports-tab-nav mb-6 flex border-b border-border" role="tablist" aria-label="Report sections">
         <button
           type="button"
           className={`tab-btn px-5 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
@@ -348,6 +348,8 @@ export const ReportsPage: React.FC = () => {
               : 'border-transparent text-secondary hover:text-primary'
           }`}
           onClick={() => setActiveTab('movement')}
+          role="tab"
+          aria-selected={activeTab === 'movement'}
         >
           <ArrowRightLeft size={16} />
           <span>Presence & Movement</span>
@@ -361,6 +363,8 @@ export const ReportsPage: React.FC = () => {
               : 'border-transparent text-secondary hover:text-primary'
           }`}
           onClick={() => setActiveTab('residents')}
+          role="tab"
+          aria-selected={activeTab === 'residents'}
         >
           <Users size={16} />
           <span>Residents</span>
@@ -376,7 +380,7 @@ export const ReportsPage: React.FC = () => {
           <div className="report-filter-bar mb-6 p-4 bg-surface border border-border rounded-lg flex flex-wrap gap-4 items-end justify-between">
             <div className="flex flex-wrap gap-4 items-end">
               <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Date Range</label>
+                <label className="block text-sm font-semibold text-secondary mb-1.5">Date Range</label>
                 <div className="flex gap-1">
                   {[
                     { key: 'today', label: 'Today' },
@@ -406,10 +410,10 @@ export const ReportsPage: React.FC = () => {
               {attDateRange === 'custom' && (
                 <div className="flex gap-2 items-center">
                   <div>
-                    <label className="block text-xs text-secondary mb-1">From</label>
+                    <label className="block text-sm font-medium text-secondary mb-1.5">From</label>
                     <input
                       type="date"
-                      className="input-field text-xs py-1.5 px-2 border border-border rounded"
+                      className="input-field text-sm h-10 px-3 border border-border rounded-md"
                       value={attCustomFrom}
                       onChange={(e) => {
                         setAttCustomFrom(e.target.value);
@@ -418,10 +422,10 @@ export const ReportsPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-secondary mb-1">To</label>
+                    <label className="block text-sm font-medium text-secondary mb-1.5">To</label>
                     <input
                       type="date"
-                      className="input-field text-xs py-1.5 px-2 border border-border rounded"
+                      className="input-field text-sm h-10 px-3 border border-border rounded-md"
                       value={attCustomTo}
                       onChange={(e) => {
                         setAttCustomTo(e.target.value);
@@ -666,7 +670,7 @@ export const ReportsPage: React.FC = () => {
           <div className="report-filter-bar mb-6 p-4 bg-surface border border-border rounded-lg flex flex-wrap gap-4 items-end justify-between">
             <div className="flex flex-wrap gap-4 items-end">
               <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Date Range</label>
+                <label className="block text-sm font-semibold text-secondary mb-1.5">Date Range</label>
                 <div className="flex gap-1">
                   {[
                     { key: 'today', label: 'Today' },
@@ -676,7 +680,7 @@ export const ReportsPage: React.FC = () => {
                     <button
                       key={r.key}
                       type="button"
-                      className={`btn-filter px-3 py-1.5 text-xs rounded border transition-colors ${
+                      className={`btn-filter h-10 px-3.5 text-sm rounded-md border transition-colors ${
                         movDateRange === r.key
                           ? 'bg-primary text-white border-primary'
                           : 'bg-surface text-secondary border-border hover:bg-surface-hover'
@@ -693,9 +697,9 @@ export const ReportsPage: React.FC = () => {
               </div>
 
               <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Movement</label>
+                <label className="block text-sm font-semibold text-secondary mb-1.5">Movement</label>
                 <select
-                  className="input-field text-xs py-1.5 px-3 border border-border rounded"
+                  className="input-field text-sm h-10 px-3 border border-border rounded-md"
                   value={movDirection}
                   onChange={(e) => {
                     setMovDirection(e.target.value);
@@ -709,29 +713,29 @@ export const ReportsPage: React.FC = () => {
               </div>
 
               <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Resident Search</label>
+                <label className="block text-sm font-semibold text-secondary mb-1.5">Resident Search</label>
                 <div className="relative">
                   <input
                     type="text"
                     placeholder="Search name or code..."
-                    className="input-field text-xs py-1.5 pl-8 pr-3 border border-border rounded"
+                    className="input-field text-sm h-10 pl-9 pr-3 border border-border rounded-md"
                     value={movSearch}
                     onChange={(e) => {
                       setMovSearch(e.target.value);
                       setMovPage(1);
                     }}
                   />
-                  <Search size={14} className="absolute left-2.5 top-2 text-muted" />
+                  <Search size={15} className="absolute left-3 top-3 text-muted" />
                 </div>
               </div>
 
               {movDateRange === 'custom' && (
                 <div className="flex gap-2 items-center">
                   <div>
-                    <label className="block text-xs text-secondary mb-1">From</label>
+                    <label className="block text-sm font-medium text-secondary mb-1.5">From</label>
                     <input
                       type="date"
-                      className="input-field text-xs py-1.5 px-2 border border-border rounded"
+                      className="input-field text-sm h-10 px-3 border border-border rounded-md"
                       value={movCustomFrom}
                       onChange={(e) => {
                         setMovCustomFrom(e.target.value);
@@ -740,10 +744,10 @@ export const ReportsPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-secondary mb-1">To</label>
+                    <label className="block text-sm font-medium text-secondary mb-1.5">To</label>
                     <input
                       type="date"
-                      className="input-field text-xs py-1.5 px-2 border border-border rounded"
+                      className="input-field text-sm h-10 px-3 border border-border rounded-md"
                       value={movCustomTo}
                       onChange={(e) => {
                         setMovCustomTo(e.target.value);
@@ -877,13 +881,14 @@ export const ReportsPage: React.FC = () => {
             <>
               {/* Resident Search Bar */}
               <div className="resident-search-bar mb-6 p-4 bg-surface border border-border rounded-lg">
-                <label className="block text-xs font-semibold text-secondary mb-2">
-                  Select Resident to Inspect
+                <label htmlFor="resident-report-search" className="block text-sm font-semibold text-secondary mb-2">
+                  Find a resident
                 </label>
                 <div className="relative max-w-md">
                   <input
+                    id="resident-report-search"
                     type="text"
-                    placeholder="Type name or resident code..."
+                    placeholder="Search by name or resident code..."
                     className="input-field text-sm py-2 pl-9 pr-4 w-full border border-border rounded"
                     value={residentSearch}
                     onChange={(e) => {
@@ -897,9 +902,10 @@ export const ReportsPage: React.FC = () => {
                   {residentSearchResults.length > 0 && (
                     <div className="resident-autocomplete-dropdown absolute left-0 right-0 top-full mt-1 bg-surface border border-border rounded shadow-lg z-20 max-h-60 overflow-y-auto">
                       {residentSearchResults.map((r) => (
-                        <div
+                        <button
+                          type="button"
                           key={r.id}
-                          className="autocomplete-item p-2.5 hover:bg-surface-hover cursor-pointer border-b border-border last:border-none flex justify-between items-center"
+                          className="autocomplete-item w-full p-3 hover:bg-surface-hover cursor-pointer border-b border-border last:border-none flex justify-between items-center text-left"
                           onClick={() => {
                             setResidentSearch(`${r.fullName} (${r.residentCode})`);
                             setResidentSearchResults([]);
@@ -910,8 +916,8 @@ export const ReportsPage: React.FC = () => {
                             <span className="font-medium text-sm">{r.fullName}</span>
                             <span className="text-xs text-secondary ml-2">({r.residentCode})</span>
                           </div>
-                          <span className="text-xs text-muted">Room {r.roomGroup}</span>
-                        </div>
+                          <span className="text-sm text-muted">Room {r.roomGroup}</span>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -949,7 +955,7 @@ export const ReportsPage: React.FC = () => {
 
                       <div className="flex gap-4 items-center">
                         <div className="text-right">
-                          <span className="text-xs text-secondary block">Current Presence</span>
+                          <span className="text-sm text-secondary block mb-1">Current Presence</span>
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                               residentSummary.currentPresence === 'IN'
@@ -961,9 +967,13 @@ export const ReportsPage: React.FC = () => {
                           </span>
                         </div>
                         <div className="text-right border-l border-border pl-4">
-                          <span className="text-xs text-secondary block">Last Movement</span>
+                          <span className="text-sm text-secondary block mb-1">Last Movement</span>
                           <span className="text-sm font-semibold text-primary">
-                            {residentSummary.lastMovementDirection || 'No movement'}
+                            {residentSummary.lastMovementDirection === 'IN'
+                              ? 'Entered'
+                              : residentSummary.lastMovementDirection === 'OUT'
+                              ? 'Left'
+                              : 'No movement'}
                           </span>
                           <span className="text-xs text-muted block">
                             {residentSummary.lastMovementTime
@@ -981,7 +991,7 @@ export const ReportsPage: React.FC = () => {
                         <p className="text-xs text-muted py-4">No gate movements found.</p>
                       ) : (
                         <div className="table-responsive">
-                          <table className="data-table text-xs">
+                          <table className="data-table">
                             <thead>
                               <tr>
                                 <th>Time</th>
