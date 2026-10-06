@@ -160,7 +160,7 @@ export const ResidentDetailPage: React.FC = () => {
     <div className="resident-detail-page space-y-6">
       <PageHeader
         breadcrumb={
-          <Link to="/residents" className="btn-back flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-200">
+          <Link to="/residents" className="btn-back flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
             <ArrowLeft size={14} /> Back to Resident Roster
           </Link>
         }
