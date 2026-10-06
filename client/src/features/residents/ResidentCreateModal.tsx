@@ -36,15 +36,17 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [enrollAfterSave, setEnrollAfterSave] = useState(false);
 
-  // Load hostels for Admin dropdown if not assigned to specific hostel
+  // Administrators can choose any active hostel in their organization.
   useEffect(() => {
-    if (isOpen && user?.role === 'ADMIN' && !user.hostelId) {
+    if (isOpen && user?.role === 'ADMIN') {
       residentsApi
         .listHostels()
         .then((res) => {
           setHostels(res.data || []);
           if (res.data.length > 0 && !hostelId) {
-            setHostelId(res.data[0].id);
+            const defaultHostel =
+              res.data.find((hostel) => hostel.id === user.hostelId) || res.data[0];
+            setHostelId(defaultHostel.id);
           }
         })
         .catch(() => {});
@@ -186,9 +188,9 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {user?.role === 'ADMIN' && !user.hostelId && hostels.length > 0 ? (
+          {user?.role === 'ADMIN' && hostels.length > 0 ? (
             <Select
-              label="Assigned Hostel"
+              label="Hostel"
               id="hostelId"
               name="hostelId"
               value={hostelId}
