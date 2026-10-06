@@ -233,18 +233,21 @@ export const FacilitiesPage: React.FC = () => {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Active hostels</span>
-          <div className="text-3xl font-bold text-slate-900 mt-1">{activeCount}</div>
+      <div className="metric-grid metric-grid-3">
+        <div className="metric-card">
+          <span className="metric-label">Active hostels</span>
+          <strong className="metric-value">{activeCount}</strong>
+          <span className="metric-support">Currently available for residents and staff</span>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Residents</span>
-          <div className="text-3xl font-bold text-slate-900 mt-1">{residentCount}</div>
+        <div className="metric-card">
+          <span className="metric-label">Residents</span>
+          <strong className="metric-value">{residentCount}</strong>
+          <span className="metric-support">Across all configured hostels</span>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Staff</span>
-          <div className="text-3xl font-bold text-slate-900 mt-1">{staffCount}</div>
+        <div className="metric-card">
+          <span className="metric-label">Staff</span>
+          <strong className="metric-value">{staffCount}</strong>
+          <span className="metric-support">Wardens and guards assigned to hostels</span>
         </div>
       </div>
 
@@ -273,7 +276,7 @@ export const FacilitiesPage: React.FC = () => {
                   <span className="text-sm font-mono text-blue-700">{facility.code}</span>
                 </div>
                 <span
-                  className={`inline-flex px-2.5 py-1 rounded-md text-xs font-semibold border ${
+                  className={`inline-flex px-2.5 py-1 rounded-md text-sm font-semibold border ${
                     facility.isActive
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                       : 'bg-slate-50 text-slate-600 border-slate-200'
