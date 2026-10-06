@@ -200,7 +200,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       } catch (err: any) {
         if (!isMounted) return;
         setErrorMsg(err.message || 'Unable to start face enrollment');
-        toastError(err.message || 'Failed to initialize face enrollment session');
+        toastError(err.message || 'Unable to start face enrollment');
       } finally {
         if (isMounted) {
           setIsLoading(false);
