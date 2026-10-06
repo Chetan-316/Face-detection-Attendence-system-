@@ -166,9 +166,9 @@ describe('Reports presence and movement workflow', () => {
     renderReports();
 
     expect(screen.getByText('Reports')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /presence & movement/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^residents$/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^attendance$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /presence & movement/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /^residents$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /^attendance$/i })).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Currently Inside')).toBeInTheDocument();
@@ -247,7 +247,7 @@ describe('Reports presence and movement workflow', () => {
     });
 
     renderReports();
-    fireEvent.click(screen.getByRole('button', { name: /^residents$/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /^residents$/i }));
 
     const input = screen.getByPlaceholderText('Type name or resident code...');
     fireEvent.change(input, { target: { value: 'Rahul' } });
@@ -259,7 +259,7 @@ describe('Reports presence and movement workflow', () => {
       expect(screen.getByText('Rahul Patil')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Rahul Patil'));
+    fireEvent.click(screen.getByRole('option', { name: /Rahul Patil/i }));
 
     await waitFor(() => {
       expect(reportsApi.getResidentSummary).toHaveBeenCalledWith('res-1');
