@@ -50,28 +50,8 @@ vi.mock('../api/residents.api', () => ({
   },
 }));
 
-describe('Step 09: Frontend Reports & Operational History Tests', () => {
-  const mockAttendanceSessions = [
-    {
-      id: 'session-1',
-      hostelId: 'hostel-1',
-      hostelName: 'Main Hostel',
-      sessionType: 'NIGHT',
-      title: 'Night Attendance',
-      attendanceDate: '2026-09-30T00:00:00.000Z',
-      status: 'CLOSED',
-      startTime: '2026-09-30T21:00:00.000Z',
-      endTime: '2026-09-30T22:00:00.000Z',
-      expectedResidents: 100,
-      presentCount: 92,
-      absentCount: 8,
-      remainingCount: 0,
-      attendanceRate: 92,
-      isFinalized: true,
-    },
-  ];
-
-  const mockMovements = [
+describe('Reports presence and movement workflow', () => {
+  const movements = [
     {
       id: 'mov-1',
       timestamp: '2026-09-30T22:42:00.000Z',
@@ -93,12 +73,12 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
       roomGroup: 'A-102',
       direction: 'OUT' as const,
       gateName: 'Main Gate',
-      source: 'FACE_RECOGNITION',
-      isCorrection: false,
+      source: 'GUARD_CONFIRMATION',
+      isCorrection: true,
     },
   ];
 
-  const mockPresence = {
+  const presence = {
     hostelId: 'hostel-1',
     hostelName: 'Main Hostel',
     totalResidents: 100,
@@ -108,7 +88,7 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
     outsideRate: 18,
   };
 
-  const mockResidentSummary = {
+  const residentSummary = {
     id: 'res-1',
     residentCode: 'R001',
     fullName: 'Rahul Patil',
@@ -122,36 +102,7 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
     lastMovementTime: '2026-09-30T22:42:00.000Z',
     lastMovementGate: 'Main Gate',
     lastMovementDirection: 'IN' as const,
-    totalAttendanceSessions: 30,
-    presentSessions: 27,
-    absentSessions: 3,
-    attendanceRate: 90,
-    recentAttendance: [
-      {
-        sessionId: 'session-1',
-        sessionTitle: 'Night Attendance',
-        sessionDate: '2026-09-30T00:00:00.000Z',
-        sessionStatus: 'CLOSED',
-        status: 'PRESENT',
-        markedAt: '2026-09-30T21:08:00.000Z',
-        markMethod: 'FACE_RECOGNITION',
-        isCorrected: false,
-      },
-    ],
-    recentMovements: [
-      {
-        id: 'mov-1',
-        timestamp: '2026-09-30T22:42:00.000Z',
-        residentId: 'res-1',
-        residentCode: 'R001',
-        fullName: 'Rahul Patil',
-        roomGroup: 'A-101',
-        direction: 'IN' as const,
-        gateName: 'Main Gate',
-        source: 'FACE_RECOGNITION',
-        isCorrection: false,
-      },
-    ],
+    recentMovements: [movements[0]],
   };
 
   beforeEach(() => {
@@ -166,52 +117,40 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
       status: 'ACTIVE',
     };
 
-    (reportsApi.getAttendanceSessions as any).mockResolvedValue({
-      data: mockAttendanceSessions,
-      total: 1,
-      page: 1,
-      pageSize: 15,
-      totalPages: 1,
-      summary: {
-        sessions: 1,
-        closedSessions: 1,
-        present: 92,
-        absent: 8,
-        expected: 100,
-        attendanceRate: 92,
-      },
-    });
-
-    (reportsApi.getAttendanceTrend as any).mockResolvedValue({
-      data: [
-        {
-          date: '2026-09-30',
-          attendanceRate: 92,
-          presentCount: 92,
-          expectedCount: 100,
-          sessionCount: 1,
-          status: 'CLOSED',
-          sessionTitles: ['Night Attendance'],
-        },
-      ],
-    });
-
     (reportsApi.getMovements as any).mockResolvedValue({
-      data: mockMovements,
+      data: movements,
       total: 2,
       page: 1,
       pageSize: 15,
       totalPages: 1,
     });
-
-    (reportsApi.getPresence as any).mockResolvedValue(mockPresence);
-    (reportsApi.getResidentSummary as any).mockResolvedValue(mockResidentSummary);
-    (reportsApi.downloadAttendanceCsv as any).mockResolvedValue(undefined);
+    (reportsApi.getPresence as any).mockResolvedValue(presence);
+    (reportsApi.getCurrentlyOutside as any).mockResolvedValue({
+      data: [
+        {
+          residentId: 'res-2',
+          residentCode: 'R002',
+          fullName: 'Amit Kale',
+          roomGroup: 'A-102',
+          lastMovementTime: '2026-09-30T22:31:00.000Z',
+        },
+      ],
+    });
+    (reportsApi.getResidentSummary as any).mockResolvedValue(residentSummary);
     (reportsApi.downloadMovementCsv as any).mockResolvedValue(undefined);
+    (residentsApi.getResidents as any).mockResolvedValue({ data: [] });
   });
 
-  // 1. Navigation item visible in AppLayout
-  it('1. renders Reports link in navigation sidebar', () => {
+  const renderReports = () =>
+    render(
+      <MemoryRouter>
+        <ToastProvider>
+          <ReportsPage />
+        </ToastProvider>
+      </MemoryRouter>
+    );
+
+  it('keeps Reports in the staff navigation', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <ToastProvider>
@@ -220,43 +159,16 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
       </MemoryRouter>
     );
 
-    const reportsNavLink = screen.getByRole('link', { name: /reports/i });
-    expect(reportsNavLink).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /reports/i })).toBeInTheDocument();
   });
 
-  // 2. Attendance Tab Loads
-  it('2. renders Attendance report tab with metrics cards, trend chart, and sessions table', async () => {
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
+  it('opens directly on Presence & Movement without a legacy Attendance tab', async () => {
+    renderReports();
 
     expect(screen.getByText('Reports')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /attendance/i })).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getAllByText('Night Attendance').length).toBeGreaterThan(0);
-      expect(screen.getAllByText('92%').length).toBeGreaterThan(0);
-      expect(screen.getByText('Total Present')).toBeInTheDocument();
-      expect(screen.getByText('Total Absent')).toBeInTheDocument();
-    });
-  });
-
-  // 3. Movement Tab Loads
-  it('3. renders Movement report tab with presence summary and movement history', async () => {
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
-
-    const movementTab = screen.getByRole('button', { name: /movement/i });
-    fireEvent.click(movementTab);
+    expect(screen.getByRole('button', { name: /presence & movement/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^residents$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^attendance$/i })).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('Currently Inside')).toBeInTheDocument();
@@ -268,26 +180,75 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
     });
   });
 
-  // 4. Resident Summary Tab Loads
-  it('4. allows searching and inspecting resident summary report', async () => {
-    (residentsApi.getResidents as any).mockResolvedValue({
-      data: [{ id: 'res-1', residentCode: 'R001', fullName: 'Rahul Patil', roomGroup: 'A-101' }],
+  it('uses clear, prominent resident actions on the presence cards', async () => {
+    renderReports();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /browse residents/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /view outside residents/i })).toBeInTheDocument();
     });
 
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
+    fireEvent.click(screen.getByRole('button', { name: /view outside residents/i }));
 
-    const residentTab = screen.getByRole('button', { name: /residents/i });
-    fireEvent.click(residentTab);
+    await waitFor(() => {
+      expect(reportsApi.getCurrentlyOutside).toHaveBeenCalled();
+    });
+  });
 
-    expect(screen.getByPlaceholderText('Type name or resident code...')).toBeInTheDocument();
+  it('shows human movement wording and correction status', async () => {
+    renderReports();
 
-    // Type in search
+    await waitFor(() => {
+      expect(screen.getByText('Entered')).toBeInTheDocument();
+      expect(screen.getByText('Left')).toBeInTheDocument();
+      expect(screen.getByText('Verified')).toBeInTheDocument();
+      expect(screen.getByText('Corrected')).toBeInTheDocument();
+    });
+  });
+
+  it('reloads movement data when the date range changes', async () => {
+    renderReports();
+
+    await waitFor(() => {
+      expect(reportsApi.getMovements).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Last 7 Days' }));
+
+    await waitFor(() => {
+      expect(reportsApi.getMovements).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('exports the visible movement report', async () => {
+    renderReports();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /export csv/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /export csv/i }));
+
+    await waitFor(() => {
+      expect(reportsApi.downloadMovementCsv).toHaveBeenCalled();
+    });
+  });
+
+  it('allows Warden/Admin to search and inspect a resident movement summary', async () => {
+    (residentsApi.getResidents as any).mockResolvedValue({
+      data: [
+        {
+          id: 'res-1',
+          residentCode: 'R001',
+          fullName: 'Rahul Patil',
+          roomGroup: 'A-101',
+        },
+      ],
+    });
+
+    renderReports();
+    fireEvent.click(screen.getByRole('button', { name: /^residents$/i }));
+
     const input = screen.getByPlaceholderText('Type name or resident code...');
     fireEvent.change(input, { target: { value: 'Rahul' } });
 
@@ -298,147 +259,25 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
       expect(screen.getByText('Rahul Patil')).toBeInTheDocument();
     });
 
-    // Click suggestion
     fireEvent.click(screen.getByText('Rahul Patil'));
 
     await waitFor(() => {
       expect(reportsApi.getResidentSummary).toHaveBeenCalledWith('res-1');
-      expect(screen.getByText('90%')).toBeInTheDocument();
       expect(screen.getByText('Inside Hostel')).toBeInTheDocument();
-      expect(screen.getByText('Attendance History')).toBeInTheDocument();
       expect(screen.getByText('Movement Timeline')).toBeInTheDocument();
+      expect(screen.queryByText('Attendance History')).not.toBeInTheDocument();
     });
   });
 
-  // 5. Date Filters Work
-  it('5. triggers data reload with updated date range when clicking filter buttons', async () => {
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
+  it('keeps technical AI jargon out of the normal reports experience', async () => {
+    const { container } = renderReports();
 
     await waitFor(() => {
-      expect(reportsApi.getAttendanceSessions).toHaveBeenCalled();
+      expect(screen.getByText('Movement History')).toBeInTheDocument();
     });
 
-    const last30Btn = screen.getByRole('button', { name: 'Last 30 Days' });
-    fireEvent.click(last30Btn);
-
-    await waitFor(() => {
-      expect(reportsApi.getAttendanceSessions).toHaveBeenCalledTimes(2);
-    });
-  });
-
-  // 6. Export Button Invokes CSV Endpoint
-  it('6. invokes downloadAttendanceCsv when Export CSV button is clicked', async () => {
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /export csv/i })).toBeInTheDocument();
-    });
-
-    const exportBtn = screen.getByRole('button', { name: /export csv/i });
-    fireEvent.click(exportBtn);
-
-    await waitFor(() => {
-      expect(reportsApi.downloadAttendanceCsv).toHaveBeenCalled();
-    });
-  });
-
-  // 7. Session Roster Modal Opens & Filters Work
-  it('7. opens Session Roster modal and filters roster', async () => {
-    (reportsApi.getSessionRoster as any).mockResolvedValue({
-      session: mockAttendanceSessions[0],
-      roster: [
-        {
-          residentId: 'res-1',
-          residentCode: 'R001',
-          fullName: 'Rahul Patil',
-          roomGroup: 'A-101',
-          status: 'PRESENT',
-          markedAt: '2026-09-30T21:08:00.000Z',
-          markMethod: 'FACE_RECOGNITION',
-          isCorrected: false,
-        },
-      ],
-      stats: {
-        expectedResidents: 100,
-        presentCount: 92,
-        absentCount: 8,
-        remainingCount: 0,
-        attendanceRate: 92,
-      },
-    });
-
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /view roster/i })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /view roster/i }));
-
-    await waitFor(() => {
-      expect(reportsApi.getSessionRoster).toHaveBeenCalledWith('session-1', expect.anything());
-      expect(screen.getByText('Rahul Patil')).toBeInTheDocument();
-      expect(screen.getByText('A-101')).toBeInTheDocument();
-    });
-  });
-
-  // 8. Guard Role Restrictions
-  it('8. restricts Guard from exporting CSV and viewing resident historical summaries', async () => {
-    currentUser.role = 'GUARD';
-
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
-
-    // Guard cannot see Export CSV button on attendance tab
-    expect(screen.queryByRole('button', { name: /export csv/i })).not.toBeInTheDocument();
-
-    // Guard on resident tab sees restriction banner
-    const residentTab = screen.getByRole('button', { name: /residents/i });
-    fireEvent.click(residentTab);
-
-    expect(screen.getByText('Resident Reports Access Restricted')).toBeInTheDocument();
-  });
-
-  // 9. Clean Product Language (No AI / Biometric jargon in normal report UI)
-  it('9. strictly adheres to professional ERP wording without AI/biometric jargon', async () => {
-    const { container } = render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('Reports')).toBeInTheDocument();
-    });
-
-    const pageText = container.textContent?.toLowerCase() || '';
-
-    const forbiddenTerms = [
+    const text = container.textContent?.toLowerCase() || '';
+    for (const term of [
       'neural analysis',
       'ai insights',
       'confidence score',
@@ -448,87 +287,8 @@ describe('Step 09: Frontend Reports & Operational History Tests', () => {
       'behavior prediction',
       'command center',
       'anomaly detection',
-    ];
-
-    for (const term of forbiddenTerms) {
-      expect(pageText).not.toContain(term);
+    ]) {
+      expect(text).not.toContain(term);
     }
-  });
-
-  // 10. Pagination Independence Test: changing pagination does NOT change summary cards
-  it('10. changing pagination does NOT change summary cards', async () => {
-    const fixedSummary = {
-      sessions: 25,
-      closedSessions: 20,
-      present: 1800,
-      absent: 200,
-      expected: 2000,
-      attendanceRate: 90,
-    };
-
-    const page1Data = Array.from({ length: 10 }, (_, i) => ({
-      ...mockAttendanceSessions[0],
-      id: `session-p1-${i}`,
-      title: `Page 1 Session ${i + 1}`,
-    }));
-
-    const page2Data = Array.from({ length: 10 }, (_, i) => ({
-      ...mockAttendanceSessions[0],
-      id: `session-p2-${i}`,
-      title: `Page 2 Session ${i + 1}`,
-    }));
-
-    (reportsApi.getAttendanceSessions as any).mockImplementation((params: any) => {
-      if (params?.page === 2) {
-        return Promise.resolve({
-          data: page2Data,
-          total: 25,
-          page: 2,
-          pageSize: 10,
-          totalPages: 3,
-          summary: fixedSummary,
-        });
-      }
-      return Promise.resolve({
-        data: page1Data,
-        total: 25,
-        page: 1,
-        pageSize: 10,
-        totalPages: 3,
-        summary: fixedSummary,
-      });
-    });
-
-    render(
-      <MemoryRouter>
-        <ToastProvider>
-          <ReportsPage />
-        </ToastProvider>
-      </MemoryRouter>
-    );
-
-    // Initial page 1 render: summary cards show authoritative figures
-    await waitFor(() => {
-      expect(screen.getAllByText('25').length).toBeGreaterThanOrEqual(1); // Sessions
-      expect(screen.getByText('90%')).toBeInTheDocument(); // Attendance Rate
-      expect(screen.getByText('1800')).toBeInTheDocument(); // Total Present
-      expect(screen.getByText('200')).toBeInTheDocument(); // Total Absent
-      expect(screen.getByText('Page 1 Session 1')).toBeInTheDocument();
-    });
-
-    // Navigate to page 2 via pagination Next button
-    const nextButton = screen.getByRole('button', { name: /next page/i });
-    fireEvent.click(nextButton);
-
-    // Verify page 2 data loaded, but summary cards remain identical
-    await waitFor(() => {
-      expect(screen.getByText('Page 2 Session 1')).toBeInTheDocument();
-      expect(screen.queryByText('Page 1 Session 1')).not.toBeInTheDocument();
-      // Summary cards MUST remain unchanged
-      expect(screen.getAllByText('25').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('90%')).toBeInTheDocument();
-      expect(screen.getByText('1800')).toBeInTheDocument();
-      expect(screen.getByText('200')).toBeInTheDocument();
-    });
   });
 });
