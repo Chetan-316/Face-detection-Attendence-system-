@@ -46,7 +46,7 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
           <input
             type="text"
             className="filter-search-input"
-            placeholder="Search residents..."
+            placeholder="Search code or full name..."
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
             aria-label="Search residents by name or code"
