@@ -21,6 +21,7 @@ export const StaffPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editing, setEditing] = useState<StaffAccount | null>(null);
   const [resettingPasswordFor, setResettingPasswordFor] = useState<StaffAccount | null>(null);
+  const [statusStaff, setStatusStaff] = useState<StaffAccount | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
   const [fullName, setFullName] = useState('');
@@ -103,14 +104,20 @@ export const StaffPage: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (member: StaffAccount) => {
-    const nextStatus = member.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+  const handleStatusChange = async () => {
+    if (!statusStaff) return;
+
+    const nextStatus = statusStaff.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
-      await staffApi.updateStaff(member.id, { status: nextStatus });
+      setIsSubmitting(true);
+      await staffApi.updateStaff(statusStaff.id, { status: nextStatus });
+      success(`${statusStaff.fullName} is now ${nextStatus === 'ACTIVE' ? 'active' : 'inactive'}.`);
+      setStatusStaff(null);
       await fetchData();
-      success(`${member.fullName} is now ${nextStatus === 'ACTIVE' ? 'active' : 'inactive'}.`);
     } catch (err: any) {
       toastError(err.message || 'Unable to update staff status.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -138,6 +145,10 @@ export const StaffPage: React.FC = () => {
   const handleCreate = async () => {
     if (!fullName.trim() || !username.trim() || !password || !hostelId) {
       setFormError('Name, username, password, and hostel are required.');
+      return;
+    }
+    if (password.length < 8) {
+      setFormError('Temporary password must be at least 8 characters.');
       return;
     }
 
@@ -261,7 +272,7 @@ export const StaffPage: React.FC = () => {
                       <Button
                         variant={member.status === 'ACTIVE' ? 'ghost' : 'secondary'}
                         size="sm"
-                        onClick={() => handleStatusChange(member)}
+                        onClick={() => setStatusStaff(member)}
                       >
                         {member.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
                       </Button>
@@ -330,6 +341,38 @@ export const StaffPage: React.FC = () => {
             {formError}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={!!statusStaff}
+        onClose={() => !isSubmitting && setStatusStaff(null)}
+        title={statusStaff?.status === 'ACTIVE' ? 'Deactivate Staff Account' : 'Reactivate Staff Account'}
+        subtitle={statusStaff ? statusStaff.fullName : undefined}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button variant="outline" onClick={() => setStatusStaff(null)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant={statusStaff?.status === 'ACTIVE' ? 'danger' : 'primary'}
+              onClick={handleStatusChange}
+              isLoading={isSubmitting}
+            >
+              {statusStaff?.status === 'ACTIVE' ? 'Deactivate Account' : 'Reactivate Account'}
+            </Button>
+          </div>
+        }
+      >
+        <div className={`rounded-lg border px-4 py-3 text-sm leading-relaxed ${
+          statusStaff?.status === 'ACTIVE'
+            ? 'border-amber-200 bg-amber-50 text-amber-800'
+            : 'border-blue-200 bg-blue-50 text-blue-800'
+        }`}>
+          {statusStaff?.status === 'ACTIVE'
+            ? 'This immediately blocks the staff member from signing in. Their account history and audit records are kept.'
+            : 'This restores sign-in access using the staff member’s existing credentials.'}
+        </div>
       </Modal>
 
       <Modal
@@ -421,7 +464,7 @@ export const StaffPage: React.FC = () => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Minimum 6 characters"
+            placeholder="Minimum 8 characters"
             required
           />
           <Select
