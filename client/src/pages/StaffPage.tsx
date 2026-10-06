@@ -21,6 +21,7 @@ export const StaffPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editing, setEditing] = useState<StaffAccount | null>(null);
   const [resettingPasswordFor, setResettingPasswordFor] = useState<StaffAccount | null>(null);
+  const [statusChangingFor, setStatusChangingFor] = useState<StaffAccount | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
   const [fullName, setFullName] = useState('');
@@ -103,14 +104,20 @@ export const StaffPage: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (member: StaffAccount) => {
+  const handleStatusChange = async () => {
+    if (!statusChangingFor) return;
+    const member = statusChangingFor;
     const nextStatus = member.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
+      setIsSubmitting(true);
       await staffApi.updateStaff(member.id, { status: nextStatus });
+      setStatusChangingFor(null);
       await fetchData();
       success(`${member.fullName} is now ${nextStatus === 'ACTIVE' ? 'active' : 'inactive'}.`);
     } catch (err: any) {
       toastError(err.message || 'Unable to update staff status.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -138,6 +145,10 @@ export const StaffPage: React.FC = () => {
   const handleCreate = async () => {
     if (!fullName.trim() || !username.trim() || !password || !hostelId) {
       setFormError('Name, username, password, and hostel are required.');
+      return;
+    }
+    if (password.length < 8) {
+      setFormError('Temporary password must be at least 8 characters.');
       return;
     }
 
@@ -240,7 +251,7 @@ export const StaffPage: React.FC = () => {
                     <Badge type="role" value={member.role} />
                   </td>
                   <td className="text-slate-700">
-                    {member.hostel?.name || 'All facilities'}
+                    {member.hostel?.name || 'Not assigned'}
                   </td>
                   <td>
                     <Badge type="status" value={member.status} />
@@ -260,7 +271,7 @@ export const StaffPage: React.FC = () => {
                       <Button
                         variant={member.status === 'ACTIVE' ? 'ghost' : 'secondary'}
                         size="sm"
-                        onClick={() => handleStatusChange(member)}
+                        onClick={() => setStatusChangingFor(member)}
                       >
                         {member.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
                       </Button>
@@ -331,6 +342,39 @@ export const StaffPage: React.FC = () => {
         )}
       </Modal>
 
+      <Modal
+        isOpen={!!statusChangingFor}
+        onClose={() => !isSubmitting && setStatusChangingFor(null)}
+        title={statusChangingFor?.status === 'ACTIVE' ? 'Deactivate Staff Access' : 'Reactivate Staff Access'}
+        subtitle={statusChangingFor?.fullName}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button variant="outline" onClick={() => setStatusChangingFor(null)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant={statusChangingFor?.status === 'ACTIVE' ? 'danger' : 'primary'}
+              onClick={handleStatusChange}
+              isLoading={isSubmitting}
+            >
+              {statusChangingFor?.status === 'ACTIVE' ? 'Deactivate Access' : 'Reactivate Access'}
+            </Button>
+          </div>
+        }
+      >
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            statusChangingFor?.status === 'ACTIVE'
+              ? 'border-amber-200 bg-amber-50 text-amber-900'
+              : 'border-blue-200 bg-blue-50 text-blue-900'
+          }`}
+        >
+          {statusChangingFor?.status === 'ACTIVE'
+            ? 'This staff member will no longer be able to sign in or perform hostel operations until their access is reactivated.'
+            : 'This staff member will regain access according to their assigned role and hostel.'}
+        </div>
+      </Modal>
       <Modal
         isOpen={!!resettingPasswordFor}
         onClose={() => !isSubmitting && setResettingPasswordFor(null)}
