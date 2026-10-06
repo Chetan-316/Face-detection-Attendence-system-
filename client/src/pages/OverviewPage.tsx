@@ -167,7 +167,7 @@ export const OverviewPage: React.FC = () => {
         {/* Total Residents */}
         <Link
           to="/residents"
-          className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between min-h-36 hover:border-blue-300 hover:shadow-md transition group"
+          className="overview-stat-card overview-stat-card-link group"
         >
           <div className="flex items-center justify-between text-slate-600">
             <span className="text-[15px] font-semibold text-slate-700">Residents</span>
@@ -176,7 +176,7 @@ export const OverviewPage: React.FC = () => {
             </div>
           </div>
           <div className="flex items-end justify-between gap-3">
-            <span className="text-[40px] font-bold text-slate-900 tracking-tight leading-none">{totalResidents}</span>
+            <span className="overview-stat-value">{totalResidents}</span>
             <span className="text-sm font-semibold text-blue-700 group-hover:text-blue-800 flex items-center gap-1">
               View residents <ArrowRight size={15} />
             </span>
@@ -184,29 +184,29 @@ export const OverviewPage: React.FC = () => {
         </Link>
 
         {/* Inside Hostel */}
-        <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between h-32">
+        <div className="overview-stat-card">
           <div className="flex items-center justify-between text-slate-600">
             <span className="text-[15px] font-semibold text-slate-600">Inside</span>
             <LogIn size={20} className="text-emerald-600" />
           </div>
           <div>
-            <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">{currentlyIn}</span>
+            <span className="overview-stat-value">{currentlyIn}</span>
           </div>
         </div>
 
         {/* Outside Hostel */}
-        <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between h-32">
+        <div className="overview-stat-card">
           <div className="flex items-center justify-between text-slate-600">
             <span className="text-[15px] font-semibold text-slate-600">Outside</span>
             <LogOut size={20} className="text-amber-600" />
           </div>
           <div>
-            <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">{currentlyOut}</span>
+            <span className="overview-stat-value">{currentlyOut}</span>
           </div>
         </div>
 
         {/* Return Deadline */}
-        <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between h-32">
+        <div className="overview-stat-card">
           <div className="flex items-center justify-between text-slate-600">
             <span className="text-[15px] font-semibold text-slate-600">
               {!hasScopedReturnDeadline
@@ -218,7 +218,7 @@ export const OverviewPage: React.FC = () => {
             <Clock size={20} className={isAfterReturnDeadline ? 'text-red-600' : 'text-blue-600'} />
           </div>
           <div>
-            <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">
+            <span className="overview-stat-value">
               {!hasScopedReturnDeadline
                 ? 'Per facility'
                 : isAfterReturnDeadline
