@@ -161,7 +161,7 @@ export const LoginPage: React.FC = () => {
                   className="btn-password-toggle"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  tabIndex={-1}
+                  aria-pressed={showPassword}
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
