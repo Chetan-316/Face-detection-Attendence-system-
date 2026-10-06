@@ -24,7 +24,7 @@ export const Pagination: React.FC<PaginationProps> = ({
   const endItem = Math.min(currentPage * pageSize, totalItems);
 
   return (
-    <div className="pagination-bar">
+    <nav className="pagination-bar" aria-label="Resident list pagination">
       <div className="pagination-info">
         Showing <span className="font-semibold">{startItem}</span> to{' '}
         <span className="font-semibold">{endItem}</span> of{' '}
@@ -36,7 +36,7 @@ export const Pagination: React.FC<PaginationProps> = ({
           className="btn btn-outline btn-sm"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1 || isLoading}
-          aria-label="Previous page"
+          aria-label={`Previous page, current page ${currentPage}`}
         >
           <ChevronLeft size={16} />
           <span>Previous</span>
@@ -49,12 +49,12 @@ export const Pagination: React.FC<PaginationProps> = ({
           className="btn btn-outline btn-sm"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages || isLoading}
-          aria-label="Next page"
+          aria-label={`Next page, current page ${currentPage}`}
         >
           <span>Next</span>
           <ChevronRight size={16} />
         </button>
       </div>
-    </div>
+    </nav>
   );
 };
