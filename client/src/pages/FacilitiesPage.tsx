@@ -207,8 +207,8 @@ export const FacilitiesPage: React.FC = () => {
   return (
     <div className="facilities-page">
       <PageHeader
-        title="Hostels & Facilities"
-        subtitle="Create hostels, set return deadlines, and manage gates and locations."
+        title="Hostels"
+        subtitle="Create hostels, set return deadlines, and manage gates and locations from one place."
         actions={
           <div className="flex items-center gap-2">
             <Button
