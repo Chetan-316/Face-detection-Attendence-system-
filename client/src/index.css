@@ -312,9 +312,11 @@ button {
 
 .app-main-content {
   flex: 1;
+  width: 100%;
   padding: 2rem;
   overflow-y: auto;
   max-width: 1400px;
+  margin: 0 auto;
 }
 
 /* ==========================================================================
@@ -806,6 +808,17 @@ textarea.form-control {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow-x: auto;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-container .data-table,
+.table-responsive .data-table {
+  min-width: 720px;
 }
 
 .data-table {
