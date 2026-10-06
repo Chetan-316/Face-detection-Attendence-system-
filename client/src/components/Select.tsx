@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useId } from 'react';
 
 export interface SelectOption {
   value: string;
@@ -15,7 +15,8 @@ export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElemen
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ label, error, hint, options, id, className = '', ...props }, ref) => {
-    const selectId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
+    const generatedId = useId();
+    const selectId = id || `select-${generatedId.replace(/:/g, '')}`;
 
     return (
       <div className={`form-group ${error ? 'has-error' : ''}`}>
