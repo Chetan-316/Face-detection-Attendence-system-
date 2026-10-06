@@ -670,14 +670,14 @@ textarea.form-control {
 /* Presence */
 .badge-presence-in {
   background: var(--success-subtle);
-  color: var(--success-500);
+  color: #166534;
   border: 1px solid var(--success-border);
 }
 .badge-presence-in .badge-dot { background: var(--success-500); }
 
 .badge-presence-out {
   background: var(--warning-subtle);
-  color: var(--warning-500);
+  color: #92400E;
   border: 1px solid var(--warning-border);
 }
 .badge-presence-out .badge-dot { background: var(--warning-500); }
@@ -685,7 +685,7 @@ textarea.form-control {
 /* Enrollment */
 .badge-enroll-enrolled {
   background: var(--primary-subtle);
-  color: var(--primary-500);
+  color: #1D4ED8;
   border: 1px solid #BFDBFE;
 }
 .badge-enroll-enrolled .badge-dot { background: var(--primary-500); }
@@ -699,14 +699,14 @@ textarea.form-control {
 
 .badge-enroll-needs {
   background: var(--warning-subtle);
-  color: var(--warning-500);
+  color: #92400E;
   border: 1px solid var(--warning-border);
 }
 .badge-enroll-needs .badge-dot { background: var(--warning-500); }
 
 .badge-enroll-revoked {
   background: var(--danger-subtle);
-  color: var(--danger-500);
+  color: #B91C1C;
   border: 1px solid var(--danger-border);
 }
 .badge-enroll-revoked .badge-dot { background: var(--danger-500); }
@@ -714,21 +714,21 @@ textarea.form-control {
 /* Status */
 .badge-status-active {
   background: var(--success-subtle);
-  color: var(--success-500);
+  color: #166534;
   border: 1px solid var(--success-border);
 }
 .badge-status-active .badge-dot { background: var(--success-500); }
 
 .badge-status-inactive {
   background: var(--danger-subtle);
-  color: var(--danger-500);
+  color: #B91C1C;
   border: 1px solid var(--danger-border);
 }
 .badge-status-inactive .badge-dot { background: var(--danger-500); }
 
 .badge-status-suspended {
   background: var(--warning-subtle);
-  color: var(--warning-500);
+  color: #92400E;
   border: 1px solid var(--warning-border);
 }
 .badge-status-suspended .badge-dot { background: var(--warning-500); }
@@ -743,21 +743,21 @@ textarea.form-control {
 /* Roles */
 .badge-role-admin {
   background: var(--primary-subtle);
-  color: var(--primary-500);
+  color: #1D4ED8;
   border: 1px solid #BFDBFE;
 }
 .badge-role-admin .badge-dot { background: var(--primary-500); }
 
 .badge-role-warden {
   background: var(--success-subtle);
-  color: var(--success-500);
+  color: #166534;
   border: 1px solid var(--success-border);
 }
 .badge-role-warden .badge-dot { background: var(--success-500); }
 
 .badge-role-guard {
   background: var(--warning-subtle);
-  color: var(--warning-500);
+  color: #92400E;
   border: 1px solid var(--warning-border);
 }
 .badge-role-guard .badge-dot { background: var(--warning-500); }
@@ -853,7 +853,7 @@ textarea.form-control {
 }
 
 .table-link-btn:hover {
-  color: #60a5fa;
+  color: #1D4ED8;
   text-decoration: underline;
 }
 
@@ -1208,7 +1208,7 @@ textarea.form-control {
   padding: 0.75rem 1rem;
   box-shadow: var(--shadow-lg);
   color: var(--text-primary);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   animation: slideIn 0.2s ease-out;
 }
 
