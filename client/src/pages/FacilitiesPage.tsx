@@ -18,6 +18,7 @@ export const FacilitiesPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusFacility, setStatusFacility] = useState<Facility | null>(null);
   const [locationFacility, setLocationFacility] = useState<Facility | null>(null);
+  const [statusLocation, setStatusLocation] = useState<FacilityLocation | null>(null);
   const [locations, setLocations] = useState<FacilityLocation[]>([]);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [locationName, setLocationName] = useState('');
@@ -167,17 +168,22 @@ export const FacilitiesPage: React.FC = () => {
     }
   };
 
-  const handleLocationStatus = async (location: FacilityLocation) => {
-    if (!locationFacility) return;
+  const handleLocationStatus = async () => {
+    if (!locationFacility || !statusLocation) return;
     try {
-      await facilitiesApi.updateLocation(locationFacility.id, location.id, {
-        isActive: !location.isActive,
+      setIsSubmitting(true);
+      setLocationError(null);
+      await facilitiesApi.updateLocation(locationFacility.id, statusLocation.id, {
+        isActive: !statusLocation.isActive,
       });
       const res = await facilitiesApi.listLocations(locationFacility.id);
       setLocations(res.data || []);
-      success(`${location.name} ${location.isActive ? 'deactivated' : 'reactivated'}.`);
+      success(`${statusLocation.name} ${statusLocation.isActive ? 'deactivated' : 'reactivated'}.`);
+      setStatusLocation(null);
     } catch (err: any) {
       setLocationError(err.message || 'Unable to update location.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -401,7 +407,12 @@ export const FacilitiesPage: React.FC = () => {
 
       <Modal
         isOpen={!!locationFacility}
-        onClose={() => !isSubmitting && setLocationFacility(null)}
+        onClose={() => {
+          if (!isSubmitting) {
+            setStatusLocation(null);
+            setLocationFacility(null);
+          }
+        }}
         title="Gates & Locations"
         subtitle={locationFacility ? locationFacility.name : undefined}
         size="lg"
@@ -416,6 +427,36 @@ export const FacilitiesPage: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <h3 className="text-base font-bold text-slate-900 mb-3">Configured Locations</h3>
+            {statusLocation && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <div className="text-sm font-semibold text-amber-900">
+                  {statusLocation.isActive ? 'Deactivate' : 'Reactivate'} {statusLocation.name}?
+                </div>
+                <p className="text-sm text-amber-800 mt-1">
+                  {statusLocation.isActive
+                    ? 'Cameras assigned to this location must be disabled or reassigned before it can be deactivated.'
+                    : 'This location will become available again for camera assignment.'}
+                </p>
+                <div className="flex items-center gap-2 mt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setStatusLocation(null)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant={statusLocation.isActive ? 'danger' : 'primary'}
+                    size="sm"
+                    onClick={handleLocationStatus}
+                    isLoading={isSubmitting}
+                  >
+                    {statusLocation.isActive ? 'Deactivate' : 'Reactivate'}
+                  </Button>
+                </div>
+              </div>
+            )}
             {isLoadingLocations ? (
               <div className="text-sm text-slate-500 py-4">Loading locations...</div>
             ) : locations.length === 0 ? (
@@ -438,7 +479,7 @@ export const FacilitiesPage: React.FC = () => {
                     <Button
                       variant={location.isActive ? 'ghost' : 'secondary'}
                       size="sm"
-                      onClick={() => handleLocationStatus(location)}
+                      onClick={() => setStatusLocation(location)}
                     >
                       {location.isActive ? 'Deactivate' : 'Reactivate'}
                     </Button>
