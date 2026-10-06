@@ -603,6 +603,7 @@ export const ReportsPage: React.FC = () => {
                   totalItems={attTotal}
                   pageSize={attPageSize}
                   onPageChange={(page) => setAttPage(page)}
+                  itemLabel="attendance records"
                 />
               </div>
             </>
@@ -854,6 +855,7 @@ export const ReportsPage: React.FC = () => {
                     totalItems={movTotal}
                     pageSize={movPageSize}
                     onPageChange={(page) => setMovPage(page)}
+                    itemLabel="movement records"
                   />
                 </div>
               </>
