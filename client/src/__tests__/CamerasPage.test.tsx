@@ -193,12 +193,13 @@ describe('Cameras page product workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: /^add camera$/i }));
 
     expect(screen.getByRole('heading', { name: 'Add Camera' })).toBeInTheDocument();
-    expect(screen.getByText(/Facilities → Gates & Locations/i)).toBeInTheDocument();
+    expect(screen.getByText(/Hostels → Gates & Locations/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/camera name/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^facility/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^hostel/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/gate \/ location/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/camera type/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/camera purpose/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^purpose/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue/i })).toBeInTheDocument();
   });
 
   it('keeps technical recognition terminology out of the normal camera UI', () => {
