@@ -14,8 +14,8 @@ import {
   Shield,
   Building2,
   Eye,
-  CalendarCheck,
   FileText,
+  UserCog,
 } from 'lucide-react';
 
 export const AppLayout: React.FC = () => {
@@ -30,9 +30,10 @@ export const AppLayout: React.FC = () => {
     navigate('/login');
   };
 
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
   return (
     <div className="app-shell">
-      {/* Top Application Header */}
       <header className="app-header">
         <div className="header-left">
           <button
@@ -40,6 +41,8 @@ export const AppLayout: React.FC = () => {
             className="mobile-menu-btn"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label="Toggle navigation menu"
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="primary-navigation"
           >
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
@@ -48,7 +51,7 @@ export const AppLayout: React.FC = () => {
             <span className="brand-logo-badge">PX</span>
             <div className="brand-text-group">
               <span className="brand-name">PRAVAHAx</span>
-              <span className="brand-tagline">Hostel Attendance & Resident Management</span>
+              <span className="brand-tagline">Hostel Resident & Presence Management</span>
             </div>
           </div>
         </div>
@@ -78,76 +81,34 @@ export const AppLayout: React.FC = () => {
       </header>
 
       <div className="app-body">
-        {/* Mobile Backdrop */}
         {isMobileMenuOpen && (
           <div
             className="mobile-backdrop"
-            onClick={() => setIsMobileMenuOpen(false)}
+            onClick={closeMobileMenu}
             aria-hidden="true"
           />
         )}
 
-        {/* Sidebar */}
-        <aside className={`app-sidebar ${isMobileMenuOpen ? 'is-open' : ''}`}>
+        <aside id="primary-navigation" className={`app-sidebar ${isMobileMenuOpen ? 'is-open' : ''}`}>
           <div className="sidebar-section-title">Navigation</div>
+
           <nav className="sidebar-nav">
             {user?.role === 'GUARD' ? (
-              <>
-                <NavLink
-                  to="/gate"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <Eye size={18} />
-                  <span>Gate</span>
-                </NavLink>
-              </>
-            ) : user?.role === 'WARDEN' ? (
-              <>
-                <NavLink
-                  to="/"
-                  end
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <LayoutDashboard size={18} />
-                  <span>Dashboard</span>
-                </NavLink>
-
-                <NavLink
-                  to="/residents"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <Users size={18} />
-                  <span>Residents</span>
-                </NavLink>
-
-                <NavLink
-                  to="/attendance"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <CalendarCheck size={18} />
-                  <span>Attendance</span>
-                </NavLink>
-
-                <NavLink
-                  to="/reports"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <FileText size={18} />
-                  <span>Reports</span>
-                </NavLink>
-              </>
+              <NavLink
+                to="/gate"
+                className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                onClick={closeMobileMenu}
+              >
+                <Eye size={18} />
+                <span>Gate</span>
+              </NavLink>
             ) : (
               <>
                 <NavLink
                   to="/"
                   end
                   className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={closeMobileMenu}
                 >
                   <LayoutDashboard size={18} />
                   <span>Dashboard</span>
@@ -156,38 +117,51 @@ export const AppLayout: React.FC = () => {
                 <NavLink
                   to="/residents"
                   className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={closeMobileMenu}
                 >
                   <Users size={18} />
                   <span>Residents</span>
                 </NavLink>
 
                 <NavLink
-                  to="/attendance"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <CalendarCheck size={18} />
-                  <span>Attendance</span>
-                </NavLink>
-
-                <NavLink
                   to="/reports"
                   className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={closeMobileMenu}
                 >
                   <FileText size={18} />
                   <span>Reports</span>
                 </NavLink>
 
-                <NavLink
-                  to="/cameras"
-                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <Video size={18} />
-                  <span>Cameras</span>
-                </NavLink>
+                {user?.role === 'ADMIN' && (
+                  <>
+                    <NavLink
+                      to="/cameras"
+                      className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                      onClick={closeMobileMenu}
+                    >
+                      <Video size={18} />
+                      <span>Cameras</span>
+                    </NavLink>
+
+                    <NavLink
+                      to="/staff"
+                      className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                      onClick={closeMobileMenu}
+                    >
+                      <UserCog size={18} />
+                      <span>Staff</span>
+                    </NavLink>
+
+                    <NavLink
+                      to="/facilities"
+                      className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                      onClick={closeMobileMenu}
+                    >
+                      <Building2 size={18} />
+                      <span>Facilities</span>
+                    </NavLink>
+                  </>
+                )}
               </>
             )}
           </nav>
@@ -198,7 +172,10 @@ export const AppLayout: React.FC = () => {
                 <Building2 size={14} className="scope-icon" />
                 <span className="scope-label">Facility</span>
               </div>
-              <span className="scope-value">{user?.hostelId ? 'Assigned Hostel' : 'All Facilities'}</span>
+              <span className="scope-value">
+                {user?.hostelId ? 'Assigned Hostel' : 'All Facilities'}
+              </span>
+
               <div className="scope-row mt-2">
                 <Shield size={14} className="scope-icon" />
                 <span className="scope-label">Role</span>
@@ -208,7 +185,6 @@ export const AppLayout: React.FC = () => {
           </div>
         </aside>
 
-        {/* Main Content Area */}
         <main className="app-main-content">
           <Outlet />
         </main>

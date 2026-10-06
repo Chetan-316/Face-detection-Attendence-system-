@@ -417,8 +417,8 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={handleCancel}
-      title={isEnrolled ? `Face Re-enrollment — ${resident.residentCode}` : `Face Enrollment — ${resident.residentCode}`}
-      subtitle={`${resident.fullName} • ${resident.roomGroup}`}
+      title={isEnrolled ? `Re-enroll Face — ${resident.fullName}` : `Enroll Face — ${resident.fullName}`}
+      subtitle={`${resident.residentCode} • ${resident.roomGroup}`}
       size="lg"
     >
       <div className="face-enrollment-container flex flex-col gap-5 max-w-xl mx-auto w-full">
@@ -487,7 +487,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           {(isStreamLoaded || isWebcamActive) && (
             <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 backdrop-blur-sm rounded-full text-white text-xs font-medium tracking-wider pointer-events-none">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>LIVE CAMERA</span>
+              <span>CAMERA READY</span>
             </div>
           )}
 
@@ -525,7 +525,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
             ) : statusMessage ? (
               <span className="text-sm font-medium text-emerald-600">{statusMessage}</span>
             ) : (
-              <span className="text-sm text-slate-500">Ready to capture</span>
+              <span className="text-sm text-slate-500">Center the resident in the guide, then capture this angle.</span>
             )}
           </div>
 
@@ -541,7 +541,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                 isLoading={isSaving}
                 disabled={isSaving}
               >
-                {isSaving ? 'Registering Face...' : 'Register Face Profile'}
+                {isSaving ? 'Saving Face...' : 'Save Face Enrollment'}
               </Button>
             ) : (
               <Button
@@ -568,6 +568,11 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               </button>
             )}
           </div>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+          <span>{completedPoses.size} of 5 angles captured</span>
+          <span>{allPosesComplete ? 'Ready to save' : 'Complete all 5 angles'}</span>
         </div>
 
         {/* Clean horizontal step progress indicator */}
@@ -613,22 +618,12 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
             onClick={handleCancel}
             disabled={isSaving}
           >
-            Cancel Enrollment
+            Cancel
           </Button>
 
-          {allPosesComplete && (
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              className="h-11 px-6 font-semibold"
-              onClick={handleSaveEnrollment}
-              isLoading={isSaving}
-              disabled={isSaving}
-            >
-              Save Face Enrollment
-            </Button>
-          )}
+          <span className="text-xs text-slate-500">
+            Five guided angles are required for a complete enrollment.
+          </span>
         </div>
       </div>
     </Modal>

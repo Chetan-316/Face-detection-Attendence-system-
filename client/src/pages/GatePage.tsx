@@ -6,9 +6,7 @@ import { residentsApi } from '../api/residents.api';
 import { CameraEntity } from '../types/camera.types';
 import { RecognitionObservation } from '../types/recognition.types';
 import { MovementEventEntity, PresenceCounts } from '../types/movement.types';
-import { SafeResident } from '../types/resident.types';
 import { RegisterRegularComerModal } from '../features/gate/RegisterRegularComerModal';
-import { FaceEnrollmentModal } from '../features/residents/FaceEnrollmentModal';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Button } from '../components/Button';
@@ -48,7 +46,6 @@ export const GatePage: React.FC = () => {
 
   const [streamError, setStreamError] = useState<string | null>(null);
   const [isRegisterVisitorOpen, setIsRegisterVisitorOpen] = useState(false);
-  const [enrollingVisitor, setEnrollingVisitor] = useState<SafeResident | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const resetTimerRef = useRef<any>(null);
 
@@ -115,11 +112,8 @@ export const GatePage: React.FC = () => {
     startLaptopCamera();
   }, [startLaptopCamera]);
 
-  const handleRegisterVisitorSuccess = (newPerson: SafeResident, shouldEnrollFace: boolean) => {
+  const handleRegisterVisitorSuccess = () => {
     fetchMovementData();
-    if (shouldEnrollFace) {
-      setEnrollingVisitor(newPerson);
-    }
   };
 
   // Fetch gate cameras
@@ -365,6 +359,9 @@ export const GatePage: React.FC = () => {
   const isMatch = activeObservation?.classification === 'MATCH' && !!activeObservation.resident;
   const isUnknown = activeObservation?.classification === 'UNKNOWN';
   const isLowQuality = activeObservation?.classification === 'QUALITY_INSUFFICIENT';
+  const isUncertain = activeObservation?.classification === 'UNCERTAIN';
+  const cameraHealth = selectedCamera?.healthStatus || 'OFFLINE';
+  const cameraIsOnline = cameraHealth === 'ONLINE';
 
   return (
     <div className="gate-page flex flex-col gap-6 max-w-7xl mx-auto w-full">
@@ -372,21 +369,31 @@ export const GatePage: React.FC = () => {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gate</h1>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gate Operations</h1>
             <span className="text-slate-400 font-light">|</span>
             <span className="text-lg font-semibold text-slate-700">{selectedCamera?.name || 'Main Gate'}</span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-13px font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              Online
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-13px font-semibold border ${
+                cameraIsOnline
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  cameraIsOnline ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}
+              />
+              {cameraIsOnline ? 'Camera Online' : 'Camera Attention'}
             </span>
           </div>
-          <p className="text-15px text-slate-500 mt-0.5">Hostel resident entrance and exit point</p>
+          <p className="text-15px text-slate-500 mt-0.5">Live resident movement and gate exceptions</p>
         </div>
 
         <div className="flex items-center gap-5">
           {cameras.length > 1 && (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600 font-medium">Gate Camera:</span>
+              <span className="text-sm text-slate-600 font-medium">Camera:</span>
               <select
                 value={selectedCameraId}
                 onChange={(e) => {
@@ -431,7 +438,7 @@ export const GatePage: React.FC = () => {
             leftIcon={<UserPlus size={16} />}
             className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm py-2 px-3 rounded-lg shadow-sm whitespace-nowrap ml-2"
           >
-            + Register Regular Comer
+            Visitor / Exception
           </Button>
         </div>
       </div>
@@ -458,7 +465,7 @@ export const GatePage: React.FC = () => {
                 />
                 <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Live Laptop Camera</span>
+                  <span>Live Gate Camera</span>
                 </div>
                 <button
                   type="button"
@@ -472,7 +479,7 @@ export const GatePage: React.FC = () => {
                 <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2 bg-black/70 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10 shadow-lg">
                   <div className="flex items-center gap-2 text-white text-xs font-medium">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Auto-scanning camera feed</span>
+                    <span>Automatic scan active</span>
                   </div>
                   <button
                     type="button"
@@ -481,7 +488,7 @@ export const GatePage: React.FC = () => {
                     className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition"
                   >
                     {isScanningFace ? <RefreshCw size={13} className="animate-spin" /> : <Scan size={13} />}
-                    <span>{isScanningFace ? 'Scanning Face...' : '📸 Scan Face Now'}</span>
+                    <span>{isScanningFace ? 'Scanning...' : 'Scan Now'}</span>
                   </button>
                 </div>
               </div>
@@ -533,7 +540,7 @@ export const GatePage: React.FC = () => {
                 <Check size={32} />
               </div>
               <h3 className="text-xl font-bold text-slate-900">{lastActionSuccessMsg}</h3>
-              <p className="text-sm text-slate-500">Gate movement recorded successfully.</p>
+              <p className="text-sm text-slate-500">The resident presence has been updated.</p>
             </div>
           ) : isMatch && activeObservation?.resident ? (
             /* Recognized Resident Card - ONLY displayed when camera detects face */
@@ -544,7 +551,7 @@ export const GatePage: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-                      ✓ Face Verified by Camera
+                      Resident Identified
                     </span>
                   </div>
                   <button
@@ -597,7 +604,7 @@ export const GatePage: React.FC = () => {
               {/* Guard Action Buttons: MARK IN & MARK OUT */}
               <div className="pt-4 border-t border-slate-200 flex flex-col gap-2">
                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                  Gate Movement Action for Guard:
+                  Record movement
                 </span>
                 <div className="grid grid-cols-2 gap-3">
                   <Button
@@ -610,7 +617,7 @@ export const GatePage: React.FC = () => {
                     disabled={isConfirming}
                     leftIcon={<LogIn size={20} />}
                   >
-                    MARK IN
+                    Mark Inside
                   </Button>
                   <Button
                     type="button"
@@ -622,7 +629,7 @@ export const GatePage: React.FC = () => {
                     disabled={isConfirming}
                     leftIcon={<LogOut size={20} />}
                   >
-                    MARK OUT
+                    Mark Outside
                   </Button>
                 </div>
               </div>
@@ -633,9 +640,9 @@ export const GatePage: React.FC = () => {
               <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center border border-red-200">
                 <UserX size={28} />
               </div>
-              <h3 className="text-lg font-bold text-slate-900">Person not identified</h3>
+              <h3 className="text-lg font-bold text-slate-900">Person not recognized</h3>
               <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                Face not found in enrolled templates. Please register as regular comer or enroll face.
+                The person could not be matched to an enrolled resident. Use the exception workflow if assistance is needed.
               </p>
               <div className="mt-2 w-full max-w-xs">
                 <Button
@@ -646,9 +653,19 @@ export const GatePage: React.FC = () => {
                   leftIcon={<UserPlus size={16} />}
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg shadow-sm"
                 >
-                  Register Regular Comer
+                  Open Exception Workflow
                 </Button>
               </div>
+            </div>
+          ) : isUncertain ? (
+            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
+                <AlertTriangle size={28} />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Identity needs another look</h3>
+              <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                Ask the resident to look toward the camera once more. No movement has been recorded.
+              </p>
             </div>
           ) : isLowQuality ? (
             /* Face not clear enough */
@@ -656,9 +673,9 @@ export const GatePage: React.FC = () => {
               <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
                 <AlertTriangle size={28} />
               </div>
-              <h3 className="text-lg font-bold text-slate-900">Face not clear enough</h3>
+              <h3 className="text-lg font-bold text-slate-900">Camera needs a clearer view</h3>
               <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                Please look directly into the camera and ensure adequate lighting.
+                Ask the resident to face the camera briefly and hold still. No movement has been recorded.
               </p>
             </div>
           ) : (
@@ -668,9 +685,9 @@ export const GatePage: React.FC = () => {
                 <Eye size={30} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-800">Waiting for resident</h3>
+                <h3 className="text-lg font-bold text-slate-800">Ready for next resident</h3>
                 <p className="text-sm text-slate-500 max-w-xs leading-relaxed mt-1">
-                  Stand in front of the camera to verify identity. The guard will receive the option to Mark IN or OUT as soon as your face is recognized.
+                  The camera scans automatically. Movement controls appear after a resident is identified.
                 </p>
               </div>
             </div>
@@ -695,7 +712,7 @@ export const GatePage: React.FC = () => {
                 <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/50">
                   <th className="py-3.5 px-6 text-sm font-semibold">Time</th>
                   <th className="py-3.5 px-6 text-sm font-semibold">Resident</th>
-                  <th className="py-3.5 px-6 text-sm font-semibold">Code</th>
+                  <th className="py-3.5 px-6 text-sm font-semibold">Room</th>
                   <th className="py-3.5 px-6 text-sm font-semibold text-right">Movement</th>
                 </tr>
               </thead>
@@ -713,8 +730,8 @@ export const GatePage: React.FC = () => {
                       <td className="py-3.5 px-6 font-semibold text-slate-900">
                         {mov.resident?.fullName || mov.residentId}
                       </td>
-                      <td className="py-3.5 px-6 text-slate-600 font-mono text-sm">
-                        {mov.resident?.residentCode || '—'}
+                      <td className="py-3.5 px-6 text-slate-600 text-sm">
+                        {mov.resident?.roomGroup || '—'}
                       </td>
                       <td className="py-3.5 px-6 text-right">
                         <span
@@ -724,7 +741,7 @@ export const GatePage: React.FC = () => {
                               : 'bg-amber-50 text-amber-800 border border-amber-200'
                           }`}
                         >
-                          {mov.movementType}
+                          {isIN ? 'Entered' : 'Left'}
                         </span>
                       </td>
                     </tr>
@@ -743,17 +760,6 @@ export const GatePage: React.FC = () => {
         hostelId={user?.hostelId || undefined}
       />
 
-      {enrollingVisitor && (
-        <FaceEnrollmentModal
-          isOpen={!!enrollingVisitor}
-          resident={enrollingVisitor}
-          onClose={() => setEnrollingVisitor(null)}
-          onSuccess={(updated) => {
-            setEnrollingVisitor(null);
-            success(`Face enrollment completed for ${updated.fullName}. Future visits will be auto-recognized.`);
-          }}
-        />
-      )}
     </div>
   );
 };

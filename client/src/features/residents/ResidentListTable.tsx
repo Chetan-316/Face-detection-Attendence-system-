@@ -13,9 +13,6 @@ interface ResidentListTableProps {
   residents: SafeResident[];
   isLoading: boolean;
   onSelect: (resident: SafeResident) => void;
-  onEdit: (resident: SafeResident) => void;
-  onDeactivate: (resident: SafeResident) => void;
-  onReactivate: (resident: SafeResident) => void;
   onEnrollFace?: (resident: SafeResident) => void;
   canManage: boolean;
   hasActiveFilters: boolean;
@@ -26,9 +23,6 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
   residents,
   isLoading,
   onSelect,
-  onEdit,
-  onDeactivate,
-  onReactivate,
   onEnrollFace,
   canManage,
   hasActiveFilters,
@@ -45,7 +39,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
               <th className="px-6 py-4">Presence</th>
               <th className="px-6 py-4">Face</th>
               <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4 text-right">Action</th>
+              <th className="px-6 py-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -104,7 +98,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
             <th scope="col" className="px-6 py-4">Presence</th>
             <th scope="col" className="px-6 py-4">Face</th>
             <th scope="col" className="px-6 py-4">Status</th>
-            <th scope="col" className="px-6 py-4 text-right">Action</th>
+            <th scope="col" className="px-6 py-4 text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -185,34 +179,21 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
 
                     {canManage && (
                       <>
-                        <button
-                          type="button"
-                          className="px-3 py-1.5 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 hover:text-slate-900 transition"
-                          onClick={() => onEdit(resident)}
-                          aria-label={`Edit ${resident.fullName}`}
-                        >
-                          Edit
-                        </button>
+                        {resident.status === 'ACTIVE' &&
+                          resident.faceEnrollmentStatus !== 'ENROLLED' &&
+                          onEnrollFace && (
+                            <button
+                              type="button"
+                              className="px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition"
+                              onClick={() => onEnrollFace(resident)}
+                              aria-label={`Enroll face for ${resident.fullName}`}
+                            >
+                              {resident.faceEnrollmentStatus === 'NEEDS_REENROLLMENT'
+                                ? 'Re-enroll Face'
+                                : 'Enroll Face'}
+                            </button>
+                          )}
 
-                        {resident.status === 'ACTIVE' ? (
-                          <button
-                            type="button"
-                            className="px-3 py-1.5 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition"
-                            onClick={() => onDeactivate(resident)}
-                            aria-label={`Deactivate ${resident.fullName}`}
-                          >
-                            Deactivate
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className="px-3 py-1.5 text-sm font-medium text-emerald-700 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 transition"
-                            onClick={() => onReactivate(resident)}
-                            aria-label={`Reactivate ${resident.fullName}`}
-                          >
-                            Reactivate
-                          </button>
-                        )}
                       </>
                     )}
                   </div>

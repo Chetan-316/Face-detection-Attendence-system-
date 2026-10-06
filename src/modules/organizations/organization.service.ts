@@ -54,6 +54,7 @@ export class OrganizationService {
     organizationId: string;
     code: string;
     name: string;
+    returnDeadlineMinutes?: number;
     createdByUserId?: string;
   }): Promise<Hostel> {
     if (!data.code || !data.name) {
@@ -85,6 +86,7 @@ export class OrganizationService {
           organizationId: data.organizationId,
           code: data.code,
           name: data.name,
+          returnDeadlineMinutes: data.returnDeadlineMinutes ?? 1260,
         },
       });
 
@@ -96,7 +98,11 @@ export class OrganizationService {
           entityId: hostel.id,
           action: 'CREATE',
           performedByUserId: data.createdByUserId || null,
-          newValues: { code: hostel.code, name: hostel.name },
+          newValues: {
+            code: hostel.code,
+            name: hostel.name,
+            returnDeadlineMinutes: hostel.returnDeadlineMinutes,
+          },
         },
         tx
       );

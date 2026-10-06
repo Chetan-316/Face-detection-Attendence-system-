@@ -40,9 +40,9 @@ describe('LoginPage Component', () => {
   it('renders login form elements with accessible labels and show/hide password toggle', () => {
     renderLoginPage();
 
-    expect(screen.getByLabelText(/staff username/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/username/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^password/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /sign in to console/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /show password/i })).toBeInTheDocument();
   });
 
@@ -50,7 +50,7 @@ describe('LoginPage Component', () => {
     const user = userEvent.setup();
     renderLoginPage();
 
-    const submitBtn = screen.getByRole('button', { name: /sign in to console/i });
+    const submitBtn = screen.getByRole('button', { name: /^sign in$/i });
     await user.click(submitBtn);
 
     expect(screen.getByText(/username is required/i)).toBeInTheDocument();
@@ -80,9 +80,9 @@ describe('LoginPage Component', () => {
 
     renderLoginPage();
 
-    await user.type(screen.getByLabelText(/staff username/i), 'warden');
+    await user.type(screen.getByLabelText(/username/i), 'warden');
     await user.type(screen.getByLabelText(/^password/i), 'wrongPassword');
-    await user.click(screen.getByRole('button', { name: /sign in to console/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toHaveTextContent(/invalid username or password/i);
@@ -108,9 +108,9 @@ describe('LoginPage Component', () => {
 
     renderLoginPage();
 
-    await user.type(screen.getByLabelText(/staff username/i), 'warden');
+    await user.type(screen.getByLabelText(/username/i), 'warden');
     await user.type(screen.getByLabelText(/^password/i), 'Password123!');
-    await user.click(screen.getByRole('button', { name: /sign in to console/i }));
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('dashboard')).toBeInTheDocument();

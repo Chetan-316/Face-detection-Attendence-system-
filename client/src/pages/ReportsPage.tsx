@@ -49,7 +49,7 @@ export const ReportsPage: React.FC = () => {
 
   const isGuard = user?.role === 'GUARD';
 
-  const [activeTab, setActiveTab] = useState<ReportTab>('attendance');
+  const [activeTab, setActiveTab] = useState<ReportTab>('movement');
 
   // ----------------------------------------------------
   // ATTENDANCE TAB STATE
@@ -307,14 +307,13 @@ export const ReportsPage: React.FC = () => {
     <div className="reports-page">
       <PageHeader
         title="Reports"
-        subtitle="Operational attendance records, gate movement history, and resident summaries."
+        subtitle="Live presence, gate movement history, corrected events, and resident movement summaries."
         actions={
           <div className="flex gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                if (activeTab === 'attendance') fetchAttendanceReport();
                 if (activeTab === 'movement') fetchMovementReport();
                 if (activeTab === 'residents' && selectedResidentId) loadResidentReport(selectedResidentId);
               }}
@@ -331,19 +330,6 @@ export const ReportsPage: React.FC = () => {
         <button
           type="button"
           className={`tab-btn px-5 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === 'attendance'
-              ? 'border-primary text-primary font-semibold'
-              : 'border-transparent text-secondary hover:text-primary'
-          }`}
-          onClick={() => setActiveTab('attendance')}
-        >
-          <Calendar size={16} />
-          <span>Attendance</span>
-        </button>
-
-        <button
-          type="button"
-          className={`tab-btn px-5 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
             activeTab === 'movement'
               ? 'border-primary text-primary font-semibold'
               : 'border-transparent text-secondary hover:text-primary'
@@ -351,7 +337,7 @@ export const ReportsPage: React.FC = () => {
           onClick={() => setActiveTab('movement')}
         >
           <ArrowRightLeft size={16} />
-          <span>Movement</span>
+          <span>Presence & Movement</span>
         </button>
 
         <button
@@ -694,9 +680,9 @@ export const ReportsPage: React.FC = () => {
                     setMovPage(1);
                   }}
                 >
-                  <option value="ALL">All Directions</option>
-                  <option value="IN">IN (Entry)</option>
-                  <option value="OUT">OUT (Exit)</option>
+                  <option value="ALL">All movement</option>
+                  <option value="IN">Entered hostel</option>
+                  <option value="OUT">Left hostel</option>
                 </select>
               </div>
 
@@ -759,8 +745,12 @@ export const ReportsPage: React.FC = () => {
             )}
           </div>
 
+          <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            Presence is derived from the latest verified IN / OUT movement. Corrected events remain clearly marked for audit.
+          </div>
+
           {/* Movement Table */}
-          <Card title="Movement History" subtitle="Chronological gate entry and exit events">
+          <Card title="Movement History" subtitle="Verified hostel entry and exit events">
             {movError && (
               <div className="alert-banner alert-banner-error mb-4" role="alert">
                 <AlertCircle size={18} />
@@ -784,10 +774,10 @@ export const ReportsPage: React.FC = () => {
                         <th>Resident Code</th>
                         <th>Name</th>
                         <th>Room</th>
-                        <th>Direction</th>
+                        <th>Movement</th>
                         <th>Gate</th>
-                        <th>Source</th>
-                        <th>Status</th>
+                        <th>Recorded By</th>
+                        <th>Record Status</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -809,7 +799,7 @@ export const ReportsPage: React.FC = () => {
                                 ev.direction === 'IN' ? 'success' : 'amber'
                               }`}
                             >
-                              {ev.direction}
+                              {ev.direction === 'IN' ? 'Entered' : 'Left'}
                             </span>
                           </td>
                           <td>{ev.gateName}</td>
@@ -818,7 +808,7 @@ export const ReportsPage: React.FC = () => {
                             {ev.isCorrection ? (
                               <span className="badge badge-sm badge-info">Corrected</span>
                             ) : (
-                              <span className="badge badge-sm badge-neutral">Normal</span>
+                              <span className="badge badge-sm badge-neutral">Verified</span>
                             )}
                           </td>
                         </tr>
@@ -945,65 +935,22 @@ export const ReportsPage: React.FC = () => {
                           </span>
                         </div>
                         <div className="text-right border-l border-border pl-4">
-                          <span className="text-xs text-secondary block">Attendance Rate</span>
-                          <span className="text-lg font-bold text-primary">
-                            {residentSummary.attendanceRate}%
+                          <span className="text-xs text-secondary block">Last Movement</span>
+                          <span className="text-sm font-semibold text-primary">
+                            {residentSummary.lastMovementDirection || 'No movement'}
                           </span>
                           <span className="text-xs text-muted block">
-                            ({residentSummary.presentSessions} / {residentSummary.totalAttendanceSessions})
+                            {residentSummary.lastMovementTime
+                              ? new Date(residentSummary.lastMovementTime).toLocaleString()
+                              : 'No movement recorded'}
                           </span>
                         </div>
                       </div>
                     </div>
                   </Card>
 
-                  {/* Two Column Layout: Recent Attendance + Recent Movements */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Recent Attendance */}
-                    <Card title="Attendance History" subtitle="Recent recorded sessions">
-                      {residentSummary.recentAttendance.length === 0 ? (
-                        <p className="text-xs text-muted py-4">No attendance records found.</p>
-                      ) : (
-                        <div className="table-responsive">
-                          <table className="data-table text-xs">
-                            <thead>
-                              <tr>
-                                <th>Date</th>
-                                <th>Session</th>
-                                <th>Status</th>
-                                <th>Method</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {residentSummary.recentAttendance.map((rec) => (
-                                <tr key={rec.sessionId}>
-                                  <td>{rec.sessionDate.split('T')[0]}</td>
-                                  <td>{rec.sessionTitle}</td>
-                                  <td>
-                                    <span
-                                      className={`badge badge-sm badge-${
-                                        rec.status === 'PRESENT' || rec.status === 'CORRECTED_PRESENT'
-                                          ? 'success'
-                                          : 'amber'
-                                      }`}
-                                    >
-                                      {rec.status}
-                                    </span>
-                                    {rec.isCorrected && (
-                                      <span className="badge badge-sm badge-info ml-1">Corrected</span>
-                                    )}
-                                  </td>
-                                  <td className="text-muted">{rec.markMethod}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </Card>
-
-                    {/* Recent Movements */}
-                    <Card title="Movement Timeline" subtitle="Recent gate movements">
+                  <div className="grid grid-cols-1 gap-6">
+                    <Card title="Movement Timeline" subtitle="Recent verified gate movements">
                       {residentSummary.recentMovements.length === 0 ? (
                         <p className="text-xs text-muted py-4">No gate movements found.</p>
                       ) : (

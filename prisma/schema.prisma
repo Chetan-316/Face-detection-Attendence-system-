@@ -151,9 +151,10 @@ model Hostel {
   id             String   @id @default(uuid())
   organizationId String
   code           String
-  name           String
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
+  name                  String
+  returnDeadlineMinutes Int      @default(1260)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)

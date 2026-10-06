@@ -54,6 +54,21 @@ export const movementsApi = {
     });
   },
 
+  correctPresence: async (payload: {
+    residentId: string;
+    targetState: 'IN' | 'OUT';
+    effectiveTimestamp: string;
+    reason: string;
+  }): Promise<{ success: boolean; data: MovementEventEntity; message: string }> => {
+    return apiClient<{ success: boolean; data: MovementEventEntity; message: string }>(
+      '/movements/corrections',
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }
+    );
+  },
+
   getPresenceCounts: async (hostelId?: string): Promise<PresenceCounts> => {
     const qs = hostelId ? `?hostelId=${encodeURIComponent(hostelId)}` : '';
     return apiClient<PresenceCounts>(`/movements/presence-counts${qs}`);

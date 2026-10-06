@@ -3,9 +3,12 @@ import { Link, Navigate } from 'react-router-dom';
 import { residentsApi } from '../api/residents.api';
 import { movementsApi } from '../api/movements.api';
 import { reportsApi } from '../api/reports.api';
+import { camerasApi } from '../api/cameras.api';
+import { facilitiesApi } from '../api/facilities.api';
 import { SafeResident, ResidentSummary } from '../types/resident.types';
 import { PresenceCounts } from '../types/movement.types';
-import { AttendanceSessionReportItem, MovementReportItem } from '../types/reports.types';
+import { MovementReportItem } from '../types/reports.types';
+import { CameraEntity } from '../types/camera.types';
 import { useAuth } from '../auth/AuthContext';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
@@ -13,11 +16,13 @@ import {
   Users,
   LogIn,
   LogOut,
-  CalendarCheck,
+  Clock,
   RefreshCw,
   AlertCircle,
   ArrowRight,
   ShieldAlert,
+  Video,
+  CheckCircle2,
 } from 'lucide-react';
 
 export const OverviewPage: React.FC = () => {
@@ -29,26 +34,47 @@ export const OverviewPage: React.FC = () => {
   }
 
   const isWarden = user?.role === 'WARDEN';
+  const isAdmin = user?.role === 'ADMIN';
 
   // State for metrics & summaries
   const [summary, setSummary] = useState<ResidentSummary | null>(null);
   const [presenceCounts, setPresenceCounts] = useState<PresenceCounts | null>(null);
-  const [latestSession, setLatestSession] = useState<AttendanceSessionReportItem | null>(null);
   const [recentMovements, setRecentMovements] = useState<MovementReportItem[]>([]);
   const [outsideResidents, setOutsideResidents] = useState<SafeResident[]>([]);
+  const [cameras, setCameras] = useState<CameraEntity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => new Date());
+  const [returnDeadlineMinutes, setReturnDeadlineMinutes] = useState(1260);
+  const [hasScopedReturnDeadline, setHasScopedReturnDeadline] = useState(Boolean(user?.hostelId));
+
+  // Night return is derived from live ResidentPresence. Each facility owns its
+  // return deadline; residents still OUT after that time are "Not Returned".
+  const deadlineHours = Math.floor(returnDeadlineMinutes / 60);
+  const deadlineMinutes = returnDeadlineMinutes % 60;
+  const returnDeadlineLabel = new Date(
+    1970,
+    0,
+    1,
+    deadlineHours,
+    deadlineMinutes
+  ).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   const fetchOverviewData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [resSummary, presRes, attRes, movRes, outRes] = await Promise.allSettled([
+      const [resSummary, presRes, movRes, outRes, camRes, settingsRes] = await Promise.allSettled([
         residentsApi.getSummary ? residentsApi.getSummary(user?.hostelId || undefined) : Promise.resolve(null),
         movementsApi.getPresenceCounts ? movementsApi.getPresenceCounts(user?.hostelId || undefined) : Promise.resolve(null),
-        reportsApi.getAttendanceSessions ? reportsApi.getAttendanceSessions({ pageSize: 1, hostelId: user?.hostelId || undefined }) : Promise.resolve({ data: [] }),
         reportsApi.getMovements ? reportsApi.getMovements({ pageSize: 8, hostelId: user?.hostelId || undefined }) : Promise.resolve({ data: [] }),
         residentsApi.listResidents ? residentsApi.listResidents({ presence: 'OUT', pageSize: 6 }) : Promise.resolve({ data: [] }),
+        isAdmin && camerasApi.listCameras
+          ? camerasApi.listCameras(user?.hostelId || undefined)
+          : Promise.resolve({ data: [] }),
+        user?.hostelId
+          ? facilitiesApi.getOperationalSettings(user.hostelId)
+          : Promise.resolve({ data: { hostelId: null, returnDeadlineMinutes: 1260, scoped: false } }),
       ]);
 
       if (resSummary.status === 'fulfilled' && resSummary.value) {
@@ -57,48 +83,58 @@ export const OverviewPage: React.FC = () => {
       if (presRes.status === 'fulfilled' && presRes.value) {
         setPresenceCounts(presRes.value);
       }
-      if (attRes.status === 'fulfilled' && attRes.value?.data && Array.isArray(attRes.value.data) && attRes.value.data.length > 0) {
-        setLatestSession(attRes.value.data[0]);
-      }
       if (movRes.status === 'fulfilled' && movRes.value?.data && Array.isArray(movRes.value.data)) {
         setRecentMovements(movRes.value.data);
       }
       if (outRes.status === 'fulfilled' && outRes.value?.data && Array.isArray(outRes.value.data)) {
         setOutsideResidents(outRes.value.data);
       }
+      if (camRes.status === 'fulfilled' && camRes.value?.data && Array.isArray(camRes.value.data)) {
+        setCameras(camRes.value.data);
+      }
+      if (settingsRes.status === 'fulfilled' && settingsRes.value?.data) {
+        setReturnDeadlineMinutes(settingsRes.value.data.returnDeadlineMinutes ?? 1260);
+        setHasScopedReturnDeadline(Boolean(settingsRes.value.data.scoped));
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard operational overview');
     } finally {
       setIsLoading(false);
     }
-  }, [user?.hostelId]);
+  }, [user?.hostelId, isAdmin]);
 
   useEffect(() => {
     fetchOverviewData();
   }, [fetchOverviewData]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const totalResidents = summary?.total ?? summary?.active ?? 0;
   const currentlyIn = presenceCounts?.currentlyIn ?? summary?.currentlyIn ?? 0;
   const currentlyOut = presenceCounts?.currentlyOut ?? summary?.currentlyOut ?? 0;
   const notEnrolledCount = summary?.notEnrolled ?? 0;
+  const enrolledCount = summary?.faceEnrolled ?? 0;
+  const onlineCameras = cameras.filter((camera) => camera.healthStatus === 'ONLINE').length;
+  const cameraAttentionCount = Math.max(cameras.length - onlineCameras, 0);
 
-  let attendanceMetric = 'No Session';
-  if (latestSession) {
-    if (latestSession.expectedResidents > 0) {
-      attendanceMetric = `${Math.round(latestSession.attendanceRate)}%`;
-    } else {
-      attendanceMetric = `${latestSession.presentCount} Present`;
-    }
-  }
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const isAfterReturnDeadline = hasScopedReturnDeadline && currentMinutes >= returnDeadlineMinutes;
+  const outsideSectionTitle = isAfterReturnDeadline
+    ? 'Residents Not Returned'
+    : 'Residents Currently Outside';
+  const outsideStatusLabel = isAfterReturnDeadline ? 'Not Returned' : 'Outside';
 
   return (
     <div className="overview-page flex flex-col gap-7 max-w-7xl mx-auto w-full">
       <PageHeader
-        title={isWarden ? 'Dashboard' : 'Hostel Overview'}
+        title={isWarden ? 'Warden Dashboard' : 'Admin Overview'}
         subtitle={
           isWarden
-            ? `Welcome back, ${user?.fullName || 'Warden'}. Facility occupancy and hostel activity at a glance.`
-            : `Welcome back, ${user?.fullName || 'System Administrator'}. Facility occupancy and hostel activity at a glance.`
+            ? `Live hostel presence, return status, and residents who need attention.`
+            : `Resident coverage, live presence, and operational readiness across your accessible hostel scope.`
         }
         actions={
           <Button
@@ -155,19 +191,66 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Attendance */}
+        {/* Return Deadline */}
         <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between h-32">
           <div className="flex items-center justify-between text-slate-600">
-            <span className="text-[15px] font-semibold text-slate-600">Attendance</span>
-            <CalendarCheck size={20} className="text-blue-600" />
+            <span className="text-[15px] font-semibold text-slate-600">
+              {!hasScopedReturnDeadline
+                ? 'Return Deadlines'
+                : isAfterReturnDeadline
+                ? 'Not Returned'
+                : 'Return Deadline'}
+            </span>
+            <Clock size={20} className={isAfterReturnDeadline ? 'text-red-600' : 'text-blue-600'} />
           </div>
           <div>
-            <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">{attendanceMetric}</span>
+            <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">
+              {!hasScopedReturnDeadline
+                ? 'Per facility'
+                : isAfterReturnDeadline
+                ? currentlyOut
+                : returnDeadlineLabel}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Main Content: Residents Outside, Recent Gate Activity, Pending Face Enrollments */}
+      <div
+        className={`rounded-xl border px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+          isAfterReturnDeadline
+            ? 'bg-red-50 border-red-200 text-red-900'
+            : 'bg-blue-50 border-blue-200 text-blue-900'
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          {isAfterReturnDeadline ? (
+            <AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600" />
+          ) : (
+            <Clock size={20} className="mt-0.5 shrink-0 text-blue-600" />
+          )}
+          <div>
+            <div className="font-bold text-[15px]">
+              {!hasScopedReturnDeadline
+                ? 'Return deadlines are configured per facility'
+                : isAfterReturnDeadline
+                ? `${currentlyOut} ${currentlyOut === 1 ? 'resident has' : 'residents have'} not returned`
+                : `Return deadline is ${returnDeadlineLabel}`}
+            </div>
+            <div className="text-sm mt-0.5 opacity-80">
+              {!hasScopedReturnDeadline
+                ? 'Open Facilities to review or change each hostel return deadline. Current outside counts remain live across your accessible scope.'
+                : isAfterReturnDeadline
+                ? 'This list updates automatically from the live IN / OUT presence state as residents return.'
+                : `${currentlyOut} ${currentlyOut === 1 ? 'resident is' : 'residents are'} currently outside. No separate night attendance is required.`}
+            </div>
+          </div>
+        </div>
+        <Link to="/residents" className="text-sm font-semibold underline underline-offset-2 whitespace-nowrap">
+          View residents
+        </Link>
+      </div>
+
+      {/* Main Content: Live presence, recent gate activity, pending face enrollments */}
       <div className="overview-content-row">
         {/* Left Column: Residents Currently Outside & Recent Gate Activity */}
         <div className="overview-main-col">
@@ -176,17 +259,19 @@ export const OverviewPage: React.FC = () => {
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <LogOut size={18} className="text-amber-600" />
-                <h3 className="text-lg font-bold text-slate-900">Residents Currently Outside</h3>
+                <h3 className="text-lg font-bold text-slate-900">{outsideSectionTitle}</h3>
               </div>
               <span className="text-sm font-semibold px-3 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
-                {currentlyOut} Outside
+                {currentlyOut} {outsideStatusLabel}
               </span>
             </div>
 
             <div className="overflow-x-auto">
               {outsideResidents.length === 0 ? (
                 <div className="p-8 text-center text-slate-500 text-[15px]">
-                  All residents are currently inside the hostel.
+                  {isAfterReturnDeadline
+                    ? 'All residents have returned to the hostel.'
+                    : 'All residents are currently inside the hostel.'}
                 </div>
               ) : (
                 <table className="w-full text-left text-[15px] border-collapse">
@@ -194,6 +279,8 @@ export const OverviewPage: React.FC = () => {
                     <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/70 text-sm">
                       <th className="py-3.5 px-6 font-semibold">Resident</th>
                       <th className="py-3.5 px-6 font-semibold">Room</th>
+                      <th className="py-3.5 px-6 font-semibold">Last Out</th>
+                      <th className="py-3.5 px-6 font-semibold">Phone</th>
                       <th className="py-3.5 px-6 font-semibold text-right">Status</th>
                     </tr>
                   </thead>
@@ -207,10 +294,21 @@ export const OverviewPage: React.FC = () => {
                           </div>
                         </td>
                         <td className="py-3.5 px-6 text-slate-700 font-medium">{res.roomGroup}</td>
+                        <td className="py-3.5 px-6 text-slate-600 text-sm">
+                          {res.presence?.lastMovementTime
+                            ? new Date(res.presence.lastMovementTime).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '—'}
+                        </td>
+                        <td className="py-3.5 px-6 text-slate-600 text-sm">
+                          {res.contactPhone || '—'}
+                        </td>
                         <td className="py-3.5 px-6 text-right">
                           <span className="inline-flex items-center px-3 py-1 rounded-md text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                             <span className="sr-only">OUT</span>
-                            <span>Outside</span>
+                            <span>{outsideStatusLabel}</span>
                           </span>
                         </td>
                       </tr>
@@ -282,27 +380,81 @@ export const OverviewPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Pending Face Enrollment Box */}
-        <div className="overview-side-col">
-          <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between gap-6">
-            <div>
-              <div className="flex items-center gap-2.5 text-amber-600 mb-2">
-                <ShieldAlert size={20} />
-                <h3 className="text-lg font-bold text-slate-900">Pending Face Enrollment</h3>
+        {/* Right Column: Role-specific operational panel */}
+        <div className="overview-side-col flex flex-col gap-4">
+          {isWarden ? (
+            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between gap-6">
+              <div>
+                <div className="flex items-center gap-2.5 text-amber-600 mb-2">
+                  <ShieldAlert size={20} />
+                  <h3 className="text-lg font-bold text-slate-900">Residents Needing Enrollment</h3>
+                </div>
+                <p className="text-[15px] text-slate-600 leading-relaxed mt-2">
+                  {notEnrolledCount} {notEnrolledCount === 1 ? 'resident still needs' : 'residents still need'} face enrollment.
+                </p>
               </div>
-              <p className="text-[15px] text-slate-600 leading-relaxed mt-2">
-                {notEnrolledCount} {notEnrolledCount === 1 ? 'resident needs' : 'residents need'} face enrollment.
-              </p>
+
+              <Link to="/residents">
+                <Button variant="primary" size="md" className="w-full justify-center h-11 text-[15px] font-semibold" rightIcon={<ArrowRight size={16} />}>
+                  Open Resident Roster
+                </Button>
+              </Link>
             </div>
+          ) : (
+            <>
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                <div className="flex items-center gap-2.5 mb-4">
+                  <CheckCircle2 size={20} className="text-emerald-600" />
+                  <h3 className="text-lg font-bold text-slate-900">Operational Readiness</h3>
+                </div>
 
-            <Link to="/residents">
-              <Button variant="primary" size="md" className="w-full justify-center h-11 text-[15px] font-semibold" rightIcon={<ArrowRight size={16} />}>
-                View Residents
-              </Button>
-            </Link>
-          </div>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Face enrollment</span>
+                    <span className="font-semibold text-slate-900">
+                      {enrolledCount} / {totalResidents}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                    <span className="text-slate-600">Cameras online</span>
+                    <span className="font-semibold text-slate-900">
+                      {onlineCameras} / {cameras.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between py-2">
+                    <span className="text-slate-600">Camera attention</span>
+                    <span className={`font-semibold ${cameraAttentionCount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      {cameraAttentionCount}
+                    </span>
+                  </div>
+                </div>
 
-          {/* Diagnostics Section (Retained for automated test contracts; visually hidden from clean commercial Overview) */}
+                <div className="grid grid-cols-2 gap-2 mt-5">
+                  <Link to="/residents">
+                    <Button variant="outline" size="sm" className="w-full justify-center">
+                      Residents
+                    </Button>
+                  </Link>
+                  <Link to="/cameras">
+                    <Button variant="primary" size="sm" className="w-full justify-center" leftIcon={<Video size={14} />}>
+                      Cameras
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <div className="text-sm font-semibold text-slate-900">Enrollment follow-up</div>
+                <div className="text-sm text-slate-600 mt-1">
+                  {notEnrolledCount === 0
+                    ? 'All active residents are enrolled.'
+                    : `${notEnrolledCount} ${notEnrolledCount === 1 ? 'resident needs' : 'residents need'} enrollment follow-up.`}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Diagnostics Section retained for automated contracts, not normal UI */}
           {!isWarden && (
             <div className="sr-only" aria-hidden="true">
               <h3>System Status</h3>

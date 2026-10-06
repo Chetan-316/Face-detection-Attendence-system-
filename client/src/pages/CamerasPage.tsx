@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Badge } from '../components/Badge';
 import { camerasApi } from '../api/cameras.api';
+import { facilitiesApi, Facility, FacilityLocation } from '../api/facilities.api';
 import { CameraEntity, CameraDiagnostics, CameraTestResult } from '../types/camera.types';
 import {
   Video,
@@ -14,17 +15,13 @@ import {
   RefreshCw,
   Plus,
   AlertCircle,
-  Activity,
-  Layers,
   Clock,
   X,
-  Sliders,
   CheckCircle2,
   Wifi,
   Edit2,
   ChevronDown,
   ChevronUp,
-  ArrowRight,
 } from 'lucide-react';
 
 export const CamerasPage: React.FC = () => {
@@ -36,9 +33,15 @@ export const CamerasPage: React.FC = () => {
   }
 
   const isAdmin = user?.role === 'ADMIN';
-  const isWarden = user?.role === 'WARDEN';
 
   const [cameras, setCameras] = useState<CameraEntity[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [newCameraFacilityId, setNewCameraFacilityId] = useState(user?.hostelId || '');
+  const [newCameraLocations, setNewCameraLocations] = useState<FacilityLocation[]>([]);
+  const [newCameraLocationId, setNewCameraLocationId] = useState('');
+  const [editCameraFacilityId, setEditCameraFacilityId] = useState('');
+  const [editCameraLocations, setEditCameraLocations] = useState<FacilityLocation[]>([]);
+  const [editCameraLocationId, setEditCameraLocationId] = useState('');
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [selectedCamera, setSelectedCamera] = useState<CameraEntity | null>(null);
   const [diagnostics, setDiagnostics] = useState<CameraDiagnostics | null>(null);
@@ -89,6 +92,7 @@ export const CamerasPage: React.FC = () => {
   const [editHasExistingPassword, setEditHasExistingPassword] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showAdvancedEdit, setShowAdvancedEdit] = useState(false);
+  const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -149,6 +153,57 @@ export const CamerasPage: React.FC = () => {
   }, []);
 
   const pollIntervalRef = useRef<number | null>(null);
+
+  const fetchFacilities = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const res = await facilitiesApi.listFacilities();
+      const activeFacilities = (res.data || []).filter((facility) => facility.isActive);
+      setFacilities(activeFacilities);
+      const initialFacilityId = user?.hostelId || activeFacilities[0]?.id || '';
+      setNewCameraFacilityId((current) => current || initialFacilityId);
+      if (initialFacilityId) {
+        const locationRes = await facilitiesApi.listLocations(initialFacilityId);
+        setNewCameraLocations((locationRes.data || []).filter((location) => location.isActive));
+      }
+    } catch (err: any) {
+      toastError(err.message || 'Failed to load facilities');
+    }
+  }, [isAdmin, user?.hostelId, toastError]);
+
+  const loadNewCameraLocations = useCallback(async (facilityId: string) => {
+    setNewCameraFacilityId(facilityId);
+    setNewCameraLocationId('');
+    if (!facilityId) {
+      setNewCameraLocations([]);
+      return;
+    }
+    try {
+      const res = await facilitiesApi.listLocations(facilityId);
+      setNewCameraLocations((res.data || []).filter((location) => location.isActive));
+    } catch {
+      setNewCameraLocations([]);
+    }
+  }, []);
+
+  const loadEditCameraLocations = useCallback(async (facilityId: string, selectedLocationId?: string | null) => {
+    setEditCameraFacilityId(facilityId);
+    setEditCameraLocationId(selectedLocationId || '');
+    if (!facilityId) {
+      setEditCameraLocations([]);
+      return;
+    }
+    try {
+      const res = await facilitiesApi.listLocations(facilityId);
+      setEditCameraLocations((res.data || []).filter((location) => location.isActive || location.id === selectedLocationId));
+    } catch {
+      setEditCameraLocations([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchFacilities();
+  }, [fetchFacilities]);
 
   // Fetch cameras list
   const fetchCameras = useCallback(async () => {
@@ -326,6 +381,10 @@ export const CamerasPage: React.FC = () => {
       toastError('Camera name is required');
       return;
     }
+    if (!newCameraFacilityId) {
+      toastError('Select a facility for this camera');
+      return;
+    }
 
     try {
       setIsSubmittingCamera(true);
@@ -356,7 +415,8 @@ export const CamerasPage: React.FC = () => {
         name: newCameraName.trim(),
         sourceType: newCameraSourceType,
         role: newCameraRole,
-        hostelId: user?.hostelId || undefined,
+        hostelId: newCameraFacilityId,
+        locationId: newCameraLocationId || null,
         configMetadata,
       });
 
@@ -367,6 +427,7 @@ export const CamerasPage: React.FC = () => {
       setNewCameraRtspUrl('');
       setNewCameraUsername('');
       setNewCameraPassword('');
+      setNewCameraLocationId('');
       setModalTestResult(null);
       fetchCameras();
     } catch (err: any) {
@@ -380,6 +441,7 @@ export const CamerasPage: React.FC = () => {
     setEditCameraName(camera.name);
     setEditCameraRole(camera.role);
     setEditCameraMovementAutomation(camera.configMetadata?.movementAutomationEnabled !== false);
+    loadEditCameraLocations(camera.hostelId, camera.locationId);
 
     const host = camera.configMetadata?.host;
     const port = camera.configMetadata?.port ?? 554;
@@ -431,6 +493,7 @@ export const CamerasPage: React.FC = () => {
       await camerasApi.updateCamera(selectedCamera.id, {
         name: editCameraName.trim(),
         role: editCameraRole,
+        locationId: editCameraLocationId || null,
         configMetadata: Object.keys(deltaConfig).length > 0 ? deltaConfig : undefined,
       });
 
@@ -444,8 +507,19 @@ export const CamerasPage: React.FC = () => {
     }
   };
 
-  const canManageCameras = user?.role === 'ADMIN' || user?.role === 'WARDEN';
+  const canManageCameras = user?.role === 'ADMIN';
   const isStreaming = diagnostics?.isActive ?? false;
+  const cameraPurposeLabel = (role: CameraEntity['role']) => {
+    if (role === 'IN') return 'Gate Entry';
+    if (role === 'OUT') return 'Gate Exit';
+    if (role === 'ATTENDANCE') return 'Existing Attendance Checkpoint';
+    return 'General Monitoring';
+  };
+  const cameraTypeLabel = (sourceType: CameraEntity['sourceType']) => {
+    if (sourceType === 'RTSP') return 'IP / Network Camera';
+    if (sourceType === 'WEBCAM') return 'USB / Laptop Webcam';
+    return 'Smart / Edge Camera';
+  };
 
   return (
     <div className="cameras-page">
@@ -453,7 +527,7 @@ export const CamerasPage: React.FC = () => {
       <div className="page-header">
         <div className="header-text">
           <h1 className="page-title">Cameras</h1>
-          <p className="page-subtitle">Manage hostel cameras and live feeds.</p>
+          <p className="page-subtitle">See camera status, preview live feeds, and manage gate camera connections.</p>
         </div>
         <div className="header-actions">
           <button
@@ -461,7 +535,7 @@ export const CamerasPage: React.FC = () => {
             className="btn btn-secondary"
             onClick={fetchCameras}
             disabled={isLoading}
-            title="Refresh camera list and diagnostics"
+            title="Refresh camera status"
           >
             <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
             <span>Refresh</span>
@@ -477,7 +551,7 @@ export const CamerasPage: React.FC = () => {
               }}
             >
               <Plus size={16} />
-              <span>Register Camera</span>
+              <span>Add Camera</span>
             </button>
           )}
         </div>
@@ -488,20 +562,20 @@ export const CamerasPage: React.FC = () => {
         {/* Left Column: Camera Devices List */}
         <div className="camera-list-pane">
           <div className="pane-header">
-            <h3 className="pane-title">Configured Cameras</h3>
-            <span className="camera-count-badge">{cameras.length} Devices</span>
+            <h3 className="pane-title">Camera Setup</h3>
+            <span className="camera-count-badge">{cameras.length} Cameras</span>
           </div>
 
           {isLoading && cameras.length === 0 ? (
             <div className="loading-state">
               <RefreshCw size={24} className="animate-spin" />
-              <span>Detecting camera devices...</span>
+              <span>Loading cameras...</span>
             </div>
           ) : cameras.length === 0 ? (
             <div className="empty-state-card">
               <VideoOff size={36} className="empty-icon" />
-              <h4>No Cameras Configured</h4>
-              <p>Register your IP network camera or webcam to preview video feeds.</p>
+              <h4>No Cameras Added</h4>
+              <p>Add a gate IP camera or webcam to start previewing the live feed.</p>
               {canManageCameras && (
                 <button
                   type="button"
@@ -509,7 +583,7 @@ export const CamerasPage: React.FC = () => {
                   onClick={() => setIsRegisterModalOpen(true)}
                 >
                   <Plus size={14} />
-                  <span>Register First Camera</span>
+                  <span>Add First Camera</span>
                 </button>
               )}
             </div>
@@ -541,18 +615,9 @@ export const CamerasPage: React.FC = () => {
 
                     <div className="camera-item-meta">
                       <span className="meta-tag">
-                        <Badge
-                          value={
-                            camera.sourceType === 'RTSP'
-                              ? 'Network Camera'
-                              : camera.sourceType === 'WEBCAM'
-                              ? 'Webcam'
-                              : 'Smart Camera'
-                          }
-                          size="sm"
-                        />
+                        <Badge value={cameraTypeLabel(camera.sourceType)} size="sm" />
                       </span>
-                      <span className="meta-tag role-tag">Role: {camera.role}</span>
+                      <span className="meta-tag role-tag">{cameraPurposeLabel(camera.role)}</span>
                       {camera.location && (
                         <span className="meta-tag location-tag">{camera.location.name}</span>
                       )}
@@ -560,28 +625,14 @@ export const CamerasPage: React.FC = () => {
 
                     <div className="camera-item-footer">
                       <span className="device-hint">
-                        {isWarden
-                          ? 'Hostel Gate Camera'
-                          : camera.sourceType === 'RTSP'
-                          ? camera.configMetadata?.host || 'RTSP Stream'
-                          : camera.sourceType === 'WEBCAM'
-                          ? `Device #${camera.configMetadata?.deviceIndex ?? 0}`
-                          : 'Smart Node'}
+                        {camera.healthStatus === 'ONLINE'
+                          ? 'Ready'
+                          : camera.healthStatus === 'DEGRADED'
+                          ? 'Needs attention'
+                          : 'Not connected'}
                       </span>
-                      {isSelected && <span className="active-view-label">Selected</span>}
+                      {isSelected && <span className="active-view-label">Viewing</span>}
                     </div>
-
-                    {isWarden && (camera.role === 'IN' || camera.role === 'OUT' || camera.role === 'GENERAL') && (
-                      <div className="mt-2 pt-2 border-t border-slate-700/50 flex justify-end">
-                        <Link
-                          to="/recognition"
-                          className="text-xs text-primary font-medium hover:underline flex items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          Open Live View <ArrowRight size={12} />
-                        </Link>
-                      </div>
-                    )}
                   </button>
                 );
               })}
@@ -602,14 +653,14 @@ export const CamerasPage: React.FC = () => {
                   <div>
                     <h3 className="selected-camera-title">{selectedCamera.name}</h3>
                     <div className="selected-camera-sub">
-                      <span>Connection: <strong>{selectedCamera.sourceType === 'RTSP' ? 'Network Camera (RTSP)' : selectedCamera.sourceType}</strong></span>
+                      <span><strong>{cameraTypeLabel(selectedCamera.sourceType)}</strong></span>
                       <span className="separator">•</span>
-                      <span>Role: <strong>{selectedCamera.role}</strong></span>
+                      <span><strong>{cameraPurposeLabel(selectedCamera.role)}</strong></span>
                       {(selectedCamera.role === 'IN' || selectedCamera.role === 'OUT') && (
                         <>
                           <span className="separator">•</span>
                           <span>
-                            Gate Automation:{' '}
+                            Movement Recording:{' '}
                             <strong
                               className={
                                 selectedCamera.configMetadata?.movementAutomationEnabled !== false
@@ -700,11 +751,7 @@ export const CamerasPage: React.FC = () => {
                   <div className="text-sm">
                     {testResult.reachable ? (
                       <span>
-                        <strong>Connected:</strong>{' '}
-                        {testResult.resolution
-                          ? `${testResult.resolution.width} × ${testResult.resolution.height}`
-                          : '1280 × 720'}
-                        , {testResult.fps ?? 15} FPS • Stream available ({testResult.latencyMs}ms)
+                        <strong>Connection successful.</strong> The camera is reachable and ready to use.
                       </span>
                     ) : (
                       <span>{testResult.message || 'Could not connect. Check camera address, credentials and network.'}</span>
@@ -815,10 +862,9 @@ export const CamerasPage: React.FC = () => {
                       <div className="placeholder-icon-box">
                         <VideoOff size={44} className="placeholder-icon" />
                       </div>
-                      <h4>Live Video Feed Inactive</h4>
+                      <h4>Preview is not running</h4>
                       <p>
-                        The server camera adapter is stopped or offline.
-                        Click below to start live preview or test your laptop camera.
+                        Start the camera preview to confirm the view and positioning.
                       </p>
                       <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
                         <button
@@ -836,7 +882,7 @@ export const CamerasPage: React.FC = () => {
                           onClick={startWebcamPreview}
                         >
                           <CameraIcon size={16} />
-                          <span>Test Laptop Webcam</span>
+                          <span>Use Laptop Camera</span>
                         </button>
                       </div>
                     </div>
@@ -879,7 +925,7 @@ export const CamerasPage: React.FC = () => {
                     title="Capture a still JPEG frame"
                   >
                     <CameraIcon size={16} />
-                    <span>Capture Snapshot</span>
+                    <span>Take Snapshot</span>
                   </button>
 
                   <button
@@ -889,7 +935,7 @@ export const CamerasPage: React.FC = () => {
                     title="Stream directly from your browser laptop webcam"
                   >
                     <Video size={16} />
-                    <span>{isWebcamPreviewActive ? 'Stop Laptop Cam' : 'Test Laptop Cam'}</span>
+                    <span>{isWebcamPreviewActive ? 'Stop Laptop Camera' : 'Use Laptop Camera'}</span>
                   </button>
 
                   {isAdmin && (
@@ -898,7 +944,7 @@ export const CamerasPage: React.FC = () => {
                       className="btn btn-secondary"
                       onClick={handleTestConnection}
                       disabled={isTestingConnection}
-                      title="Probe camera address and verify connectivity"
+                      title="Check whether this camera can be reached"
                     >
                       <Wifi size={16} className={isTestingConnection ? 'animate-spin' : ''} />
                       <span>{isTestingConnection ? 'Testing...' : 'Test Connection'}</span>
@@ -911,70 +957,79 @@ export const CamerasPage: React.FC = () => {
                     type="button"
                     className="btn btn-ghost"
                     onClick={() => fetchDiagnostics(selectedCamera.id)}
-                    title="Refresh diagnostics"
+                    title="Refresh camera status"
                   >
                     <RefreshCw size={14} />
-                    <span>Diagnostics</span>
+                    <span>Refresh Status</span>
                   </button>
                 </div>
               </div>
 
-              {/* Telemetry Cards */}
-              <div className="telemetry-grid">
-                <div className="telemetry-card">
-                  <div className="telemetry-card-header">
-                    <Activity size={16} className="telemetry-icon" />
-                    <span className="telemetry-label">Stream Rate</span>
+              {/* Camera status summary */}
+              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 block mb-1">Camera Status</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {((diagnostics?.healthStatus || selectedCamera.healthStatus) === 'ONLINE')
+                        ? 'Online'
+                        : (diagnostics?.healthStatus || selectedCamera.healthStatus) === 'DEGRADED'
+                        ? 'Needs attention'
+                        : 'Offline'}
+                    </span>
                   </div>
-                  <span className="telemetry-value">
-                    {diagnostics?.fps ? `${diagnostics.fps} FPS` : '0 FPS'}
-                  </span>
-                  <span className="telemetry-sub">Inference / Ingestion</span>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 block mb-1">Preview</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {isStreaming || isWebcamPreviewActive ? 'Running' : 'Stopped'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-semibold text-slate-500 block mb-1">Last Seen</span>
+                    <span className="text-sm font-bold text-slate-900">
+                      {diagnostics?.lastSeenAt
+                        ? new Date(diagnostics.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        : 'Not available'}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="telemetry-card">
-                  <div className="telemetry-card-header">
-                    <Layers size={16} className="telemetry-icon" />
-                    <span className="telemetry-label">Frames Captured</span>
-                  </div>
-                  <span className="telemetry-value">
-                    {diagnostics?.totalFramesCaptured ?? 0}
-                  </span>
-                  <span className="telemetry-sub">Total frames</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedDiagnostics(!showAdvancedDiagnostics)}
+                  className="mt-4 w-full flex items-center justify-between border-t border-slate-100 pt-3 text-sm font-semibold text-slate-600 hover:text-slate-900"
+                >
+                  <span>Advanced diagnostics</span>
+                  {showAdvancedDiagnostics ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
 
-                <div className="telemetry-card">
-                  <div className="telemetry-card-header">
-                    <Sliders size={16} className="telemetry-icon" />
-                    <span className="telemetry-label">Resolution</span>
+                {showAdvancedDiagnostics && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 text-sm">
+                    <div className="rounded-lg bg-slate-50 p-3">
+                      <span className="text-xs text-slate-500 block">Stream rate</span>
+                      <span className="font-semibold text-slate-800">{diagnostics?.fps ?? 0} FPS</span>
+                    </div>
+                    <div className="rounded-lg bg-slate-50 p-3">
+                      <span className="text-xs text-slate-500 block">Resolution</span>
+                      <span className="font-semibold text-slate-800">
+                        {diagnostics?.resolution
+                          ? `${diagnostics.resolution.width} × ${diagnostics.resolution.height}`
+                          : 'Not available'}
+                      </span>
+                    </div>
+                    <div className="rounded-lg bg-slate-50 p-3">
+                      <span className="text-xs text-slate-500 block">Frames captured</span>
+                      <span className="font-semibold text-slate-800">{diagnostics?.totalFramesCaptured ?? 0}</span>
+                    </div>
                   </div>
-                  <span className="telemetry-value">
-                    {diagnostics?.resolution
-                      ? `${diagnostics.resolution.width} × ${diagnostics.resolution.height}`
-                      : '1280 × 720'}
-                  </span>
-                  <span className="telemetry-sub">Frame dimensions</span>
-                </div>
-
-                <div className="telemetry-card">
-                  <div className="telemetry-card-header">
-                    <Clock size={16} className="telemetry-icon" />
-                    <span className="telemetry-label">Last Seen</span>
-                  </div>
-                  <span className="telemetry-value text-base">
-                    {diagnostics?.lastSeenAt
-                      ? new Date(diagnostics.lastSeenAt).toLocaleTimeString()
-                      : 'Never'}
-                  </span>
-                  <span className="telemetry-sub">Recent signal</span>
-                </div>
+                )}
               </div>
             </div>
           ) : (
             <div className="no-selection-screen">
               <Video size={48} className="no-selection-icon" />
-              <h3>Select a Camera Device</h3>
-              <p>Choose a camera feed from the left pane to monitor gate traffic or view live frames.</p>
+              <h3>Select a Camera</h3>
+              <p>Choose a camera from the list to view its status and live preview.</p>
             </div>
           )}
         </div>
@@ -987,7 +1042,7 @@ export const CamerasPage: React.FC = () => {
             <div className="modal-header">
               <div className="modal-title-group">
                 <CameraIcon size={20} className="modal-icon" />
-                <h3 className="modal-title">Camera Frame Snapshot</h3>
+                <h3 className="modal-title">Camera Snapshot</h3>
               </div>
               <button
                 type="button"
@@ -1010,16 +1065,14 @@ export const CamerasPage: React.FC = () => {
 
               <div className="snapshot-metadata-bar mt-3">
                 <span className="meta-item">
-                  <strong>Timestamp:</strong> {new Date(snapshotData.timestamp).toLocaleString()}
+                  <strong>Captured:</strong> {new Date(snapshotData.timestamp).toLocaleString()}
                 </span>
                 {snapshotData.width && snapshotData.height && (
                   <span className="meta-item">
-                    <strong>Dimensions:</strong> {snapshotData.width} × {snapshotData.height}
+                    <strong>Size:</strong> {snapshotData.width} × {snapshotData.height}
                   </span>
                 )}
-                <span className="meta-item">
-                  <strong>Format:</strong> JPEG Standard
-                </span>
+                
               </div>
             </div>
 
@@ -1029,7 +1082,7 @@ export const CamerasPage: React.FC = () => {
                 download={`pravahax-snapshot-${Date.now()}.jpg`}
                 className="btn btn-primary"
               >
-                Download Still Frame
+                Download Snapshot
               </a>
               <button
                 type="button"
@@ -1050,7 +1103,7 @@ export const CamerasPage: React.FC = () => {
             <div className="modal-header">
               <div className="modal-title-group">
                 <Video size={20} className="modal-icon" />
-                <h3 className="modal-title">Register Camera Device</h3>
+                <h3 className="modal-title">Add Camera</h3>
               </div>
               <button
                 type="button"
@@ -1072,16 +1125,54 @@ export const CamerasPage: React.FC = () => {
                     id="cam-name"
                     type="text"
                     className="form-control"
-                    placeholder="e.g. Main Gate IN or Corridor 2"
+                    placeholder="e.g. Main Gate Camera 1"
                     value={newCameraName}
                     onChange={(e) => setNewCameraName(e.target.value)}
                     required
                   />
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="form-group">
+                    <label htmlFor="cam-facility" className="form-label">
+                      Facility <span className="required">*</span>
+                    </label>
+                    <select
+                      id="cam-facility"
+                      className="form-control"
+                      value={newCameraFacilityId}
+                      onChange={(e) => loadNewCameraLocations(e.target.value)}
+                      disabled={!!user?.hostelId}
+                      required
+                    >
+                      <option value="">Select facility</option>
+                      {facilities.map((facility) => (
+                        <option key={facility.id} value={facility.id}>{facility.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="cam-location" className="form-label">Gate / Location</label>
+                    <select
+                      id="cam-location"
+                      className="form-control"
+                      value={newCameraLocationId}
+                      onChange={(e) => setNewCameraLocationId(e.target.value)}
+                      disabled={!newCameraFacilityId}
+                    >
+                      <option value="">Not assigned</option>
+                      {newCameraLocations.map((location) => (
+                        <option key={location.id} value={location.id}>{location.name}</option>
+                      ))}
+                    </select>
+                    <small className="form-hint">Assign the camera to the physical gate or entrance it monitors.</small>
+                  </div>
+                </div>
+
                 <div className="form-group">
                   <label htmlFor="cam-source" className="form-label">
-                    Source Type <span className="required">*</span>
+                    Camera Type <span className="required">*</span>
                   </label>
                   <select
                     id="cam-source"
@@ -1089,15 +1180,15 @@ export const CamerasPage: React.FC = () => {
                     value={newCameraSourceType}
                     onChange={(e) => setNewCameraSourceType(e.target.value as any)}
                   >
-                    <option value="RTSP">Network Camera (RTSP / IP Camera)</option>
-                    <option value="WEBCAM">Webcam (USB / Laptop DirectShow)</option>
-                    <option value="SMART_CAMERA">Smart Camera (Edge AI Device)</option>
+                    <option value="RTSP">IP / Network Camera</option>
+                    <option value="WEBCAM">USB / Laptop Webcam</option>
+                    <option value="SMART_CAMERA">Smart / Edge Camera</option>
                   </select>
                 </div>
 
                 <div className="form-group">
                   <label htmlFor="cam-role" className="form-label">
-                    Camera Role
+                    Camera Purpose
                   </label>
                   <select
                     id="cam-role"
@@ -1105,10 +1196,10 @@ export const CamerasPage: React.FC = () => {
                     value={newCameraRole}
                     onChange={(e) => setNewCameraRole(e.target.value as any)}
                   >
-                    <option value="GENERAL">GENERAL (Surveillance / Monitoring)</option>
-                    <option value="IN">IN (Hostel Gate Ingress)</option>
-                    <option value="OUT">OUT (Hostel Gate Egress)</option>
-                    <option value="ATTENDANCE">ATTENDANCE (Assembly / Roll Call Checkpoint)</option>
+                    <option value="GENERAL">General Monitoring</option>
+                    <option value="IN">Gate Entry</option>
+                    <option value="OUT">Gate Exit</option>
+                    <option value="ATTENDANCE">Existing Attendance Checkpoint</option>
                   </select>
                 </div>
 
@@ -1122,7 +1213,7 @@ export const CamerasPage: React.FC = () => {
                       onChange={(e) => setNewCameraMovementAutomation(e.target.checked)}
                     />
                     <label htmlFor="cam-movement-auto" className="text-sm text-slate-300 font-medium">
-                      Enable Gate Movement Automation (Create IN/OUT records on stable MATCH)
+                      Automatically record IN / OUT after a confirmed face match
                     </label>
                   </div>
                 )}
@@ -1131,7 +1222,7 @@ export const CamerasPage: React.FC = () => {
                   <>
                     <div className="form-group">
                       <label htmlFor="cam-rtsp" className="form-label">
-                        RTSP Stream Address <span className="required">*</span>
+                        Camera Stream Address <span className="required">*</span>
                       </label>
                       <input
                         id="cam-rtsp"
@@ -1143,7 +1234,7 @@ export const CamerasPage: React.FC = () => {
                         required
                       />
                       <small className="form-hint">
-                        Prefer an RTSP substream for optimal recognition latency.
+                        Use the camera network stream address. A lower-resolution substream is preferred when available.
                       </small>
                     </div>
 
@@ -1153,7 +1244,7 @@ export const CamerasPage: React.FC = () => {
                         onClick={() => setShowAdvancedRegister(!showAdvancedRegister)}
                         className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
                       >
-                        <span>Advanced Settings (Transport Protocol, Frame Rate)</span>
+                        <span>Advanced connection settings</span>
                         {showAdvancedRegister ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
 
@@ -1161,7 +1252,7 @@ export const CamerasPage: React.FC = () => {
                         <div className="mt-3 pt-3 border-t border-slate-700/60 space-y-3">
                           <div className="form-group mb-0">
                             <label htmlFor="cam-transport" className="form-label text-xs">
-                              RTSP Transport Protocol
+                              Stream Transport
                             </label>
                             <select
                               id="cam-transport"
@@ -1169,8 +1260,8 @@ export const CamerasPage: React.FC = () => {
                               value={newCameraTransport}
                               onChange={(e) => setNewCameraTransport(e.target.value as any)}
                             >
-                              <option value="tcp">TCP (Recommended — reliable packet ordering)</option>
-                              <option value="udp">UDP (Low overhead)</option>
+                              <option value="tcp">TCP (Recommended)</option>
+                              <option value="udp">UDP</option>
                             </select>
                           </div>
                         </div>
@@ -1226,7 +1317,7 @@ export const CamerasPage: React.FC = () => {
                           }`}
                         >
                           {modalTestResult.reachable ? (
-                            <span>Connected ({modalTestResult.resolution?.width}x{modalTestResult.resolution?.height}, {modalTestResult.fps} FPS, {modalTestResult.latencyMs}ms)</span>
+                            <span>Connection successful. The camera is reachable and ready to add.</span>
                           ) : (
                             <span>{modalTestResult.message || 'Could not connect. Check camera address, credentials and network.'}</span>
                           )}
@@ -1270,7 +1361,7 @@ export const CamerasPage: React.FC = () => {
                   className="btn btn-primary"
                   disabled={isSubmittingCamera}
                 >
-                  {isSubmittingCamera ? 'Registering...' : 'Register Camera'}
+                  {isSubmittingCamera ? 'Adding...' : 'Add Camera'}
                 </button>
               </div>
             </form>
@@ -1313,9 +1404,43 @@ export const CamerasPage: React.FC = () => {
                   />
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="form-group">
+                    <label htmlFor="edit-facility" className="form-label">Facility</label>
+                    <select
+                      id="edit-facility"
+                      className="form-control"
+                      value={editCameraFacilityId}
+                      onChange={(e) => loadEditCameraLocations(e.target.value)}
+                      disabled
+                    >
+                      {facilities
+                        .filter((facility) => facility.id === editCameraFacilityId)
+                        .map((facility) => (
+                          <option key={facility.id} value={facility.id}>{facility.name}</option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="edit-location" className="form-label">Gate / Location</label>
+                    <select
+                      id="edit-location"
+                      className="form-control"
+                      value={editCameraLocationId}
+                      onChange={(e) => setEditCameraLocationId(e.target.value)}
+                    >
+                      <option value="">Not assigned</option>
+                      {editCameraLocations.map((location) => (
+                        <option key={location.id} value={location.id}>{location.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 <div className="form-group">
                   <label htmlFor="edit-role" className="form-label">
-                    Camera Role
+                    Camera Purpose
                   </label>
                   <select
                     id="edit-role"
@@ -1323,10 +1448,10 @@ export const CamerasPage: React.FC = () => {
                     value={editCameraRole}
                     onChange={(e) => setEditCameraRole(e.target.value as any)}
                   >
-                    <option value="GENERAL">GENERAL (Surveillance / Monitoring)</option>
-                    <option value="IN">IN (Hostel Gate Ingress)</option>
-                    <option value="OUT">OUT (Hostel Gate Egress)</option>
-                    <option value="ATTENDANCE">ATTENDANCE (Assembly / Roll Call Checkpoint)</option>
+                    <option value="GENERAL">General Monitoring</option>
+                    <option value="IN">Gate Entry</option>
+                    <option value="OUT">Gate Exit</option>
+                    <option value="ATTENDANCE">Existing Attendance Checkpoint</option>
                   </select>
                 </div>
 
@@ -1340,7 +1465,7 @@ export const CamerasPage: React.FC = () => {
                       onChange={(e) => setEditCameraMovementAutomation(e.target.checked)}
                     />
                     <label htmlFor="edit-movement-auto" className="text-sm text-slate-300 font-medium">
-                      Enable Gate Movement Automation (Create IN/OUT records on stable MATCH)
+                      Automatically record IN / OUT after a confirmed face match
                     </label>
                   </div>
                 )}
@@ -1350,7 +1475,7 @@ export const CamerasPage: React.FC = () => {
                     <div className="form-group">
                       <div className="flex items-center justify-between mb-1">
                         <label htmlFor="edit-rtsp" className="form-label mb-0">
-                          RTSP Stream Address
+                          Camera Stream Address
                         </label>
                         {editConfiguredAddress && (
                           <span className="text-xs font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded">
@@ -1378,7 +1503,7 @@ export const CamerasPage: React.FC = () => {
                         onClick={() => setShowAdvancedEdit(!showAdvancedEdit)}
                         className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
                       >
-                        <span>Advanced Settings (Transport Protocol)</span>
+                        <span>Advanced connection settings</span>
                         {showAdvancedEdit ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
 

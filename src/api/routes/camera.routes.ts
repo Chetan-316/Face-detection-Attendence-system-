@@ -222,6 +222,13 @@ export function createCameraRouter(
 
         assertUserCanOperateInHostel(user, user.organizationId, hostelId);
 
+        if (parsed.data.locationId) {
+          const location = await db.location.findUnique({ where: { id: parsed.data.locationId } });
+          if (!location || location.hostelId !== hostelId || !location.isActive) {
+            throw new ValidationError('Selected gate/location is not active in this facility');
+          }
+        }
+
         const camera = await cameraService.createCamera({
           organizationId: user.organizationId,
           hostelId,
@@ -272,6 +279,13 @@ export function createCameraRouter(
         }
         if (parsed.data.configMetadata?.testInputOverride && (process.env.NODE_ENV === 'production' || config.appEnv === 'production')) {
           throw new ValidationError('Synthetic camera testInputOverride is disabled in production environments');
+        }
+
+        if (parsed.data.locationId) {
+          const location = await db.location.findUnique({ where: { id: parsed.data.locationId } });
+          if (!location || location.hostelId !== camera.hostelId || !location.isActive) {
+            throw new ValidationError('Selected gate/location is not active in this facility');
+          }
         }
 
         const updated = await cameraService.updateCamera(camera.id, {
