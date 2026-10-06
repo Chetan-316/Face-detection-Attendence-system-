@@ -3630,3 +3630,27 @@ a:focus-visible {
     justify-content: center;
   }
 }
+
+
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 300;
+  transform: translateY(-160%);
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: #0F172A;
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: var(--shadow-lg);
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+#main-content:focus {
+  outline: none;
+}
