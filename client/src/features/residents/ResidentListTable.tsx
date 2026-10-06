@@ -167,35 +167,33 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
 
                 {/* Action */}
                 <td className="px-6 py-3.5 text-right">
-                  <div className="inline-flex items-center justify-end gap-2">
-                    <button
+                  <div className="resident-row-actions">
+                    <Button
                       type="button"
-                      className="px-3.5 py-1.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none transition"
+                      variant="outline"
+                      size="sm"
                       onClick={() => onSelect(resident)}
                       aria-label={`View details for ${resident.fullName}`}
                     >
                       Open Profile
-                    </button>
+                    </Button>
 
-                    {canManage && (
-                      <>
-                        {resident.status === 'ACTIVE' &&
-                          resident.faceEnrollmentStatus !== 'ENROLLED' &&
-                          onEnrollFace && (
-                            <button
-                              type="button"
-                              className="px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition"
-                              onClick={() => onEnrollFace(resident)}
-                              aria-label={`Enroll face for ${resident.fullName}`}
-                            >
-                              {resident.faceEnrollmentStatus === 'NEEDS_REENROLLMENT'
-                                ? 'Re-enroll Face'
-                                : 'Enroll Face'}
-                            </button>
-                          )}
-
-                      </>
-                    )}
+                    {canManage &&
+                      resident.status === 'ACTIVE' &&
+                      resident.faceEnrollmentStatus !== 'ENROLLED' &&
+                      onEnrollFace && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onEnrollFace(resident)}
+                          aria-label={`Enroll face for ${resident.fullName}`}
+                        >
+                          {resident.faceEnrollmentStatus === 'NEEDS_REENROLLMENT'
+                            ? 'Re-enroll Face'
+                            : 'Enroll Face'}
+                        </Button>
+                      )}
                   </div>
                 </td>
               </tr>
