@@ -193,7 +193,7 @@ export const ResidentEditModal: React.FC<ResidentEditModalProps> = ({
 
         <div className="immutable-fields-notice mt-4">
           <p className="text-xs text-muted">
-            Hostel assignment, presence state, and biometric profiles cannot be edited through this profile form and require dedicated gate or administrative workflows.
+            Hostel assignment, current presence, and face enrollment are managed through their dedicated workflows rather than this profile form.
           </p>
         </div>
 
