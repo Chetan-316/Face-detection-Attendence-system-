@@ -311,27 +311,34 @@ export const FacilitiesPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1 flex-wrap">
+              <div className="pt-1 space-y-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => openLocations(facility)}
-                  className="flex-1"
+                  className="w-full justify-center"
                   leftIcon={<MapPin size={14} />}
                 >
                   Gates & Locations
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => openEdit(facility)} className="flex-1">
-                  Edit
-                </Button>
-                <Button
-                  variant={facility.isActive ? 'ghost' : 'secondary'}
-                  size="sm"
-                  onClick={() => setStatusFacility(facility)}
-                  className="flex-1"
-                >
-                  {facility.isActive ? 'Deactivate' : 'Reactivate'}
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openEdit(facility)}
+                    className="w-full justify-center"
+                  >
+                    Edit Hostel
+                  </Button>
+                  <Button
+                    variant={facility.isActive ? 'ghost' : 'secondary'}
+                    size="sm"
+                    onClick={() => setStatusFacility(facility)}
+                    className="w-full justify-center"
+                  >
+                    {facility.isActive ? 'Deactivate' : 'Reactivate'}
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
