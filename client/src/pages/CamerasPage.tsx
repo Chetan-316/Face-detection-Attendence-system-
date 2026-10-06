@@ -1005,17 +1005,17 @@ export const CamerasPage: React.FC = () => {
       {/* Snapshot Preview Modal */}
       {snapshotData && (
         <div className="modal-backdrop" onClick={() => setSnapshotData(null)}>
-          <div className="modal-dialog snapshot-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog snapshot-modal" role="dialog" aria-modal="true" aria-labelledby="camera-snapshot-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-group">
                 <CameraIcon size={20} className="modal-icon" />
-                <h3 className="modal-title">Camera Snapshot</h3>
+                <h3 id="camera-snapshot-title" className="modal-title">Camera Snapshot</h3>
               </div>
               <button
                 type="button"
                 className="modal-close-btn"
                 onClick={() => setSnapshotData(null)}
-                aria-label="Close modal"
+                aria-label="Close camera snapshot"
               >
                 <X size={18} />
               </button>
@@ -1066,10 +1066,10 @@ export const CamerasPage: React.FC = () => {
       {/* Add Camera Modal */}
       {isRegisterModalOpen && (
         <div className="modal-backdrop" onClick={closeRegisterModal}>
-          <div className="modal-dialog modal-md" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog modal-md" role="dialog" aria-modal="true" aria-labelledby="add-camera-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <h3 className="modal-title">Add Camera</h3>
+                <h3 id="add-camera-title" className="modal-title">Add Camera</h3>
                 <p className="modal-subtitle">
                   {registerStep === 1
                     ? 'Choose where the camera is installed and what it is used for.'
@@ -1420,11 +1420,11 @@ export const CamerasPage: React.FC = () => {
       {/* Edit Camera Modal */}
       {isEditModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsEditModalOpen(false)}>
-          <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog modal-lg" role="dialog" aria-modal="true" aria-labelledby="edit-camera-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-group">
                 <Edit2 size={20} className="modal-icon" />
-                <h3 className="modal-title">Edit Camera</h3>
+                <h3 id="edit-camera-title" className="modal-title">Edit Camera</h3>
               </div>
               <button
                 type="button"
@@ -1508,11 +1508,11 @@ export const CamerasPage: React.FC = () => {
                     <input
                       id="edit-movement-auto"
                       type="checkbox"
-                      className="rounded border-slate-700 text-primary-500 focus:ring-primary-500"
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       checked={editCameraMovementAutomation}
                       onChange={(e) => setEditCameraMovementAutomation(e.target.checked)}
                     />
-                    <label htmlFor="edit-movement-auto" className="text-sm text-slate-300 font-medium">
+                    <label htmlFor="edit-movement-auto" className="text-sm text-slate-700 font-medium">
                       Automatically record IN / OUT after a confirmed face match
                     </label>
                   </div>
@@ -1526,7 +1526,7 @@ export const CamerasPage: React.FC = () => {
                           Camera Stream Address
                         </label>
                         {editConfiguredAddress && (
-                          <span className="text-xs font-mono text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded">
+                          <span className="text-xs font-mono text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
                             Current: {editConfiguredAddress}
                           </span>
                         )}
@@ -1545,18 +1545,18 @@ export const CamerasPage: React.FC = () => {
                       />
                     </div>
 
-                    <div className="border border-slate-700/60 rounded-lg p-3 my-2 bg-slate-800/30">
+                    <div className="border border-slate-200 rounded-lg p-3 my-2 bg-slate-50">
                       <button
                         type="button"
                         onClick={() => setShowAdvancedEdit(!showAdvancedEdit)}
-                        className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
+                        className="w-full flex items-center justify-between text-sm font-semibold text-slate-700 hover:text-slate-900"
                       >
                         <span>Advanced connection settings</span>
                         {showAdvancedEdit ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
 
                       {showAdvancedEdit && (
-                        <div className="mt-3 pt-3 border-t border-slate-700/60 space-y-3">
+                        <div className="mt-3 pt-3 border-t border-slate-200 space-y-3">
                           <div className="form-group mb-0">
                             <label htmlFor="edit-transport" className="form-label text-xs">
                               Transport Protocol
@@ -1584,8 +1584,8 @@ export const CamerasPage: React.FC = () => {
                           <span
                             className={`text-xs px-1.5 py-0.5 rounded ${
                               editHasExistingUsername
-                                ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'
-                                : 'bg-slate-800 text-slate-400'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
                             }`}
                           >
                             {editHasExistingUsername ? 'Configured' : 'Not set'}
@@ -1612,8 +1612,8 @@ export const CamerasPage: React.FC = () => {
                           <span
                             className={`text-xs px-1.5 py-0.5 rounded ${
                               editHasExistingPassword
-                                ? 'bg-emerald-950/60 text-emerald-400 border border-emerald-800/50'
-                                : 'bg-slate-800 text-slate-400'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-slate-100 text-slate-600 border border-slate-200'
                             }`}
                           >
                             {editHasExistingPassword ? 'Configured' : 'Not set'}
@@ -1632,7 +1632,7 @@ export const CamerasPage: React.FC = () => {
                           onChange={(e) => setEditCameraPassword(e.target.value)}
                         />
                         {editHasExistingPassword && (
-                          <small className="form-hint text-emerald-400">
+                          <small className="form-hint text-emerald-700">
                             Password is saved. Leave blank unless updating.
                           </small>
                         )}
