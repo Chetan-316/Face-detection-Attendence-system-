@@ -10,7 +10,7 @@ export const ToastContainer: React.FC = () => {
   return (
     <div className="toast-container" aria-live="polite" aria-atomic="true">
       {toasts.map((toast) => (
-        <div key={toast.id} className={`toast toast-${toast.type}`} role="alert">
+        <div key={toast.id} className={`toast toast-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}>
           <div className="toast-icon">
             {toast.type === 'success' && <CheckCircle2 size={18} aria-hidden="true" />}
             {toast.type === 'error' && <AlertCircle size={18} aria-hidden="true" />}
