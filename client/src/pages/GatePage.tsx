@@ -40,7 +40,7 @@ export const GatePage: React.FC = () => {
 
   // Current session observation state
   const [activeObservation, setActiveObservation] = useState<RecognitionObservation | null>(null);
-  const [activeResidentPresence, setActiveResidentPresence] = useState<'IN' | 'OUT'>('OUT');
+  const [activeResidentPresence, setActiveResidentPresence] = useState<'IN' | 'OUT' | null>(null);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [lastActionSuccessMsg, setLastActionSuccessMsg] = useState<string | null>(null);
 
@@ -176,6 +176,7 @@ export const GatePage: React.FC = () => {
       if (res.observation) {
         if (res.observation.classification === 'MATCH' && res.observation.resident) {
           setActiveObservation(res.observation);
+          setActiveResidentPresence(null);
           const pres = await movementsApi.getResidentPresence(res.observation.resident.id).catch(() => null);
           if (pres?.currentState) {
             setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
@@ -183,6 +184,7 @@ export const GatePage: React.FC = () => {
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
           resetTimerRef.current = setTimeout(() => {
             setActiveObservation(null);
+            setActiveResidentPresence(null);
           }, 12000);
         } else if (res.observation.classification === 'UNKNOWN') {
           setActiveObservation(res.observation);
@@ -256,6 +258,7 @@ export const GatePage: React.FC = () => {
             setLastActionSuccessMsg(null);
 
             if (obs.classification === 'MATCH' && obs.resident) {
+              setActiveResidentPresence(null);
               movementsApi.getResidentPresence(obs.resident.id).then((pres) => {
                 if (isMounted && pres?.currentState) {
                   setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
@@ -295,6 +298,7 @@ export const GatePage: React.FC = () => {
 
             setActiveObservation(latest);
             if (latest.classification === 'MATCH' && latest.resident) {
+              setActiveResidentPresence(null);
               movementsApi.getResidentPresence(latest.resident.id).then((pres) => {
                 if (isMounted && pres?.currentState) {
                   setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
@@ -322,7 +326,7 @@ export const GatePage: React.FC = () => {
   // Execute movement action (MARK OUT or MARK IN)
   const handleMarkMovement = async (forcedDirection?: 'IN' | 'OUT') => {
     const resident = activeObservation?.resident;
-    if (!resident || !selectedCamera || isConfirming) return;
+    if (!resident || !selectedCamera || isConfirming || !activeResidentPresence) return;
 
     const targetDirection = forcedDirection || (activeResidentPresence === 'IN' ? 'OUT' : 'IN');
 
@@ -347,6 +351,7 @@ export const GatePage: React.FC = () => {
       if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
       resetTimerRef.current = setTimeout(() => {
         setActiveObservation(null);
+        setActiveResidentPresence(null);
         setLastActionSuccessMsg(null);
       }, 3500);
     } catch (err: any) {
@@ -402,6 +407,7 @@ export const GatePage: React.FC = () => {
                   const cam = cameras.find((c) => c.id === id) || null;
                   setSelectedCamera(cam);
                   setActiveObservation(null);
+                  setActiveResidentPresence(null);
                   setLastActionSuccessMsg(null);
                 }}
                 className="bg-white border border-slate-300 text-slate-900 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -591,10 +597,16 @@ export const GatePage: React.FC = () => {
                         className={`inline-block px-3 py-1 rounded-md text-14px font-bold ${
                           activeResidentPresence === 'IN'
                             ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : activeResidentPresence === 'OUT'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : 'bg-slate-50 text-slate-600 border border-slate-200'
                         }`}
                       >
-                        {activeResidentPresence === 'IN' ? '● Currently Inside' : '○ Currently Outside'}
+                        {activeResidentPresence === 'IN'
+                          ? '● Currently Inside'
+                          : activeResidentPresence === 'OUT'
+                          ? '○ Currently Outside'
+                          : 'Checking current presence...'}
                       </span>
                     </div>
                   </div>
@@ -610,7 +622,9 @@ export const GatePage: React.FC = () => {
                   <p className="text-sm text-slate-500 mt-1">
                     {activeResidentPresence === 'IN'
                       ? 'Resident is currently inside. Record an exit when they leave.'
-                      : 'Resident is currently outside. Record an entry when they return.'}
+                      : activeResidentPresence === 'OUT'
+                      ? 'Resident is currently outside. Record an entry when they return.'
+                      : 'Checking the latest resident presence before enabling a movement action.'}
                   </p>
                 </div>
 
@@ -627,7 +641,7 @@ export const GatePage: React.FC = () => {
                   >
                     Mark Outside
                   </Button>
-                ) : (
+                ) : activeResidentPresence === 'OUT' ? (
                   <Button
                     type="button"
                     variant="primary"
@@ -640,6 +654,10 @@ export const GatePage: React.FC = () => {
                   >
                     Mark Inside
                   </Button>
+                ) : (
+                  <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600 text-center">
+                    Checking latest presence...
+                  </div>
                 )}
               </div>
             </div>
