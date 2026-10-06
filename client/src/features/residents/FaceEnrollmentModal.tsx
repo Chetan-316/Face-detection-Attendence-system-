@@ -199,7 +199,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
         }
       } catch (err: any) {
         if (!isMounted) return;
-        setErrorMsg(err.message || 'Failed to initialize face enrollment session');
+        setErrorMsg(err.message || 'Unable to start face enrollment');
         toastError(err.message || 'Failed to initialize face enrollment session');
       } finally {
         if (isMounted) {
@@ -311,7 +311,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           setStatusMessage(`${currentStep?.label || 'Pose'} captured`);
           setActivePoseKey(nextIncomplete.key);
         } else {
-          setStatusMessage('All angles captured. Ready to register face.');
+          setStatusMessage('All five angles captured. Ready to save.');
         }
       } else {
         const reason = quality?.rejection_reason;
@@ -350,7 +350,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       }
     } catch (err: any) {
       if (err?.message?.includes('Active enrollment session') || err?.message?.includes('session')) {
-        setErrorMsg('Camera session re-synchronized. Please click Capture again.');
+        setErrorMsg('Camera connection refreshed. Please capture this angle again.');
       } else {
         setErrorMsg(err.message || 'Camera did not provide a fresh frame. Please try again.');
       }
@@ -464,10 +464,10 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
               <div className="flex flex-col items-center gap-1 text-center px-4">
                 <span className="text-sm font-medium text-white">
                   {webcamError
-                    ? 'Camera Permission Required'
+                    ? 'Camera access needed'
                     : isCameraStarting
-                    ? 'Initializing camera hardware...'
-                    : 'Camera feed ready'}
+                    ? 'Starting camera...'
+                    : 'Camera ready'}
                 </span>
                 <span className="text-xs text-slate-400 max-w-xs">
                   {webcamError || 'Please allow camera access in your browser to capture enrollment photos.'}
@@ -478,7 +478,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                 onClick={startWebcam}
                 className="mt-1 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow transition"
               >
-                Allow / Start Camera
+                Start Camera
               </button>
             </div>
           )}
