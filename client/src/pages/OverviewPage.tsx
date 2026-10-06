@@ -46,7 +46,9 @@ export const OverviewPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [returnDeadlineMinutes, setReturnDeadlineMinutes] = useState(1260);
-  const [hasScopedReturnDeadline, setHasScopedReturnDeadline] = useState(Boolean(user?.hostelId));
+  const [hasScopedReturnDeadline, setHasScopedReturnDeadline] = useState(
+    isWarden && Boolean(user?.hostelId)
+  );
 
   // Night return is derived from live ResidentPresence. Each facility owns its
   // return deadline; residents still OUT after that time are "Not Returned".
@@ -64,15 +66,19 @@ export const OverviewPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
+      const scopeHostelId = isWarden ? user?.hostelId || undefined : undefined;
+
       const [resSummary, presRes, movRes, outRes, camRes, settingsRes] = await Promise.allSettled([
-        residentsApi.getSummary ? residentsApi.getSummary(user?.hostelId || undefined) : Promise.resolve(null),
-        movementsApi.getPresenceCounts ? movementsApi.getPresenceCounts(user?.hostelId || undefined) : Promise.resolve(null),
-        reportsApi.getMovements ? reportsApi.getMovements({ pageSize: 8, hostelId: user?.hostelId || undefined }) : Promise.resolve({ data: [] }),
-        residentsApi.listResidents ? residentsApi.listResidents({ presence: 'OUT', pageSize: 6 }) : Promise.resolve({ data: [] }),
-        isAdmin && camerasApi.listCameras
-          ? camerasApi.listCameras(user?.hostelId || undefined)
+        residentsApi.getSummary ? residentsApi.getSummary(scopeHostelId) : Promise.resolve(null),
+        movementsApi.getPresenceCounts ? movementsApi.getPresenceCounts(scopeHostelId) : Promise.resolve(null),
+        reportsApi.getMovements ? reportsApi.getMovements({ pageSize: 8, hostelId: scopeHostelId }) : Promise.resolve({ data: [] }),
+        residentsApi.listResidents
+          ? residentsApi.listResidents({ presence: 'OUT', pageSize: 6, hostelId: scopeHostelId })
           : Promise.resolve({ data: [] }),
-        user?.hostelId
+        isAdmin && camerasApi.listCameras
+          ? camerasApi.listCameras()
+          : Promise.resolve({ data: [] }),
+        isWarden && user?.hostelId
           ? facilitiesApi.getOperationalSettings(user.hostelId)
           : Promise.resolve({ data: { hostelId: null, returnDeadlineMinutes: 1260, scoped: false } }),
       ]);
@@ -101,7 +107,7 @@ export const OverviewPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.hostelId, isAdmin]);
+  }, [user?.hostelId, isAdmin, isWarden]);
 
   useEffect(() => {
     fetchOverviewData();
@@ -134,7 +140,7 @@ export const OverviewPage: React.FC = () => {
         subtitle={
           isWarden
             ? `Live hostel presence, return status, and residents who need attention.`
-            : `Resident coverage, live presence, and operational readiness across your accessible hostel scope.`
+            : `Resident coverage, live presence, and operational readiness across all hostels.`
         }
         actions={
           <Button
@@ -246,7 +252,7 @@ export const OverviewPage: React.FC = () => {
             </div>
             <div className="text-sm mt-0.5 opacity-80">
               {!hasScopedReturnDeadline
-                ? 'Open Facilities to review or change each hostel return deadline. Current outside counts remain live across your accessible scope.'
+                ? 'Open Hostels to review or change each return deadline. Current presence counts include all hostels in your organization.'
                 : isAfterReturnDeadline
                 ? 'This list updates automatically from the live IN / OUT presence state as residents return.'
                 : `${currentlyOut} ${currentlyOut === 1 ? 'resident is' : 'residents are'} currently outside. No separate night attendance is required.`}
