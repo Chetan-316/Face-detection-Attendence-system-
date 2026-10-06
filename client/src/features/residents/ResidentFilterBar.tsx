@@ -5,6 +5,9 @@ import { FaceEnrollmentStatus, PresenceState, ResidentStatus } from '../../types
 interface ResidentFilterBarProps {
   search: string;
   onSearchChange: (value: string) => void;
+  hostels?: Array<{ id: string; code: string; name: string }>;
+  hostelId?: string;
+  onHostelChange?: (value: string) => void;
   status: ResidentStatus | '';
   onStatusChange: (value: ResidentStatus | '') => void;
   presence: PresenceState | '';
@@ -20,6 +23,9 @@ interface ResidentFilterBarProps {
 export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
   search,
   onSearchChange,
+  hostels = [],
+  hostelId = '',
+  onHostelChange,
   status,
   onStatusChange,
   presence,
@@ -56,6 +62,24 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
             </button>
           )}
         </div>
+
+        {hostels.length > 1 && onHostelChange && (
+          <div className="filter-item">
+            <select
+              className="filter-select"
+              value={hostelId}
+              onChange={(e) => onHostelChange(e.target.value)}
+              aria-label="Filter by hostel"
+            >
+              <option value="">All hostels</option>
+              {hostels.map((hostel) => (
+                <option key={hostel.id} value={hostel.id}>
+                  {hostel.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Room / Group Search Filter */}
         <div className="filter-item">
