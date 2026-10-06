@@ -167,7 +167,7 @@ export const StaffPage: React.FC = () => {
     <div className="staff-page">
       <PageHeader
         title="Staff"
-        subtitle="Create Warden and Guard accounts and assign them to a hostel."
+        subtitle="Create Warden and Guard accounts, assign hostels, and manage staff access."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -247,7 +247,7 @@ export const StaffPage: React.FC = () => {
                     <Badge type="status" value={member.status} />
                   </td>
                   <td className="text-right">
-                    <div className="inline-flex items-center gap-2">
+                    <div className="inline-flex items-center justify-end gap-2 flex-wrap min-w-[280px]">
                       <Button variant="outline" size="sm" onClick={() => openEdit(member)} leftIcon={<Edit2 size={14} />}>
                         Edit
                       </Button>
