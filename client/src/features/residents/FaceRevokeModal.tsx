@@ -38,7 +38,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
 
     try {
       await biometricsApi.revokeEnrollment(resident.id, reason.trim());
-      success(`Biometric face profile revoked for ${resident.fullName}`);
+      success(`Face enrollment removed for ${resident.fullName}`);
       const updated: SafeResident = {
         ...resident,
         faceEnrollmentStatus: 'REVOKED',
@@ -46,8 +46,8 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
       onSuccess(updated);
       onClose();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to revoke biometric profile');
-      toastError(err.message || 'Failed to revoke biometric profile');
+      setErrorMsg(err.message || 'Failed to remove face enrollment');
+      toastError(err.message || 'Failed to remove face enrollment');
     } finally {
       setIsSubmitting(false);
     }
@@ -57,7 +57,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Revoke Face Profile"
+      title="Remove Face Enrollment"
       subtitle={`Code: ${resident.residentCode} • ${resident.fullName}`}
       size="md"
     >
@@ -65,8 +65,8 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
         <div className="alert-banner alert-banner-warning mb-4">
           <ShieldAlert size={20} className="shrink-0 text-amber-500" />
           <div className="text-xs">
-            <strong className="block mb-1">Privacy & Security Safeguard:</strong>
-            Revoking this enrollment will immediately deactivate face recognition for this resident and permanently remove the stored biometric template from active matching.
+            <strong className="block mb-1">Before you continue</strong>
+            Removing this enrollment stops face matching for this resident. The resident can be enrolled again later if needed.
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
 
         <div className="form-group mb-4">
           <label htmlFor="revoke-reason" className="form-label font-medium text-sm">
-            Reason for Revocation <span className="text-danger">*</span>
+            Reason <span className="text-danger">*</span>
           </label>
           <textarea
             id="revoke-reason"
@@ -87,7 +87,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
             rows={3}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g., Requested resident biometric reset, template quality concern, or manual security revocation"
+            placeholder="Example: resident requested a reset or enrollment needs to be captured again"
             required
             disabled={isSubmitting}
           />
@@ -102,7 +102,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
             type="submit"
             disabled={isSubmitting || !reason.trim()}
           >
-            {isSubmitting ? 'Revoking...' : 'Confirm Revocation'}
+            {isSubmitting ? 'Removing...' : 'Remove Enrollment'}
           </Button>
         </div>
       </form>
