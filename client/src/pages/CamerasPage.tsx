@@ -17,7 +17,6 @@ import {
   RefreshCw,
   Plus,
   AlertCircle,
-  Clock,
   X,
   CheckCircle2,
   Wifi,
@@ -579,7 +578,7 @@ export const CamerasPage: React.FC = () => {
         <div className="camera-list-pane">
           <div className="pane-header">
             <h3 className="pane-title">Camera Setup</h3>
-            <span className="camera-count-badge">{cameras.length} Cameras</span>
+            <span className="camera-count-badge">{cameras.length} {cameras.length === 1 ? 'Camera' : 'Cameras'}</span>
           </div>
 
           {isLoading && cameras.length === 0 ? (
@@ -764,7 +763,7 @@ export const CamerasPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Video Screen Frame */}
+              {/* Video preview */}
               <div className="video-screen-frame">
                 {isWebcamPreviewActive ? (
                   <div className="video-player-wrapper">
@@ -781,42 +780,17 @@ export const CamerasPage: React.FC = () => {
                       muted
                       className="live-preview-image object-contain"
                     />
-
-                    {/* HUD Overlay */}
-                    <div className="hud-overlay">
+                    <div className="video-hud pointer-events-none">
                       <div className="hud-top-left">
-                        <span className="live-indicator">
-                          <span className="pulse-dot" />
-                          <span>BROWSER WEBCAM LIVE</span>
+                        <span className="hud-live-badge">
+                          <span className="live-dot" />
+                          LIVE PREVIEW
                         </span>
-                        <span className="hud-metric">Direct Laptop Stream</span>
-                      </div>
-
-                      <div className="hud-top-right">
-                        <button
-                          type="button"
-                          onClick={stopWebcamPreview}
-                          className="bg-black/70 hover:bg-black/90 text-white text-xs px-2.5 py-1 rounded-md transition shadow"
-                        >
-                          Close Laptop Feed
-                        </button>
-                      </div>
-
-                      <div className="hud-bottom-left">
-                        <span className="hud-timestamp">
-                          <Clock size={12} />
-                          <span>{new Date().toLocaleTimeString()}</span>
-                        </span>
-                      </div>
-
-                      <div className="hud-bottom-right">
-                        <span className="hud-device-badge">CLIENT WEBCAM</span>
                       </div>
                     </div>
                   </div>
                 ) : isStreaming ? (
                   <div className="video-player-wrapper">
-                    {/* Live Stream MJPEG Image */}
                     <img
                       src={camerasApi.getPreviewStreamUrl(selectedCamera.id)}
                       alt={`Live Preview of ${selectedCamera.name}`}
@@ -825,37 +799,11 @@ export const CamerasPage: React.FC = () => {
                         setStreamError('Preview stream connection interrupted. Please restart stream.');
                       }}
                     />
-
-                    {/* HUD Overlay */}
-                    <div className="hud-overlay">
+                    <div className="video-hud pointer-events-none">
                       <div className="hud-top-left">
-                        <span className="live-indicator">
-                          <span className="pulse-dot" />
-                          <span>LIVE PREVIEW</span>
-                        </span>
-                        <span className="hud-metric">{diagnostics?.fps ?? 0} FPS</span>
-                      </div>
-
-                      <div className="hud-top-right">
-                        <span className="hud-resolution">
-                          {diagnostics?.resolution
-                            ? `${diagnostics.resolution.width}x${diagnostics.resolution.height}`
-                            : '1280x720'}
-                        </span>
-                      </div>
-
-                      <div className="hud-bottom-left">
-                        <span className="hud-timestamp">
-                          <Clock size={12} />
-                          <span>{new Date().toLocaleTimeString()}</span>
-                        </span>
-                      </div>
-
-                      <div className="hud-bottom-right">
-                        <span className="hud-device-badge">
-                          {selectedCamera.sourceType === 'RTSP'
-                            ? `RTSP (${selectedCamera.configMetadata?.transport?.toUpperCase() || 'TCP'})`
-                            : selectedCamera.sourceType}
+                        <span className="hud-live-badge">
+                          <span className="live-dot" />
+                          LIVE PREVIEW
                         </span>
                       </div>
                     </div>
@@ -868,27 +816,10 @@ export const CamerasPage: React.FC = () => {
                       </div>
                       <h4>Preview is not running</h4>
                       <p>
-                        Start the camera preview to confirm the view and positioning.
+                        {selectedCamera.sourceType === 'WEBCAM'
+                          ? 'Use the laptop camera button below to confirm the view and positioning.'
+                          : 'Start the live preview below to confirm the camera view and positioning.'}
                       </p>
-                      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={handleStartStream}
-                          disabled={isActionPending}
-                        >
-                          <Play size={16} />
-                          <span>Start Live Preview</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={startWebcamPreview}
-                        >
-                          <CameraIcon size={16} />
-                          <span>Use Laptop Camera</span>
-                        </button>
-                      </div>
                     </div>
                   </div>
                 )}
