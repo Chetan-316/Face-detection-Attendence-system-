@@ -43,9 +43,6 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
       ) {
         throw new ForbiddenError('Cannot view settings for another facility');
       }
-      if (actor.role === StaffRole.ADMIN && actor.hostelId && actor.hostelId !== hostel.id) {
-        throw new ForbiddenError('Cannot view settings for another facility');
-      }
 
       res.status(200).json({
         data: {
