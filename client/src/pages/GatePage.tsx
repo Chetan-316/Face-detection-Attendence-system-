@@ -336,7 +336,7 @@ export const GatePage: React.FC = () => {
         direction: targetDirection,
       });
 
-      const actionText = targetDirection === 'OUT' ? 'marked OUT' : 'marked IN';
+      const actionText = targetDirection === 'OUT' ? 'marked outside' : 'marked inside';
       const successText = `${resident.fullName} ${actionText}.`;
       setLastActionSuccessMsg(successText);
       success(successText);
@@ -601,29 +601,25 @@ export const GatePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Guard Action Buttons: MARK IN & MARK OUT */}
-              <div className="pt-4 border-t border-slate-200 flex flex-col gap-2">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                  Record movement
-                </span>
-                <div className="grid grid-cols-2 gap-3">
+              {/* Guard sees only the valid next movement based on current presence */}
+              <div className="pt-4 border-t border-slate-200 flex flex-col gap-3">
+                <div>
+                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
+                    Next movement
+                  </span>
+                  <p className="text-sm text-slate-500 mt-1">
+                    {activeResidentPresence === 'IN'
+                      ? 'Resident is currently inside. Record an exit when they leave.'
+                      : 'Resident is currently outside. Record an entry when they return.'}
+                  </p>
+                </div>
+
+                {activeResidentPresence === 'IN' ? (
                   <Button
                     type="button"
                     variant="primary"
                     size="lg"
-                    className="h-13 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm flex items-center justify-center gap-2"
-                    onClick={() => handleMarkMovement('IN')}
-                    isLoading={isConfirming}
-                    disabled={isConfirming}
-                    leftIcon={<LogIn size={20} />}
-                  >
-                    Mark Inside
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="lg"
-                    className="h-13 text-base font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-sm flex items-center justify-center gap-2"
+                    className="w-full h-13 text-base font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-sm"
                     onClick={() => handleMarkMovement('OUT')}
                     isLoading={isConfirming}
                     disabled={isConfirming}
@@ -631,7 +627,20 @@ export const GatePage: React.FC = () => {
                   >
                     Mark Outside
                   </Button>
-                </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="lg"
+                    className="w-full h-13 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm"
+                    onClick={() => handleMarkMovement('IN')}
+                    isLoading={isConfirming}
+                    disabled={isConfirming}
+                    leftIcon={<LogIn size={20} />}
+                  >
+                    Mark Inside
+                  </Button>
+                )}
               </div>
             </div>
           ) : isUnknown ? (
