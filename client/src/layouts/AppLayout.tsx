@@ -92,7 +92,7 @@ export const AppLayout: React.FC = () => {
         <aside id="primary-navigation" className={`app-sidebar ${isMobileMenuOpen ? 'is-open' : ''}`}>
           <div className="sidebar-section-title">Navigation</div>
 
-          <nav className="sidebar-nav">
+          <nav className="sidebar-nav" aria-label="Primary navigation">
             {user?.role === 'GUARD' ? (
               <NavLink
                 to="/gate"
@@ -170,7 +170,7 @@ export const AppLayout: React.FC = () => {
             <div className="system-scope-card">
               <div className="scope-row">
                 <Building2 size={14} className="scope-icon" />
-                <span className="scope-label">Facility</span>
+                <span className="scope-label">Hostel scope</span>
               </div>
               <span className="scope-value">
                 {user?.role === 'ADMIN'
