@@ -56,7 +56,7 @@ export const LoginPage: React.FC = () => {
       } else if (err.code === 'TOO_MANY_REQUESTS') {
         setAuthError('Too many failed attempts. Please try again later.');
       } else {
-        setAuthError(err.message || 'Unable to connect to authorization server');
+        setAuthError('Unable to sign in right now. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -161,8 +161,7 @@ export const LoginPage: React.FC = () => {
                   className="btn-password-toggle"
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  tabIndex={-1}
-                >
+                  >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               }
