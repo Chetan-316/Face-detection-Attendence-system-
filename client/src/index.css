@@ -3654,3 +3654,17 @@ a:focus-visible {
 #main-content:focus {
   outline: none;
 }
+
+
+.btn-outline .spinner-inline,
+.btn-secondary .spinner-inline,
+.btn-ghost .spinner-inline {
+  border-color: rgba(71, 85, 105, 0.22);
+  border-top-color: currentColor;
+}
+
+.btn-primary .spinner-inline,
+.btn-danger .spinner-inline {
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: #FFFFFF;
+}
