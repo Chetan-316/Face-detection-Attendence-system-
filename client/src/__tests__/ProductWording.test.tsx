@@ -201,7 +201,7 @@ describe('Product Wording and Clean Operational Interface Verification', () => {
     expect(screen.getByText('Residents')).toBeInTheDocument();
     expect(screen.getByText('Cameras')).toBeInTheDocument();
     expect(screen.getByText('Staff')).toBeInTheDocument();
-    expect(screen.getByText('Facilities')).toBeInTheDocument();
+    expect(screen.getByText('Hostels')).toBeInTheDocument();
     expect(screen.queryByText('Attendance')).not.toBeInTheDocument();
     expect(screen.getByText('Reports')).toBeInTheDocument();
 

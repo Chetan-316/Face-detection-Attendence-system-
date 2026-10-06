@@ -158,7 +158,7 @@ export const AppLayout: React.FC = () => {
                       onClick={closeMobileMenu}
                     >
                       <Building2 size={18} />
-                      <span>Facilities</span>
+                      <span>Hostels</span>
                     </NavLink>
                   </>
                 )}
@@ -173,14 +173,20 @@ export const AppLayout: React.FC = () => {
                 <span className="scope-label">Facility</span>
               </div>
               <span className="scope-value">
-                {user?.hostelId ? 'Assigned Hostel' : 'All Facilities'}
+                {user?.role === 'ADMIN'
+                  ? 'All Hostels'
+                  : user?.hostelId
+                  ? 'Assigned Hostel'
+                  : 'No Hostel Assigned'}
               </span>
 
               <div className="scope-row mt-2">
                 <Shield size={14} className="scope-icon" />
                 <span className="scope-label">Role</span>
               </div>
-              <span className="scope-value">{user?.role}</span>
+              <span className="scope-value">
+                {user?.role === 'ADMIN' ? 'Admin' : user?.role === 'WARDEN' ? 'Warden' : 'Guard'}
+              </span>
             </div>
           </div>
         </aside>

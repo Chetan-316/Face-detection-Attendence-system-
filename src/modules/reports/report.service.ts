@@ -720,8 +720,6 @@ export class ReportService {
           throw new NotFoundError('Hostel', query.hostelId);
         }
         effectiveHostelId = query.hostelId;
-      } else if (actor.hostelId) {
-        effectiveHostelId = actor.hostelId;
       }
     }
 
@@ -869,6 +867,34 @@ export class ReportService {
     requestedHostelId: string | undefined,
     actor: StaffActor
   ): Promise<PresenceSummaryReport> {
+    if (actor.role === StaffRole.ADMIN && !requestedHostelId) {
+      const presenceCounts = await this.db.residentPresence.groupBy({
+        by: ['currentState'],
+        where: {
+          hostel: { organizationId: actor.organizationId },
+        },
+        _count: { residentId: true },
+      });
+
+      let insideCount = 0;
+      let outsideCount = 0;
+      for (const item of presenceCounts) {
+        if (item.currentState === PresenceState.IN) insideCount = item._count.residentId;
+        if (item.currentState === PresenceState.OUT) outsideCount = item._count.residentId;
+      }
+
+      const totalResidents = insideCount + outsideCount;
+      return {
+        hostelId: 'ALL',
+        hostelName: 'All Hostels',
+        totalResidents,
+        insideCount,
+        outsideCount,
+        insideRate: totalResidents > 0 ? Math.round((insideCount / totalResidents) * 100) : 0,
+        outsideRate: totalResidents > 0 ? Math.round((outsideCount / totalResidents) * 100) : 0,
+      };
+    }
+
     const hostelId = await this.resolveHostelScope(actor, requestedHostelId);
 
     const hostel = await this.db.hostel.findUnique({
@@ -879,7 +905,6 @@ export class ReportService {
       throw new NotFoundError('Hostel', hostelId);
     }
 
-    // Query counts by currentState from ResidentPresence
     const presenceCounts = await this.db.residentPresence.groupBy({
       by: ['currentState'],
       where: { hostelId },
@@ -919,11 +944,17 @@ export class ReportService {
     requestedHostelId: string | undefined,
     actor: StaffActor
   ): Promise<CurrentlyOutsideReportItem[]> {
-    const hostelId = await this.resolveHostelScope(actor, requestedHostelId);
+    let hostelId: string | undefined;
+
+    if (actor.role === StaffRole.ADMIN && !requestedHostelId) {
+      hostelId = undefined;
+    } else {
+      hostelId = await this.resolveHostelScope(actor, requestedHostelId);
+    }
 
     const presences = await this.db.residentPresence.findMany({
       where: {
-        hostelId,
+        ...(hostelId ? { hostelId } : { hostel: { organizationId: actor.organizationId } }),
         currentState: PresenceState.OUT,
       },
       include: {

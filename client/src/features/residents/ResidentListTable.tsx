@@ -174,7 +174,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                       onClick={() => onSelect(resident)}
                       aria-label={`View details for ${resident.fullName}`}
                     >
-                      View
+                      Open Profile
                     </button>
 
                     {canManage && (

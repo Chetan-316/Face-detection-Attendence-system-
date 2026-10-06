@@ -46,7 +46,9 @@ export const OverviewPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [returnDeadlineMinutes, setReturnDeadlineMinutes] = useState(1260);
-  const [hasScopedReturnDeadline, setHasScopedReturnDeadline] = useState(Boolean(user?.hostelId));
+  const [hasScopedReturnDeadline, setHasScopedReturnDeadline] = useState(
+    isWarden && Boolean(user?.hostelId)
+  );
 
   // Night return is derived from live ResidentPresence. Each facility owns its
   // return deadline; residents still OUT after that time are "Not Returned".
@@ -64,15 +66,19 @@ export const OverviewPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
+      const scopeHostelId = isWarden ? user?.hostelId || undefined : undefined;
+
       const [resSummary, presRes, movRes, outRes, camRes, settingsRes] = await Promise.allSettled([
-        residentsApi.getSummary ? residentsApi.getSummary(user?.hostelId || undefined) : Promise.resolve(null),
-        movementsApi.getPresenceCounts ? movementsApi.getPresenceCounts(user?.hostelId || undefined) : Promise.resolve(null),
-        reportsApi.getMovements ? reportsApi.getMovements({ pageSize: 8, hostelId: user?.hostelId || undefined }) : Promise.resolve({ data: [] }),
-        residentsApi.listResidents ? residentsApi.listResidents({ presence: 'OUT', pageSize: 6 }) : Promise.resolve({ data: [] }),
-        isAdmin && camerasApi.listCameras
-          ? camerasApi.listCameras(user?.hostelId || undefined)
+        residentsApi.getSummary ? residentsApi.getSummary(scopeHostelId) : Promise.resolve(null),
+        movementsApi.getPresenceCounts ? movementsApi.getPresenceCounts(scopeHostelId) : Promise.resolve(null),
+        reportsApi.getMovements ? reportsApi.getMovements({ pageSize: 8, hostelId: scopeHostelId }) : Promise.resolve({ data: [] }),
+        residentsApi.listResidents
+          ? residentsApi.listResidents({ presence: 'OUT', pageSize: 6, hostelId: scopeHostelId })
           : Promise.resolve({ data: [] }),
-        user?.hostelId
+        isAdmin && camerasApi.listCameras
+          ? camerasApi.listCameras()
+          : Promise.resolve({ data: [] }),
+        isWarden && user?.hostelId
           ? facilitiesApi.getOperationalSettings(user.hostelId)
           : Promise.resolve({ data: { hostelId: null, returnDeadlineMinutes: 1260, scoped: false } }),
       ]);
@@ -101,7 +107,7 @@ export const OverviewPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.hostelId, isAdmin]);
+  }, [user?.hostelId, isAdmin, isWarden]);
 
   useEffect(() => {
     fetchOverviewData();
@@ -134,7 +140,7 @@ export const OverviewPage: React.FC = () => {
         subtitle={
           isWarden
             ? `Live hostel presence, return status, and residents who need attention.`
-            : `Resident coverage, live presence, and operational readiness across your accessible hostel scope.`
+            : `Resident coverage, live presence, and operational readiness across all hostels.`
         }
         actions={
           <Button
@@ -159,15 +165,23 @@ export const OverviewPage: React.FC = () => {
       {/* 4 Large Operational Metric Cards */}
       <div className="overview-stats-row">
         {/* Total Residents */}
-        <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between h-32">
+        <Link
+          to="/residents"
+          className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between min-h-36 hover:border-blue-300 hover:shadow-md transition group"
+        >
           <div className="flex items-center justify-between text-slate-600">
-            <span className="text-[15px] font-semibold text-slate-600">Residents</span>
-            <Users size={20} className="text-blue-600" />
+            <span className="text-[15px] font-semibold text-slate-700">Residents</span>
+            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+              <Users size={20} />
+            </div>
           </div>
-          <div>
-            <span className="text-[36px] font-bold text-slate-900 tracking-tight leading-none">{totalResidents}</span>
+          <div className="flex items-end justify-between gap-3">
+            <span className="text-[40px] font-bold text-slate-900 tracking-tight leading-none">{totalResidents}</span>
+            <span className="text-sm font-semibold text-blue-700 group-hover:text-blue-800 flex items-center gap-1">
+              View residents <ArrowRight size={15} />
+            </span>
           </div>
-        </div>
+        </Link>
 
         {/* Inside Hostel */}
         <div className="p-6 rounded-xl bg-white border border-slate-200 shadow-sm flex flex-col justify-between h-32">
@@ -238,15 +252,15 @@ export const OverviewPage: React.FC = () => {
             </div>
             <div className="text-sm mt-0.5 opacity-80">
               {!hasScopedReturnDeadline
-                ? 'Open Facilities to review or change each hostel return deadline. Current outside counts remain live across your accessible scope.'
+                ? 'Open Hostels to review or change each return deadline. Current presence counts include all hostels in your organization.'
                 : isAfterReturnDeadline
                 ? 'This list updates automatically from the live IN / OUT presence state as residents return.'
                 : `${currentlyOut} ${currentlyOut === 1 ? 'resident is' : 'residents are'} currently outside. No separate night attendance is required.`}
             </div>
           </div>
         </div>
-        <Link to="/residents" className="text-sm font-semibold underline underline-offset-2 whitespace-nowrap">
-          View residents
+        <Link to="/residents" className="resident-quick-link whitespace-nowrap">
+          Open resident list <ArrowRight size={15} />
         </Link>
       </div>
 
@@ -367,7 +381,7 @@ export const OverviewPage: React.FC = () => {
                                   : 'bg-amber-50 text-amber-800 border border-amber-200'
                               }`}
                             >
-                              {mov.direction}
+                              {isIN ? 'Entered' : 'Left'}
                             </span>
                           </td>
                         </tr>

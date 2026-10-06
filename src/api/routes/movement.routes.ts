@@ -256,21 +256,41 @@ export function createMovementRouter(
         }
         targetHostelId = actor.hostelId;
       } else if (actor.role === StaffRole.ADMIN) {
-        targetHostelId = (req.query.hostelId as string) || actor.hostelId || undefined;
+        targetHostelId = (req.query.hostelId as string) || undefined;
       }
 
-      if (!targetHostelId) {
-        throw new ValidationError('Hostel ID is required to fetch presence counts');
+      if (targetHostelId) {
+        const hostel = await db.hostel.findUnique({ where: { id: targetHostelId } });
+        if (!hostel || hostel.organizationId !== actor.organizationId) {
+          throw new NotFoundError('Hostel', targetHostelId);
+        }
+
+        const counts = await presService.getHostelPresenceCounts(targetHostelId);
+        res.status(200).json(counts);
+        return;
       }
 
-      // Verify hostel belongs to actor organization
-      const hostel = await db.hostel.findUnique({ where: { id: targetHostelId } });
-      if (!hostel || hostel.organizationId !== actor.organizationId) {
-        throw new NotFoundError('Hostel', targetHostelId);
+      // Organization-level Admin: aggregate live presence across all hostels.
+      const grouped = await db.residentPresence.groupBy({
+        by: ['currentState'],
+        where: {
+          hostel: { organizationId: actor.organizationId },
+        },
+        _count: { residentId: true },
+      });
+
+      let currentlyIn = 0;
+      let currentlyOut = 0;
+      for (const item of grouped) {
+        if (item.currentState === PresenceState.IN) currentlyIn = item._count.residentId;
+        if (item.currentState === PresenceState.OUT) currentlyOut = item._count.residentId;
       }
 
-      const counts = await presService.getHostelPresenceCounts(targetHostelId);
-      res.status(200).json(counts);
+      res.status(200).json({
+        currentlyIn,
+        currentlyOut,
+        totalTracked: currentlyIn + currentlyOut,
+      });
     } catch (err) {
       next(err);
     }
@@ -299,8 +319,6 @@ export function createMovementRouter(
             throw new NotFoundError('Hostel', query.hostelId);
           }
           effectiveHostelId = query.hostelId;
-        } else if (actor.hostelId) {
-          effectiveHostelId = actor.hostelId;
         }
       }
 

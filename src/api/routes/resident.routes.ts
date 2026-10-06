@@ -50,22 +50,17 @@ export function createResidentRouter(
         let effectiveHostelId: string | undefined;
 
         if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
-          // Wardens and guards are strictly locked to their assigned hostel
+          // Wardens and guards are strictly locked to their assigned hostel.
           effectiveHostelId = user.hostelId || undefined;
-        } else if (user.role === StaffRole.ADMIN && user.hostelId) {
-          // Admin locked to specific hostel
-          effectiveHostelId = user.hostelId;
-        } else if (user.role === StaffRole.ADMIN) {
-          // Org-level Admin: can optionally filter by hostelId if it belongs to their organization
-          if (query.hostelId) {
-            const hostel = await db.hostel.findUnique({
-              where: { id: query.hostelId },
-            });
-            if (!hostel || hostel.organizationId !== user.organizationId) {
-              throw new NotFoundError('Hostel', query.hostelId);
-            }
-            effectiveHostelId = query.hostelId;
+        } else if (user.role === StaffRole.ADMIN && query.hostelId) {
+          // Administrators can manage the whole organization and optionally filter by hostel.
+          const hostel = await db.hostel.findUnique({
+            where: { id: query.hostelId },
+          });
+          if (!hostel || hostel.organizationId !== user.organizationId) {
+            throw new NotFoundError('Hostel', query.hostelId);
           }
+          effectiveHostelId = query.hostelId;
         }
 
         const result = await residentService.listResidentsPaginated({
@@ -108,14 +103,17 @@ export function createResidentRouter(
             throw new ValidationError('Warden must have an assigned hostel to create residents');
           }
           targetHostelId = user.hostelId;
-        } else if (user.role === StaffRole.ADMIN && user.hostelId) {
-          targetHostelId = user.hostelId;
         } else {
-          // Organization-level Admin must specify a valid hostelId in request body
-          if (!body.hostelId) {
-            throw new ValidationError('Hostel ID is required for organization-level admin');
+          // Administrators may create residents in any active hostel in their organization.
+          targetHostelId = body.hostelId || user.hostelId;
+          if (!targetHostelId) {
+            throw new ValidationError('Hostel ID is required for resident creation');
           }
-          targetHostelId = body.hostelId;
+
+          const hostel = await db.hostel.findUnique({ where: { id: targetHostelId } });
+          if (!hostel || hostel.organizationId !== user.organizationId || !hostel.isActive) {
+            throw new NotFoundError('Hostel', targetHostelId);
+          }
         }
 
         const resident = await residentService.createResident({
@@ -153,18 +151,14 @@ export function createResidentRouter(
 
       if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
         effectiveHostelId = user.hostelId || undefined;
-      } else if (user.role === StaffRole.ADMIN && user.hostelId) {
-        effectiveHostelId = user.hostelId;
-      } else if (user.role === StaffRole.ADMIN) {
-        if (query.hostelId) {
-          const hostel = await db.hostel.findUnique({
-            where: { id: query.hostelId },
-          });
-          if (!hostel || hostel.organizationId !== user.organizationId) {
-            throw new NotFoundError('Hostel', query.hostelId);
-          }
-          effectiveHostelId = query.hostelId;
+      } else if (user.role === StaffRole.ADMIN && query.hostelId) {
+        const hostel = await db.hostel.findUnique({
+          where: { id: query.hostelId },
+        });
+        if (!hostel || hostel.organizationId !== user.organizationId) {
+          throw new NotFoundError('Hostel', query.hostelId);
         }
+        effectiveHostelId = query.hostelId;
       }
 
       const summary = await residentService.getSummary({

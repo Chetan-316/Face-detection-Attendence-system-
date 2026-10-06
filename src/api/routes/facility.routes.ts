@@ -43,9 +43,6 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
       ) {
         throw new ForbiddenError('Cannot view settings for another facility');
       }
-      if (actor.role === StaffRole.ADMIN && actor.hostelId && actor.hostelId !== hostel.id) {
-        throw new ForbiddenError('Cannot view settings for another facility');
-      }
 
       res.status(200).json({
         data: {
@@ -76,7 +73,6 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
       const facilities = await db.hostel.findMany({
         where: {
           organizationId: actor.organizationId,
-          ...(actor.hostelId ? { id: actor.hostelId } : {}),
         },
         select: {
           id: true,
@@ -117,10 +113,6 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
   router.post('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const actor = requireAdmin(req);
-
-      if (actor.hostelId) {
-        throw new ForbiddenError('A hostel-scoped Administrator cannot create additional facilities');
-      }
 
       const name = String(req.body?.name || '').trim();
       const code = String(req.body?.code || '').trim().toUpperCase();
@@ -175,10 +167,6 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
       if (!facility || facility.organizationId !== actor.organizationId) {
         throw new NotFoundError('Facility', id);
       }
-      if (actor.hostelId && actor.hostelId !== facility.id) {
-        throw new ForbiddenError('This Administrator can only manage their assigned facility');
-      }
-
       const locations = await db.location.findMany({
         where: { hostelId: facility.id },
         orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
@@ -199,10 +187,6 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
       if (!facility || facility.organizationId !== actor.organizationId) {
         throw new NotFoundError('Facility', id);
       }
-      if (actor.hostelId && actor.hostelId !== facility.id) {
-        throw new ForbiddenError('This Administrator can only manage their assigned facility');
-      }
-
       const name = String(req.body?.name || '').trim();
       const code = String(req.body?.code || '').trim().toUpperCase();
       const typeValue = String(req.body?.locationType || 'GATE').toUpperCase();
@@ -239,10 +223,6 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
       if (!facility || facility.organizationId !== actor.organizationId) {
         throw new NotFoundError('Facility', id);
       }
-      if (actor.hostelId && actor.hostelId !== facility.id) {
-        throw new ForbiddenError('This Administrator can only manage their assigned facility');
-      }
-
       const existing = await db.location.findUnique({ where: { id: locationId } });
       if (!existing || existing.hostelId !== facility.id) {
         throw new NotFoundError('Location', locationId);
@@ -316,10 +296,6 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
 
       if (!existing || existing.organizationId !== actor.organizationId) {
         throw new NotFoundError('Facility', id);
-      }
-
-      if (actor.hostelId && actor.hostelId !== existing.id) {
-        throw new ForbiddenError('This Administrator can only manage their assigned facility');
       }
 
       const nextName =

@@ -16,6 +16,7 @@ export const FacilitiesPage: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Facility | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [statusFacility, setStatusFacility] = useState<Facility | null>(null);
   const [locationFacility, setLocationFacility] = useState<Facility | null>(null);
   const [locations, setLocations] = useState<FacilityLocation[]>([]);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
@@ -29,7 +30,6 @@ export const FacilitiesPage: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [returnDeadlineTime, setReturnDeadlineTime] = useState('21:00');
 
-  const isOrganizationAdmin = !user?.hostelId;
 
   const minutesToTime = (minutes = 1260) => {
     const safeMinutes = Math.min(Math.max(minutes, 0), 1439);
@@ -91,9 +91,9 @@ export const FacilitiesPage: React.FC = () => {
       setIsCreateOpen(false);
       resetForm();
       await fetchFacilities();
-      success('Facility created successfully.');
+      success('Hostel created successfully.');
     } catch (err: any) {
-      setFormError(err.message || 'Unable to create facility.');
+      setFormError(err.message || 'Unable to create hostel.');
     } finally {
       setIsSubmitting(false);
     }
@@ -117,9 +117,9 @@ export const FacilitiesPage: React.FC = () => {
       setEditing(null);
       resetForm();
       await fetchFacilities();
-      success('Facility updated successfully.');
+      success('Hostel updated successfully.');
     } catch (err: any) {
-      setFormError(err.message || 'Unable to update facility.');
+      setFormError(err.message || 'Unable to update hostel.');
     } finally {
       setIsSubmitting(false);
     }
@@ -181,26 +181,22 @@ export const FacilitiesPage: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (facility: Facility) => {
-    const nextState = !facility.isActive;
+  const handleStatusChange = async () => {
+    if (!statusFacility) return;
+
+    const nextState = !statusFacility.isActive;
     const action = nextState ? 'reactivate' : 'deactivate';
 
-    if (
-      !window.confirm(
-        nextState
-          ? `Reactivate ${facility.name}?`
-          : `Deactivate ${facility.name}? This is allowed only when it has no active residents, staff, or cameras.`
-      )
-    ) {
-      return;
-    }
-
     try {
-      await facilitiesApi.updateFacility(facility.id, { isActive: nextState });
+      setIsSubmitting(true);
+      await facilitiesApi.updateFacility(statusFacility.id, { isActive: nextState });
+      setStatusFacility(null);
       await fetchFacilities();
-      success(`Facility ${action}d successfully.`);
+      success(`Hostel ${action}d successfully.`);
     } catch (err: any) {
-      toastError(err.message || `Unable to ${action} facility.`);
+      toastError(err.message || `Unable to ${action} hostel.`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -211,8 +207,8 @@ export const FacilitiesPage: React.FC = () => {
   return (
     <div className="facilities-page">
       <PageHeader
-        title="Facilities"
-        subtitle="Create and manage the hostels available to your organization."
+        title="Hostels & Facilities"
+        subtitle="Create hostels, set return deadlines, and manage gates and locations."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -223,25 +219,23 @@ export const FacilitiesPage: React.FC = () => {
             >
               Refresh
             </Button>
-            {isOrganizationAdmin && (
-              <Button
-                variant="primary"
-                onClick={() => {
-                  resetForm();
-                  setIsCreateOpen(true);
-                }}
-                leftIcon={<Plus size={16} />}
-              >
-                Add Facility
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              onClick={() => {
+                resetForm();
+                setIsCreateOpen(true);
+              }}
+              leftIcon={<Plus size={16} />}
+            >
+              Add Hostel
+            </Button>
           </div>
         }
       />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Active facilities</span>
+          <span className="text-sm text-slate-500">Active hostels</span>
           <div className="text-3xl font-bold text-slate-900 mt-1">{activeCount}</div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
@@ -256,12 +250,12 @@ export const FacilitiesPage: React.FC = () => {
 
       {isLoading ? (
         <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500">
-          Loading facilities...
+          Loading hostels...
         </div>
       ) : facilities.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
           <Building2 size={38} className="text-slate-400 mx-auto mb-3" />
-          <h3 className="text-lg font-bold text-slate-900">No facilities yet</h3>
+          <h3 className="text-lg font-bold text-slate-900">No hostels yet</h3>
           <p className="text-sm text-slate-500 mt-1">
             Add the first hostel before creating staff, cameras, or residents.
           </p>
@@ -330,16 +324,14 @@ export const FacilitiesPage: React.FC = () => {
                 <Button variant="outline" size="sm" onClick={() => openEdit(facility)} className="flex-1">
                   Edit
                 </Button>
-                {isOrganizationAdmin && (
-                  <Button
-                    variant={facility.isActive ? 'ghost' : 'secondary'}
-                    size="sm"
-                    onClick={() => handleStatusChange(facility)}
-                    className="flex-1"
-                  >
-                    {facility.isActive ? 'Deactivate' : 'Reactivate'}
-                  </Button>
-                )}
+                <Button
+                  variant={facility.isActive ? 'ghost' : 'secondary'}
+                  size="sm"
+                  onClick={() => setStatusFacility(facility)}
+                  className="flex-1"
+                >
+                  {facility.isActive ? 'Deactivate' : 'Reactivate'}
+                </Button>
               </div>
             </div>
           ))}
@@ -349,8 +341,8 @@ export const FacilitiesPage: React.FC = () => {
       <Modal
         isOpen={isCreateOpen}
         onClose={() => !isSubmitting && setIsCreateOpen(false)}
-        title="Add Facility"
-        subtitle="Create a hostel that can receive residents, staff, and cameras."
+        title="Add Hostel"
+        subtitle="Create a new hostel and set its default return deadline."
         size="sm"
         footer={
           <div className="flex justify-end gap-2 w-full">
@@ -365,24 +357,24 @@ export const FacilitiesPage: React.FC = () => {
               Cancel
             </Button>
             <Button variant="primary" onClick={handleCreate} isLoading={isSubmitting}>
-              Create Facility
+              Create Hostel
             </Button>
           </div>
         }
       >
         <Input
-          label="Facility Name"
+          label="Hostel Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Example: Girls Hostel A"
           required
         />
         <Input
-          label="Facility Code"
+          label="Hostel Code"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="Example: GHA"
-          hint="Short unique code used internally."
+          hint="Use a short unique code, for example GHA or BOYS-A."
           required
         />
         <Input
@@ -497,9 +489,45 @@ export const FacilitiesPage: React.FC = () => {
       </Modal>
 
       <Modal
+        isOpen={!!statusFacility}
+        onClose={() => !isSubmitting && setStatusFacility(null)}
+        title={statusFacility?.isActive ? 'Deactivate Hostel' : 'Reactivate Hostel'}
+        subtitle={statusFacility?.name}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button
+              variant="outline"
+              onClick={() => setStatusFacility(null)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant={statusFacility?.isActive ? 'danger' : 'primary'}
+              onClick={handleStatusChange}
+              isLoading={isSubmitting}
+            >
+              {statusFacility?.isActive ? 'Deactivate Hostel' : 'Reactivate Hostel'}
+            </Button>
+          </div>
+        }
+      >
+        <div className={`rounded-lg border px-4 py-3 text-sm ${
+          statusFacility?.isActive
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-blue-200 bg-blue-50 text-blue-900'
+        }`}>
+          {statusFacility?.isActive
+            ? 'A hostel can be deactivated only after active residents and staff are moved or deactivated and enabled cameras are handled.'
+            : 'Reactivating this hostel makes it available again for resident, staff, and camera assignment.'}
+        </div>
+      </Modal>
+
+      <Modal
         isOpen={!!editing}
         onClose={() => !isSubmitting && setEditing(null)}
-        title="Edit Facility"
+        title="Edit Hostel"
         subtitle={editing ? `${editing.name} • ${editing.code}` : undefined}
         size="sm"
         footer={
@@ -521,13 +549,13 @@ export const FacilitiesPage: React.FC = () => {
         }
       >
         <Input
-          label="Facility Name"
+          label="Hostel Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
         />
         <Input
-          label="Facility Code"
+          label="Hostel Code"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           required

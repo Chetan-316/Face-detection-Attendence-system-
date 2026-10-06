@@ -43,6 +43,8 @@ export const ResidentsPage: React.FC = () => {
   const [presenceFilter, setPresenceFilter] = useState<PresenceState | ''>('');
   const [faceStatusFilter, setFaceStatusFilter] = useState<FaceEnrollmentStatus | ''>('');
   const [roomGroupFilter, setRoomGroupFilter] = useState('');
+  const [hostelFilter, setHostelFilter] = useState('');
+  const [hostels, setHostels] = useState<Array<{ id: string; code: string; name: string }>>([]);
 
   // Debounced search term (300ms)
   const debouncedSearch = useDebounce(searchInput, 300);
@@ -52,6 +54,14 @@ export const ResidentsPage: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedResident, setSelectedResident] = useState<SafeResident | null>(null);
   const [isFaceEnrollOpen, setIsFaceEnrollOpen] = useState(false);
+
+  useEffect(() => {
+    if (user?.role !== 'ADMIN') return;
+    residentsApi
+      .listHostels()
+      .then((res) => setHostels(res.data || []))
+      .catch(() => setHostels([]));
+  }, [user?.role]);
 
   // Fetch residents from real backend API
   const fetchResidents = useCallback(async () => {
@@ -67,6 +77,7 @@ export const ResidentsPage: React.FC = () => {
         presence: presenceFilter || undefined,
         faceEnrollmentStatus: faceStatusFilter || undefined,
         roomGroup: debouncedRoomGroup.trim() || undefined,
+        hostelId: user?.role === 'ADMIN' ? hostelFilter || undefined : undefined,
       });
 
       setResidents(response.data);
@@ -86,6 +97,8 @@ export const ResidentsPage: React.FC = () => {
     presenceFilter,
     faceStatusFilter,
     debouncedRoomGroup,
+    hostelFilter,
+    user?.role,
     toastError,
   ]);
 
@@ -106,6 +119,7 @@ export const ResidentsPage: React.FC = () => {
     setPresenceFilter('');
     setFaceStatusFilter('');
     setRoomGroupFilter('');
+    setHostelFilter('');
     setPage(1);
   };
 
@@ -114,7 +128,8 @@ export const ResidentsPage: React.FC = () => {
       statusFilter ||
       presenceFilter ||
       faceStatusFilter ||
-      roomGroupFilter.trim()
+      roomGroupFilter.trim() ||
+      hostelFilter
   );
 
   // Callback after adding resident
@@ -179,6 +194,9 @@ export const ResidentsPage: React.FC = () => {
       <ResidentFilterBar
         search={searchInput}
         onSearchChange={handleFilterChange(setSearchInput)}
+        hostels={user?.role === 'ADMIN' ? hostels : []}
+        hostelId={hostelFilter}
+        onHostelChange={handleFilterChange(setHostelFilter)}
         status={statusFilter}
         onStatusChange={handleFilterChange(setStatusFilter)}
         presence={presenceFilter}

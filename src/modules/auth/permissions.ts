@@ -95,11 +95,10 @@ export function assertUserCanOperateInHostel(
         actor.role
       );
     }
-  } else if (actor.role === StaffRole.ADMIN && actor.hostelId && actor.hostelId !== targetHostelId) {
-    throw new PermissionDeniedError(
-      `Operate in hostel '${targetHostelId}' (admin assigned specifically to '${actor.hostelId}')`,
-      actor.role
-    );
   }
+
+  // ADMIN is organization-scoped. A stored hostelId may be used as a default
+  // dashboard context, but it must not block management of other hostels in
+  // the same organization.
 }
 

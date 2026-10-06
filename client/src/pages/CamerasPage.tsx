@@ -3,6 +3,8 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Badge } from '../components/Badge';
+import { PageHeader } from '../components/PageHeader';
+import { Button } from '../components/Button';
 import { camerasApi } from '../api/cameras.api';
 import { facilitiesApi, Facility, FacilityLocation } from '../api/facilities.api';
 import { CameraEntity, CameraDiagnostics, CameraTestResult } from '../types/camera.types';
@@ -15,13 +17,14 @@ import {
   RefreshCw,
   Plus,
   AlertCircle,
-  Clock,
   X,
   CheckCircle2,
   Wifi,
   Edit2,
   ChevronDown,
   ChevronUp,
+  CircleHelp,
+  MapPin,
 } from 'lucide-react';
 
 export const CamerasPage: React.FC = () => {
@@ -209,7 +212,7 @@ export const CamerasPage: React.FC = () => {
   const fetchCameras = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await camerasApi.listCameras(user?.hostelId || undefined);
+      const res = await camerasApi.listCameras(isAdmin ? undefined : user?.hostelId || undefined);
       setCameras(res.data);
 
       if (res.data.length > 0 && !selectedCameraId) {
@@ -224,7 +227,7 @@ export const CamerasPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.hostelId, selectedCameraId, toastError]);
+  }, [isAdmin, user?.hostelId, selectedCameraId, toastError]);
 
   useEffect(() => {
     fetchCameras();
@@ -385,6 +388,10 @@ export const CamerasPage: React.FC = () => {
       toastError('Select a facility for this camera');
       return;
     }
+    if ((newCameraRole === 'IN' || newCameraRole === 'OUT') && !newCameraLocationId) {
+      toastError('Select the gate / location monitored by this gate camera');
+      return;
+    }
 
     try {
       setIsSubmittingCamera(true);
@@ -523,37 +530,45 @@ export const CamerasPage: React.FC = () => {
 
   return (
     <div className="cameras-page">
-      {/* Page Header */}
-      <div className="page-header">
-        <div className="header-text">
-          <h1 className="page-title">Cameras</h1>
-          <p className="page-subtitle">See camera status, preview live feeds, and manage gate camera connections.</p>
-        </div>
-        <div className="header-actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={fetchCameras}
-            disabled={isLoading}
-            title="Refresh camera status"
-          >
-            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
-          </button>
-
-          {isAdmin && (
-            <button
+      <PageHeader
+        title="Cameras"
+        subtitle="Connect gate cameras, check their status, and confirm the live view."
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
               type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                setModalTestResult(null);
-                setIsRegisterModalOpen(true);
-              }}
+              variant="outline"
+              size="md"
+              onClick={fetchCameras}
+              disabled={isLoading}
+              leftIcon={<RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />}
             >
-              <Plus size={16} />
-              <span>Add Camera</span>
-            </button>
-          )}
+              Refresh
+            </Button>
+            {isAdmin && (
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                onClick={() => {
+                  setModalTestResult(null);
+                  setIsRegisterModalOpen(true);
+                }}
+                leftIcon={<Plus size={16} />}
+              >
+                Add Camera
+              </Button>
+            )}
+          </div>
+        }
+      />
+
+      <div className="camera-help-card">
+        <CircleHelp size={20} className="shrink-0 mt-0.5" />
+        <div>
+          <strong>Camera setup is simple:</strong> choose the hostel and gate, select the camera type,
+          enter its connection details, then test the connection before saving. Laptop webcams can be
+          previewed directly in the browser.
         </div>
       </div>
 
@@ -563,7 +578,7 @@ export const CamerasPage: React.FC = () => {
         <div className="camera-list-pane">
           <div className="pane-header">
             <h3 className="pane-title">Camera Setup</h3>
-            <span className="camera-count-badge">{cameras.length} Cameras</span>
+            <span className="camera-count-badge">{cameras.length} {cameras.length === 1 ? 'Camera' : 'Cameras'}</span>
           </div>
 
           {isLoading && cameras.length === 0 ? (
@@ -614,12 +629,13 @@ export const CamerasPage: React.FC = () => {
                     </div>
 
                     <div className="camera-item-meta">
-                      <span className="meta-tag">
-                        <Badge value={cameraTypeLabel(camera.sourceType)} size="sm" />
-                      </span>
+                      <span className="meta-tag">{cameraTypeLabel(camera.sourceType)}</span>
                       <span className="meta-tag role-tag">{cameraPurposeLabel(camera.role)}</span>
                       {camera.location && (
-                        <span className="meta-tag location-tag">{camera.location.name}</span>
+                        <span className="meta-tag location-tag">
+                          <MapPin size={11} />
+                          {camera.location.name}
+                        </span>
                       )}
                     </div>
 
@@ -653,26 +669,13 @@ export const CamerasPage: React.FC = () => {
                   <div>
                     <h3 className="selected-camera-title">{selectedCamera.name}</h3>
                     <div className="selected-camera-sub">
-                      <span><strong>{cameraTypeLabel(selectedCamera.sourceType)}</strong></span>
+                      <span>{cameraTypeLabel(selectedCamera.sourceType)}</span>
                       <span className="separator">•</span>
-                      <span><strong>{cameraPurposeLabel(selectedCamera.role)}</strong></span>
-                      {(selectedCamera.role === 'IN' || selectedCamera.role === 'OUT') && (
+                      <span>{cameraPurposeLabel(selectedCamera.role)}</span>
+                      {selectedCamera.location?.name && (
                         <>
                           <span className="separator">•</span>
-                          <span>
-                            Movement Recording:{' '}
-                            <strong
-                              className={
-                                selectedCamera.configMetadata?.movementAutomationEnabled !== false
-                                  ? 'text-emerald-400 font-semibold'
-                                  : 'text-slate-400'
-                              }
-                            >
-                              {selectedCamera.configMetadata?.movementAutomationEnabled !== false
-                                ? 'ON'
-                                : 'OFF'}
-                            </strong>
-                          </span>
+                          <span>{selectedCamera.location.name}</span>
                         </>
                       )}
                     </div>
@@ -760,7 +763,7 @@ export const CamerasPage: React.FC = () => {
                 </div>
               )}
 
-              {/* Video Screen Frame */}
+              {/* Video preview */}
               <div className="video-screen-frame">
                 {isWebcamPreviewActive ? (
                   <div className="video-player-wrapper">
@@ -777,42 +780,17 @@ export const CamerasPage: React.FC = () => {
                       muted
                       className="live-preview-image object-contain"
                     />
-
-                    {/* HUD Overlay */}
-                    <div className="hud-overlay">
+                    <div className="hud-overlay pointer-events-none">
                       <div className="hud-top-left">
                         <span className="live-indicator">
                           <span className="pulse-dot" />
-                          <span>BROWSER WEBCAM LIVE</span>
+                          <span>LIVE PREVIEW</span>
                         </span>
-                        <span className="hud-metric">Direct Laptop Stream</span>
-                      </div>
-
-                      <div className="hud-top-right">
-                        <button
-                          type="button"
-                          onClick={stopWebcamPreview}
-                          className="bg-black/70 hover:bg-black/90 text-white text-xs px-2.5 py-1 rounded-md transition shadow"
-                        >
-                          Close Laptop Feed
-                        </button>
-                      </div>
-
-                      <div className="hud-bottom-left">
-                        <span className="hud-timestamp">
-                          <Clock size={12} />
-                          <span>{new Date().toLocaleTimeString()}</span>
-                        </span>
-                      </div>
-
-                      <div className="hud-bottom-right">
-                        <span className="hud-device-badge">CLIENT WEBCAM</span>
                       </div>
                     </div>
                   </div>
                 ) : isStreaming ? (
                   <div className="video-player-wrapper">
-                    {/* Live Stream MJPEG Image */}
                     <img
                       src={camerasApi.getPreviewStreamUrl(selectedCamera.id)}
                       alt={`Live Preview of ${selectedCamera.name}`}
@@ -821,37 +799,11 @@ export const CamerasPage: React.FC = () => {
                         setStreamError('Preview stream connection interrupted. Please restart stream.');
                       }}
                     />
-
-                    {/* HUD Overlay */}
-                    <div className="hud-overlay">
+                    <div className="hud-overlay pointer-events-none">
                       <div className="hud-top-left">
                         <span className="live-indicator">
                           <span className="pulse-dot" />
                           <span>LIVE PREVIEW</span>
-                        </span>
-                        <span className="hud-metric">{diagnostics?.fps ?? 0} FPS</span>
-                      </div>
-
-                      <div className="hud-top-right">
-                        <span className="hud-resolution">
-                          {diagnostics?.resolution
-                            ? `${diagnostics.resolution.width}x${diagnostics.resolution.height}`
-                            : '1280x720'}
-                        </span>
-                      </div>
-
-                      <div className="hud-bottom-left">
-                        <span className="hud-timestamp">
-                          <Clock size={12} />
-                          <span>{new Date().toLocaleTimeString()}</span>
-                        </span>
-                      </div>
-
-                      <div className="hud-bottom-right">
-                        <span className="hud-device-badge">
-                          {selectedCamera.sourceType === 'RTSP'
-                            ? `RTSP (${selectedCamera.configMetadata?.transport?.toUpperCase() || 'TCP'})`
-                            : selectedCamera.sourceType}
                         </span>
                       </div>
                     </div>
@@ -864,105 +816,88 @@ export const CamerasPage: React.FC = () => {
                       </div>
                       <h4>Preview is not running</h4>
                       <p>
-                        Start the camera preview to confirm the view and positioning.
+                        {selectedCamera.sourceType === 'WEBCAM'
+                          ? 'Use the laptop camera button below to confirm the view and positioning.'
+                          : 'Start the live preview below to confirm the camera view and positioning.'}
                       </p>
-                      <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={handleStartStream}
-                          disabled={isActionPending}
-                        >
-                          <Play size={16} />
-                          <span>Start Live Preview</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={startWebcamPreview}
-                        >
-                          <CameraIcon size={16} />
-                          <span>Use Laptop Camera</span>
-                        </button>
-                      </div>
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Control Action Toolbar */}
+              {/* Contextual camera actions */}
               <div className="monitor-controls-toolbar">
-                <div className="controls-left">
-                  {isStreaming ? (
-                    <button
+                <div className="camera-actions-primary">
+                  {selectedCamera.sourceType === 'WEBCAM' ? (
+                    <Button
                       type="button"
-                      className="btn btn-danger"
+                      variant={isWebcamPreviewActive ? 'danger' : 'primary'}
+                      size="md"
+                      onClick={isWebcamPreviewActive ? stopWebcamPreview : startWebcamPreview}
+                      leftIcon={<Video size={16} />}
+                    >
+                      {isWebcamPreviewActive ? 'Stop Laptop Camera' : 'Use Laptop Camera'}
+                    </Button>
+                  ) : isStreaming ? (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="md"
                       onClick={handleStopStream}
                       disabled={isActionPending}
-                      title="Stop video stream"
+                      leftIcon={<Square size={16} />}
                     >
-                      <Square size={16} />
-                      <span>Stop Preview</span>
-                    </button>
+                      Stop Preview
+                    </Button>
                   ) : (
-                    <button
+                    <Button
                       type="button"
-                      className="btn btn-success"
+                      variant="primary"
+                      size="md"
                       onClick={handleStartStream}
                       disabled={isActionPending}
-                      title="Start live video stream"
+                      leftIcon={<Play size={16} />}
                     >
-                      <Play size={16} />
-                      <span>Start Live Preview</span>
-                    </button>
+                      Start Live Preview
+                    </Button>
                   )}
 
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={handleCaptureSnapshot}
-                    disabled={isActionPending}
-                    title="Capture a still JPEG frame"
-                  >
-                    <CameraIcon size={16} />
-                    <span>Take Snapshot</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className={`btn ${isWebcamPreviewActive ? 'btn-danger' : 'btn-secondary'}`}
-                    onClick={isWebcamPreviewActive ? stopWebcamPreview : startWebcamPreview}
-                    title="Stream directly from your browser laptop webcam"
-                  >
-                    <Video size={16} />
-                    <span>{isWebcamPreviewActive ? 'Stop Laptop Camera' : 'Use Laptop Camera'}</span>
-                  </button>
-
-                  {isAdmin && (
-                    <button
+                  {(isStreaming || isWebcamPreviewActive) && (
+                    <Button
                       type="button"
-                      className="btn btn-secondary"
+                      variant="outline"
+                      size="md"
+                      onClick={handleCaptureSnapshot}
+                      disabled={isActionPending}
+                      leftIcon={<CameraIcon size={16} />}
+                    >
+                      Take Snapshot
+                    </Button>
+                  )}
+
+                  {isAdmin && selectedCamera.sourceType !== 'WEBCAM' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="md"
                       onClick={handleTestConnection}
                       disabled={isTestingConnection}
-                      title="Check whether this camera can be reached"
+                      leftIcon={<Wifi size={16} className={isTestingConnection ? 'animate-spin' : ''} />}
                     >
-                      <Wifi size={16} className={isTestingConnection ? 'animate-spin' : ''} />
-                      <span>{isTestingConnection ? 'Testing...' : 'Test Connection'}</span>
-                    </button>
+                      {isTestingConnection ? 'Testing...' : 'Test Connection'}
+                    </Button>
                   )}
                 </div>
 
-                <div className="controls-right">
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    onClick={() => fetchDiagnostics(selectedCamera.id)}
-                    title="Refresh camera status"
-                  >
-                    <RefreshCw size={14} />
-                    <span>Refresh Status</span>
-                  </button>
-                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => fetchDiagnostics(selectedCamera.id)}
+                  leftIcon={<RefreshCw size={14} />}
+                >
+                  Refresh Status
+                </Button>
               </div>
 
               {/* Camera status summary */}
@@ -1099,11 +1034,11 @@ export const CamerasPage: React.FC = () => {
       {/* Register Camera Modal */}
       {isRegisterModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsRegisterModalOpen(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title-group">
-                <Video size={20} className="modal-icon" />
+              <div>
                 <h3 className="modal-title">Add Camera</h3>
+                <p className="modal-subtitle">Connect a camera to a hostel gate or monitoring location.</p>
               </div>
               <button
                 type="button"
@@ -1117,6 +1052,18 @@ export const CamerasPage: React.FC = () => {
 
             <form onSubmit={handleRegisterCamera}>
               <div className="modal-body">
+                <div className="camera-choice-note mb-4">
+                  <CircleHelp size={17} className="shrink-0 mt-0.5 text-blue-600" />
+                  <span>
+                    For a gate camera, first create the gate under <strong>Facilities → Gates & Locations</strong>.
+                    Then assign the camera to that gate here.
+                  </span>
+                </div>
+
+                <div className="camera-form-section">
+                  <div className="camera-form-section-title">1. Camera placement</div>
+                  <div className="camera-form-section-copy">Name the camera and tell PRAVAHAx where it is installed.</div>
+
                 <div className="form-group">
                   <label htmlFor="cam-name" className="form-label">
                     Camera Name <span className="required">*</span>
@@ -1142,7 +1089,6 @@ export const CamerasPage: React.FC = () => {
                       className="form-control"
                       value={newCameraFacilityId}
                       onChange={(e) => loadNewCameraLocations(e.target.value)}
-                      disabled={!!user?.hostelId}
                       required
                     >
                       <option value="">Select facility</option>
@@ -1166,9 +1112,17 @@ export const CamerasPage: React.FC = () => {
                         <option key={location.id} value={location.id}>{location.name}</option>
                       ))}
                     </select>
-                    <small className="form-hint">Assign the camera to the physical gate or entrance it monitors.</small>
+                    <small className="form-hint">
+                        Required for Gate Entry / Gate Exit cameras. This makes reports and movement records show the correct gate.
+                      </small>
                   </div>
                 </div>
+
+                </div>
+
+                <div className="camera-form-section">
+                  <div className="camera-form-section-title">2. Connection & gate behavior</div>
+                  <div className="camera-form-section-copy">Choose the camera type and purpose. For IP cameras, add the RTSP address and test it before saving.</div>
 
                 <div className="form-group">
                   <label htmlFor="cam-source" className="form-label">
@@ -1204,18 +1158,22 @@ export const CamerasPage: React.FC = () => {
                 </div>
 
                 {(newCameraRole === 'IN' || newCameraRole === 'OUT') && (
-                  <div className="form-group flex items-center gap-2 py-1">
+                  <label
+                    htmlFor="cam-movement-auto"
+                    className="camera-choice-note cursor-pointer mb-4"
+                  >
                     <input
                       id="cam-movement-auto"
                       type="checkbox"
-                      className="rounded border-slate-700 text-primary-500 focus:ring-primary-500"
+                      className="mt-0.5"
                       checked={newCameraMovementAutomation}
                       onChange={(e) => setNewCameraMovementAutomation(e.target.checked)}
                     />
-                    <label htmlFor="cam-movement-auto" className="text-sm text-slate-300 font-medium">
-                      Automatically record IN / OUT after a confirmed face match
-                    </label>
-                  </div>
+                    <span>
+                      <strong className="block text-slate-800">Automatic movement recording</strong>
+                      Record movement automatically only after a confirmed resident face match.
+                    </span>
+                  </label>
                 )}
 
                 {newCameraSourceType === 'RTSP' && (
@@ -1238,18 +1196,18 @@ export const CamerasPage: React.FC = () => {
                       </small>
                     </div>
 
-                    <div className="border border-slate-700/60 rounded-lg p-3 my-2 bg-slate-800/30">
+                    <div className="border border-slate-200 rounded-lg p-3 my-2 bg-white">
                       <button
                         type="button"
                         onClick={() => setShowAdvancedRegister(!showAdvancedRegister)}
-                        className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white"
+                        className="w-full flex items-center justify-between text-sm font-semibold text-slate-700 hover:text-slate-900"
                       >
                         <span>Advanced connection settings</span>
                         {showAdvancedRegister ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </button>
 
                       {showAdvancedRegister && (
-                        <div className="mt-3 pt-3 border-t border-slate-700/60 space-y-3">
+                        <div className="mt-3 pt-3 border-t border-slate-200 space-y-3">
                           <div className="form-group mb-0">
                             <label htmlFor="cam-transport" className="form-label text-xs">
                               Stream Transport
@@ -1298,9 +1256,12 @@ export const CamerasPage: React.FC = () => {
                     </div>
 
                     <div className="pt-2">
+                      <div className="text-xs text-slate-500 mb-2">
+                        Test the connection before adding the camera. This catches an incorrect address or credentials early.
+                      </div>
                       <button
                         type="button"
-                        className="btn btn-secondary btn-sm"
+                        className="btn btn-outline btn-sm"
                         onClick={handleModalTestConnection}
                         disabled={isModalTesting || !newCameraRtspUrl.trim()}
                       >
@@ -1330,7 +1291,7 @@ export const CamerasPage: React.FC = () => {
                 {newCameraSourceType === 'WEBCAM' && (
                   <div className="form-group">
                     <label htmlFor="cam-device" className="form-label">
-                      Webcam Device Index
+                      Webcam Device
                     </label>
                     <input
                       id="cam-device"
@@ -1342,10 +1303,11 @@ export const CamerasPage: React.FC = () => {
                       onChange={(e) => setNewCameraDeviceIndex(e.target.value)}
                     />
                     <small className="form-hint">
-                      Device 0 is typically the built-in laptop camera. Device 1+ for external USB cameras.
+                      Keep 0 for the built-in laptop camera. Use 1 or higher only when another USB camera is connected.
                     </small>
                   </div>
                 )}
+                </div>
               </div>
 
               <div className="modal-footer">
@@ -1372,7 +1334,7 @@ export const CamerasPage: React.FC = () => {
       {/* Edit Camera Modal */}
       {isEditModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsEditModalOpen(false)}>
-          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-group">
                 <Edit2 size={20} className="modal-icon" />

@@ -273,6 +273,19 @@ export const ReportsPage: React.FC = () => {
     }
   }, [activeTab, fetchAttendanceReport, fetchMovementReport]);
 
+  const movementSourceLabel = (source?: string | null) => {
+    if (!source) return 'System';
+    if (source === 'FACE_RECOGNITION') return 'Camera Recognition';
+    if (source === 'GUARD_CONFIRMATION') return 'Guard Confirmation';
+    if (source === 'WARDEN_CORRECTION') return 'Staff Correction';
+    if (source === 'MANUAL') return 'Manual Entry';
+    return source
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
   // ----------------------------------------------------
   // EXPORT HANDLERS
   // ----------------------------------------------------
@@ -611,8 +624,16 @@ export const ReportsPage: React.FC = () => {
               <div className="metric-value text-emerald">
                 {presenceSummary?.insideCount ?? 0}
               </div>
-              <div className="metric-footer">
+              <div className="metric-footer flex flex-col gap-3 items-start">
                 <span>{presenceSummary?.insideRate ?? 0}% of residents in facility</span>
+                <Button
+                  size="md"
+                  variant="outline"
+                  onClick={() => setActiveTab('residents')}
+                  leftIcon={<Users size={15} />}
+                >
+                  Browse Residents
+                </Button>
               </div>
             </Card>
 
@@ -626,15 +647,16 @@ export const ReportsPage: React.FC = () => {
               <div className="metric-value text-amber">
                 {presenceSummary?.outsideCount ?? 0}
               </div>
-              <div className="metric-footer flex justify-between items-center">
+              <div className="metric-footer flex flex-col gap-3 items-start">
                 <span>{presenceSummary?.outsideRate ?? 0}% outside premises</span>
                 <Button
-                  size="sm"
+                  size="md"
                   variant="outline"
                   onClick={fetchCurrentlyOutside}
                   isLoading={outsideLoading}
+                  leftIcon={<Eye size={15} />}
                 >
-                  View List
+                  View Outside Residents
                 </Button>
               </div>
             </Card>
@@ -671,7 +693,7 @@ export const ReportsPage: React.FC = () => {
               </div>
 
               <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Direction</label>
+                <label className="block text-xs font-semibold text-secondary mb-1">Movement</label>
                 <select
                   className="input-field text-xs py-1.5 px-3 border border-border rounded"
                   value={movDirection}
@@ -746,7 +768,7 @@ export const ReportsPage: React.FC = () => {
           </div>
 
           <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            Presence is derived from the latest verified IN / OUT movement. Corrected events remain clearly marked for audit.
+            Current presence is derived from the latest verified entry or exit. Staff corrections remain clearly marked for audit.
           </div>
 
           {/* Movement Table */}
@@ -759,11 +781,15 @@ export const ReportsPage: React.FC = () => {
             )}
 
             {movLoading ? (
-              <p className="text-sm text-muted py-6 text-center">Loading movement history...</p>
+              <p className="text-sm text-muted py-8 text-center">Loading movement history...</p>
             ) : movements.length === 0 ? (
-              <p className="text-sm text-muted py-8 text-center">
-                No movement records found.
-              </p>
+              <div className="py-10 text-center">
+                <ArrowRightLeft size={28} className="mx-auto text-slate-300 mb-3" />
+                <p className="text-base font-semibold text-slate-700">No movement records found</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  Try a wider date range or clear the resident search.
+                </p>
+              </div>
             ) : (
               <>
                 <div className="table-responsive">
@@ -803,7 +829,7 @@ export const ReportsPage: React.FC = () => {
                             </span>
                           </td>
                           <td>{ev.gateName}</td>
-                          <td className="text-xs text-secondary">{ev.source}</td>
+                          <td className="text-xs text-secondary">{movementSourceLabel(ev.source)}</td>
                           <td>
                             {ev.isCorrection ? (
                               <span className="badge badge-sm badge-info">Corrected</span>
@@ -980,11 +1006,11 @@ export const ReportsPage: React.FC = () => {
                                         mov.direction === 'IN' ? 'success' : 'amber'
                                       }`}
                                     >
-                                      {mov.direction}
+                                      {mov.direction === 'IN' ? 'Entered' : 'Left'}
                                     </span>
                                   </td>
                                   <td>{mov.gateName}</td>
-                                  <td className="text-muted">{mov.source}</td>
+                                  <td className="text-muted">{movementSourceLabel(mov.source)}</td>
                                 </tr>
                               ))}
                             </tbody>
