@@ -3456,3 +3456,119 @@ a:focus-visible {
 .face-enrollment-container button:disabled:not(.btn) {
   opacity: 0.48;
 }
+
+
+.gate-header-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.gate-header-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.gate-camera-name {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.gate-header-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.gate-presence-summary {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding-left: 1rem;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.gate-exception-button {
+  min-height: 42px;
+}
+
+.gate-camera-overlay-button {
+  min-height: 40px;
+  padding: 0.55rem 0.8rem;
+  border-radius: 9px;
+  background: rgba(15, 23, 42, 0.74);
+  color: #FFFFFF;
+  font-size: 0.875rem;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  backdrop-filter: blur(8px);
+  transition: background 0.15s ease;
+}
+
+.gate-camera-overlay-button:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.gate-scan-button {
+  background: #2563EB;
+}
+
+.gate-scan-button:hover:not(:disabled) {
+  background: #1D4ED8;
+}
+
+@media (max-width: 900px) {
+  .gate-header-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .gate-header-summary {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .gate-presence-summary {
+    padding-left: 0;
+    padding-right: 1rem;
+    border-left: 0;
+    border-right: 1px solid var(--border-subtle);
+  }
+}
+
+@media (max-width: 560px) {
+  .gate-header-card {
+    padding: 1rem;
+  }
+
+  .gate-header-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .gate-presence-summary {
+    justify-content: space-between;
+    padding: 0.85rem 0;
+    border-right: 0;
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .gate-exception-button {
+    width: 100%;
+  }
+}
