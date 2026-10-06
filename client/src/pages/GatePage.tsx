@@ -379,14 +379,13 @@ export const GatePage: React.FC = () => {
   return (
     <div className="gate-page flex flex-col gap-6 max-w-7xl mx-auto w-full">
       {/* Top Header: Gate Name, Online Indicator, Presence Counters */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-xl bg-white border border-slate-200 shadow-sm">
+      <div className="gate-header-card">
         <div>
-          <div className="flex items-center gap-3">
+          <div className="gate-header-title-row">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gate Operations</h1>
-            <span className="text-slate-400 font-light">|</span>
-            <span className="text-lg font-semibold text-slate-700">{selectedCamera?.name || 'Main Gate'}</span>
+            <span className="gate-camera-name">{selectedCamera?.name || 'Main Gate'}</span>
             <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-13px font-semibold border ${
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-semibold border ${
                 cameraIsOnline
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                   : 'bg-amber-50 text-amber-800 border-amber-200'
@@ -403,7 +402,7 @@ export const GatePage: React.FC = () => {
           <p className="text-15px text-slate-500 mt-0.5">Live resident movement and gate exceptions</p>
         </div>
 
-        <div className="flex items-center gap-5">
+        <div className="gate-header-summary">
           {cameras.length > 1 && (
             <div className="flex items-center gap-2">
               <span className="text-sm text-slate-600 font-medium">Camera:</span>
@@ -429,16 +428,16 @@ export const GatePage: React.FC = () => {
             </div>
           )}
 
-          <div className="flex items-center gap-4 border-l border-slate-200 pl-5 text-sm">
+          <div className="gate-presence-summary">
             <div>
-              <span className="text-slate-500 block text-xs font-medium">Inside</span>
-              <span className="text-lg font-bold text-emerald-700">
+              <span className="text-slate-500 block text-sm font-medium">Inside</span>
+              <span className="text-2xl font-bold text-emerald-700">
                 {presenceCounts?.currentlyIn ?? '—'}
               </span>
             </div>
             <div>
-              <span className="text-slate-500 block text-xs font-medium">Outside</span>
-              <span className="text-lg font-bold text-amber-700">
+              <span className="text-slate-500 block text-sm font-medium">Outside</span>
+              <span className="text-2xl font-bold text-amber-700">
                 {presenceCounts?.currentlyOut ?? '—'}
               </span>
             </div>
@@ -450,7 +449,7 @@ export const GatePage: React.FC = () => {
             size="sm"
             onClick={() => setIsRegisterVisitorOpen(true)}
             leftIcon={<UserPlus size={16} />}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs sm:text-sm py-2 px-3 rounded-lg shadow-sm whitespace-nowrap ml-2"
+            className="gate-exception-button"
           >
             Visitor / Exception
           </Button>
@@ -484,7 +483,7 @@ export const GatePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={stopLaptopCamera}
-                  className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition"
+                  className="gate-camera-overlay-button absolute top-3 right-3"
                 >
                   Turn Off
                 </button>
@@ -499,7 +498,7 @@ export const GatePage: React.FC = () => {
                     type="button"
                     onClick={captureAndProcessFrame}
                     disabled={isScanningFace || isConfirming}
-                    className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition"
+                    className="gate-camera-overlay-button gate-scan-button"
                   >
                     {isScanningFace ? <RefreshCw size={13} className="animate-spin" /> : <Scan size={13} />}
                     <span>{isScanningFace ? 'Scanning...' : 'Scan Now'}</span>
@@ -517,7 +516,7 @@ export const GatePage: React.FC = () => {
                 <button
                   type="button"
                   onClick={startLaptopCamera}
-                  className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition flex items-center gap-1"
+                  className="gate-camera-overlay-button absolute top-3 right-3"
                 >
                   <CameraIcon size={12} />
                   <span>Use Laptop Camera</span>
@@ -598,7 +597,7 @@ export const GatePage: React.FC = () => {
                       {activeObservation.resident.fullName}
                     </h2>
                     <p className="text-15px text-slate-600 mt-1 font-medium">
-                      {activeObservation.resident.residentCode} • {activeObservation.resident.roomGroup || 'Room 101'}
+                      {activeObservation.resident.residentCode} • {activeObservation.resident.roomGroup || 'Room not assigned'}
                     </p>
                     <div className="mt-2.5">
                       <span
@@ -770,7 +769,7 @@ export const GatePage: React.FC = () => {
                       </td>
                       <td className="py-3.5 px-6 text-right">
                         <span
-                          className={`inline-block px-3 py-1 rounded-md text-13px font-semibold ${
+                          className={`inline-block px-3 py-1 rounded-md text-sm font-semibold ${
                             isIN
                               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                               : 'bg-amber-50 text-amber-800 border border-amber-200'
