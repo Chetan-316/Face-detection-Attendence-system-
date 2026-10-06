@@ -348,8 +348,10 @@ export const ReportsPage: React.FC = () => {
               : 'border-transparent text-secondary hover:text-primary'
           }`}
           onClick={() => setActiveTab('movement')}
+          id="report-tab-movement"
           role="tab"
           aria-selected={activeTab === 'movement'}
+          aria-controls="report-panel-movement"
         >
           <ArrowRightLeft size={16} />
           <span>Presence & Movement</span>
@@ -363,8 +365,10 @@ export const ReportsPage: React.FC = () => {
               : 'border-transparent text-secondary hover:text-primary'
           }`}
           onClick={() => setActiveTab('residents')}
+          id="report-tab-residents"
           role="tab"
           aria-selected={activeTab === 'residents'}
+          aria-controls="report-panel-residents"
         >
           <Users size={16} />
           <span>Residents</span>
@@ -410,8 +414,9 @@ export const ReportsPage: React.FC = () => {
               {attDateRange === 'custom' && (
                 <div className="flex gap-2 items-center">
                   <div>
-                    <label className="block text-xs text-secondary mb-1">From</label>
+                    <label htmlFor="movement-date-from" className="block text-xs text-secondary mb-1">From</label>
                     <input
+                      id="movement-date-from"
                       type="date"
                       className="input-field text-xs py-1.5 px-2 border border-border rounded"
                       value={attCustomFrom}
@@ -422,8 +427,9 @@ export const ReportsPage: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-secondary mb-1">To</label>
+                    <label htmlFor="movement-date-to" className="block text-xs text-secondary mb-1">To</label>
                     <input
+                      id="movement-date-to"
                       type="date"
                       className="input-field text-xs py-1.5 px-2 border border-border rounded"
                       value={attCustomTo}
@@ -616,7 +622,12 @@ export const ReportsPage: React.FC = () => {
       {/* 2. MOVEMENT TAB */}
       {/* ==================================================== */}
       {activeTab === 'movement' && (
-        <div className="tab-pane-movement">
+        <div
+          id="report-panel-movement"
+          className="tab-pane-movement"
+          role="tabpanel"
+          aria-labelledby="report-tab-movement"
+        >
           {/* Current Presence Cards */}
           <div className="metrics-grid mb-6">
             <Card className="metric-card">
@@ -698,8 +709,9 @@ export const ReportsPage: React.FC = () => {
               </div>
 
               <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Movement</label>
+                <label htmlFor="movement-direction-filter" className="block text-xs font-semibold text-secondary mb-1">Movement</label>
                 <select
+                  id="movement-direction-filter"
                   className="input-field text-xs py-1.5 px-3 border border-border rounded"
                   value={movDirection}
                   onChange={(e) => {
@@ -714,9 +726,10 @@ export const ReportsPage: React.FC = () => {
               </div>
 
               <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Resident Search</label>
+                <label htmlFor="movement-resident-search" className="block text-xs font-semibold text-secondary mb-1">Resident Search</label>
                 <div className="relative">
                   <input
+                    id="movement-resident-search"
                     type="text"
                     placeholder="Search name or code..."
                     className="input-field text-xs py-1.5 pl-8 pr-3 border border-border rounded"
@@ -868,7 +881,12 @@ export const ReportsPage: React.FC = () => {
       {/* 3. RESIDENTS SUMMARY TAB */}
       {/* ==================================================== */}
       {activeTab === 'residents' && (
-        <div className="tab-pane-residents">
+        <div
+          id="report-panel-residents"
+          className="tab-pane-residents"
+          role="tabpanel"
+          aria-labelledby="report-tab-residents"
+        >
           {isGuard ? (
             <Card title="Resident Reports Access Restricted">
               <div className="p-6 text-center">
@@ -883,12 +901,17 @@ export const ReportsPage: React.FC = () => {
             <>
               {/* Resident Search Bar */}
               <div className="resident-search-bar mb-6 p-4 bg-surface border border-border rounded-lg">
-                <label className="block text-xs font-semibold text-secondary mb-2">
+                <label htmlFor="resident-report-search" className="block text-xs font-semibold text-secondary mb-2">
                   Select Resident to Inspect
                 </label>
                 <div className="relative max-w-md">
                   <input
+                    id="resident-report-search"
                     type="text"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-expanded={residentSearchResults.length > 0}
+                    aria-controls="resident-report-suggestions"
                     placeholder="Type name or resident code..."
                     className="input-field text-sm py-2 pl-9 pr-4 w-full border border-border rounded"
                     value={residentSearch}
@@ -901,11 +924,19 @@ export const ReportsPage: React.FC = () => {
 
                   {/* Dropdown Suggestions */}
                   {residentSearchResults.length > 0 && (
-                    <div className="resident-autocomplete-dropdown absolute left-0 right-0 top-full mt-1 bg-surface border border-border rounded shadow-lg z-20 max-h-60 overflow-y-auto">
+                    <div
+                      id="resident-report-suggestions"
+                      role="listbox"
+                      aria-label="Resident search suggestions"
+                      className="resident-autocomplete-dropdown absolute left-0 right-0 top-full mt-1 bg-surface border border-border rounded shadow-lg z-20 max-h-60 overflow-y-auto"
+                    >
                       {residentSearchResults.map((r) => (
-                        <div
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected="false"
                           key={r.id}
-                          className="autocomplete-item p-2.5 hover:bg-surface-hover cursor-pointer border-b border-border last:border-none flex justify-between items-center"
+                          className="autocomplete-item w-full text-left p-2.5 hover:bg-surface-hover cursor-pointer border-b border-border last:border-none flex justify-between items-center"
                           onClick={() => {
                             setResidentSearch(`${r.fullName} (${r.residentCode})`);
                             setResidentSearchResults([]);
@@ -917,7 +948,7 @@ export const ReportsPage: React.FC = () => {
                             <span className="text-xs text-secondary ml-2">({r.residentCode})</span>
                           </div>
                           <span className="text-xs text-muted">Room {r.roomGroup}</span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   )}
