@@ -3572,3 +3572,61 @@ a:focus-visible {
     width: 100%;
   }
 }
+
+
+/* Audit pass: minimum readable metadata and reporting controls */
+.text-xs {
+  font-size: 0.8125rem !important;
+}
+
+.reports-tab-nav {
+  overflow-x: auto;
+  scrollbar-width: none;
+  gap: 0.25rem;
+}
+
+.reports-tab-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.reports-tab-nav .tab-btn {
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.reports-page .report-filter-bar {
+  border-radius: 12px;
+}
+
+.reports-page .btn-filter {
+  min-height: 36px;
+  font-size: 0.8125rem !important;
+  font-weight: 600;
+}
+
+.reports-page .input-field {
+  min-height: 40px;
+}
+
+@media (max-width: 700px) {
+  .reports-page .report-filter-bar {
+    align-items: stretch;
+  }
+
+  .reports-page .report-filter-bar > div,
+  .reports-page .filter-group {
+    width: 100%;
+  }
+
+  .reports-page .filter-group > .input-field,
+  .reports-page .filter-group > select,
+  .reports-page .filter-group .relative,
+  .reports-page .filter-group .relative > .input-field {
+    width: 100%;
+  }
+
+  .reports-tab-nav .tab-btn {
+    flex: 1 0 auto;
+    justify-content: center;
+  }
+}
