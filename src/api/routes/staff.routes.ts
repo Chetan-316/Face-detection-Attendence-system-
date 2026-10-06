@@ -28,7 +28,6 @@ export function createStaffRouter(db: PrismaClient = defaultPrisma): Router {
         where: {
           organizationId: actor.organizationId,
           role: { in: [StaffRole.WARDEN, StaffRole.GUARD] },
-          ...(actor.hostelId ? { hostelId: actor.hostelId } : {}),
         },
         select: {
           id: true,
@@ -80,10 +79,6 @@ export function createStaffRouter(db: PrismaClient = defaultPrisma): Router {
         throw new NotFoundError('Hostel', hostelId);
       }
 
-      if (actor.hostelId && actor.hostelId !== hostel.id) {
-        throw new ForbiddenError('This Administrator can only create staff for their assigned hostel');
-      }
-
       const created = await authService.createUser({
         organizationId: actor.organizationId,
         hostelId: hostel.id,
@@ -125,10 +120,6 @@ export function createStaffRouter(db: PrismaClient = defaultPrisma): Router {
       ) {
         throw new NotFoundError('Staff account', id);
       }
-      if (actor.hostelId && existing.hostelId !== actor.hostelId) {
-        throw new ForbiddenError('This Administrator can only manage staff in their assigned hostel');
-      }
-
       const nextRole = req.body?.role
         ? String(req.body.role).toUpperCase()
         : existing.role;
@@ -166,10 +157,6 @@ export function createStaffRouter(db: PrismaClient = defaultPrisma): Router {
       if (!hostel || hostel.organizationId !== actor.organizationId || !hostel.isActive) {
         throw new NotFoundError('Hostel', nextHostelId);
       }
-      if (actor.hostelId && actor.hostelId !== hostel.id) {
-        throw new ForbiddenError('This Administrator can only assign staff to their assigned hostel');
-      }
-
       const nextStatus = req.body?.status
         ? String(req.body.status).toUpperCase()
         : existing.status;
@@ -254,10 +241,6 @@ export function createStaffRouter(db: PrismaClient = defaultPrisma): Router {
       ) {
         throw new NotFoundError('Staff account', id);
       }
-      if (actor.hostelId && existing.hostelId !== actor.hostelId) {
-        throw new ForbiddenError('This Administrator can only manage staff in their assigned hostel');
-      }
-
       const password = String(req.body?.password || '');
       if (password.length < 8) {
         throw new ValidationError('Temporary password must be at least 8 characters');
