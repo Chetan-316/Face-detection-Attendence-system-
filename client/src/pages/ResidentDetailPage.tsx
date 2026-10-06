@@ -278,7 +278,7 @@ export const ResidentDetailPage: React.FC = () => {
 
       <div className="overview-details-grid grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Profile Card */}
-        <Card title="Resident Information" subtitle="Primary identity and facility allocation">
+        <Card title="Resident Information" subtitle="Resident details and hostel assignment">
           <div className="flex items-start gap-4 mb-4">
             <div className="w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center">
               <img
@@ -312,7 +312,7 @@ export const ResidentDetailPage: React.FC = () => {
               <span className="detail-dd font-medium">{resident.roomGroup}</span>
             </div>
             <div className="detail-row flex justify-between py-1 border-t border-slate-100">
-              <span className="detail-dt text-slate-500">Facility Assigned</span>
+              <span className="detail-dt text-slate-500">Hostel</span>
               <span className="detail-dd">
                 {resident.hostel?.name ? `${resident.hostel.name} (${resident.hostel.code})` : 'Assigned Hostel'}
               </span>
@@ -355,7 +355,7 @@ export const ResidentDetailPage: React.FC = () => {
                     onClick={() => setIsFaceRevokeOpen(true)}
                     leftIcon={<Shield size={14} />}
                   >
-                    Revoke Face Enrollment
+                    Remove Face Enrollment
                   </Button>
                 )}
               </div>
