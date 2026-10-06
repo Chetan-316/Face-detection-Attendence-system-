@@ -36,6 +36,13 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [enrollAfterSave, setEnrollAfterSave] = useState(false);
 
+  // Keep the Warden's operational hostel in sync when auth resolves after the modal mounts.
+  useEffect(() => {
+    if (isOpen && user?.role === 'WARDEN' && user.hostelId) {
+      setHostelId(user.hostelId);
+    }
+  }, [isOpen, user?.role, user?.hostelId]);
+
   // Administrators can choose any active hostel in their organization.
   useEffect(() => {
     if (isOpen && user?.role === 'ADMIN') {
@@ -89,6 +96,10 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
 
     if (contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
       errors.contactEmail = 'Please provide a valid email address';
+    }
+
+    if (!hostelId) {
+      errors.hostelId = 'A hostel assignment is required';
     }
 
     setFieldErrors(errors);
@@ -199,11 +210,18 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
               required
             />
           ) : (
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+            <div
+              className={`p-3 rounded-lg border ${
+                fieldErrors.hostelId ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'
+              }`}
+            >
               <span className="text-xs text-slate-500 block font-medium">Assigned Hostel</span>
               <span className="text-sm font-semibold text-slate-800">
-                Assigned to your operational hostel
+                {user?.hostelId ? 'Assigned to your operational hostel' : 'No hostel assigned to this account'}
               </span>
+              {fieldErrors.hostelId && (
+                <span className="form-error block" role="alert">{fieldErrors.hostelId}</span>
+              )}
             </div>
           )}
 
