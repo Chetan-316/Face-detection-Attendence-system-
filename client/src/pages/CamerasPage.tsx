@@ -1454,7 +1454,7 @@ export const CamerasPage: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="form-group">
-                    <label htmlFor="edit-facility" className="form-label">Facility</label>
+                    <label htmlFor="edit-facility" className="form-label">Hostel</label>
                     <select
                       id="edit-facility"
                       className="form-control"
