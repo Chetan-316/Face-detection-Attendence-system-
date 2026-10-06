@@ -68,7 +68,7 @@ export const ResidentReactivateModal: React.FC<ResidentReactivateModalProps> = (
           <div className="alert-body">
             <p className="font-semibold">Reactivate {resident.fullName} ({resident.residentCode})</p>
             <p className="text-xs mt-1">
-              Restoring this resident to ACTIVE status allows them to be counted in regular roll-calls and hostel movement logs.
+              Restoring this resident to active status returns them to normal resident, presence, and movement workflows.
             </p>
           </div>
         </div>
