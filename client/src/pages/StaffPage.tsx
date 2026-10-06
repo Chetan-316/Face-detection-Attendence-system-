@@ -241,13 +241,13 @@ export const StaffPage: React.FC = () => {
                     <Badge type="role" value={member.role} />
                   </td>
                   <td className="text-slate-700">
-                    {member.hostel?.name || 'All facilities'}
+                    {member.hostel?.name || 'All hostels'}
                   </td>
                   <td>
                     <Badge type="status" value={member.status} />
                   </td>
                   <td className="text-right">
-                    <div className="inline-flex items-center justify-end gap-2 flex-wrap min-w-[280px]">
+                    <div className="staff-row-actions">
                       <Button variant="outline" size="sm" onClick={() => openEdit(member)} leftIcon={<Edit2 size={14} />}>
                         Edit
                       </Button>
@@ -256,7 +256,7 @@ export const StaffPage: React.FC = () => {
                         setNewPassword('');
                         setFormError(null);
                       }} leftIcon={<KeyRound size={14} />}>
-                        Password
+                        Reset Password
                       </Button>
                       <Button
                         variant={member.status === 'ACTIVE' ? 'ghost' : 'secondary'}
