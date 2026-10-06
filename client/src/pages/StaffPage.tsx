@@ -21,6 +21,7 @@ export const StaffPage: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editing, setEditing] = useState<StaffAccount | null>(null);
   const [resettingPasswordFor, setResettingPasswordFor] = useState<StaffAccount | null>(null);
+  const [statusMember, setStatusMember] = useState<StaffAccount | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
   const [fullName, setFullName] = useState('');
@@ -103,14 +104,20 @@ export const StaffPage: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (member: StaffAccount) => {
-    const nextStatus = member.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+  const handleStatusChange = async () => {
+    if (!statusMember) return;
+
+    const nextStatus = statusMember.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
-      await staffApi.updateStaff(member.id, { status: nextStatus });
+      setIsSubmitting(true);
+      await staffApi.updateStaff(statusMember.id, { status: nextStatus });
+      setStatusMember(null);
       await fetchData();
-      success(`${member.fullName} is now ${nextStatus === 'ACTIVE' ? 'active' : 'inactive'}.`);
+      success(`${statusMember.fullName} is now ${nextStatus === 'ACTIVE' ? 'active' : 'inactive'}.`);
     } catch (err: any) {
       toastError(err.message || 'Unable to update staff status.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -241,7 +248,7 @@ export const StaffPage: React.FC = () => {
                     <Badge type="role" value={member.role} />
                   </td>
                   <td className="text-slate-700">
-                    {member.hostel?.name || 'All facilities'}
+                    {member.hostel?.name || 'Not assigned'}
                   </td>
                   <td>
                     <Badge type="status" value={member.status} />
@@ -261,7 +268,7 @@ export const StaffPage: React.FC = () => {
                       <Button
                         variant={member.status === 'ACTIVE' ? 'ghost' : 'secondary'}
                         size="sm"
-                        onClick={() => handleStatusChange(member)}
+                        onClick={() => setStatusMember(member)}
                       >
                         {member.status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
                       </Button>
@@ -330,6 +337,38 @@ export const StaffPage: React.FC = () => {
             {formError}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={!!statusMember}
+        onClose={() => !isSubmitting && setStatusMember(null)}
+        title={statusMember?.status === 'ACTIVE' ? 'Deactivate Staff Account' : 'Reactivate Staff Account'}
+        subtitle={statusMember?.fullName}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button variant="outline" onClick={() => setStatusMember(null)} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              variant={statusMember?.status === 'ACTIVE' ? 'danger' : 'primary'}
+              onClick={handleStatusChange}
+              isLoading={isSubmitting}
+            >
+              {statusMember?.status === 'ACTIVE' ? 'Deactivate Account' : 'Reactivate Account'}
+            </Button>
+          </div>
+        }
+      >
+        <div className={`rounded-lg border px-4 py-3 text-sm ${
+          statusMember?.status === 'ACTIVE'
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-blue-200 bg-blue-50 text-blue-900'
+        }`}>
+          {statusMember?.status === 'ACTIVE'
+            ? 'This staff member will no longer be able to sign in until the account is reactivated.'
+            : 'This staff member will be able to sign in again with their current credentials.'}
+        </div>
       </Modal>
 
       <Modal
