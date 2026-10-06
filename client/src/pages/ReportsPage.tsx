@@ -611,8 +611,16 @@ export const ReportsPage: React.FC = () => {
               <div className="metric-value text-emerald">
                 {presenceSummary?.insideCount ?? 0}
               </div>
-              <div className="metric-footer">
+              <div className="metric-footer flex flex-col gap-3 items-start">
                 <span>{presenceSummary?.insideRate ?? 0}% of residents in facility</span>
+                <Button
+                  size="md"
+                  variant="outline"
+                  onClick={() => setActiveTab('residents')}
+                  leftIcon={<Users size={15} />}
+                >
+                  Browse Residents
+                </Button>
               </div>
             </Card>
 
@@ -626,15 +634,16 @@ export const ReportsPage: React.FC = () => {
               <div className="metric-value text-amber">
                 {presenceSummary?.outsideCount ?? 0}
               </div>
-              <div className="metric-footer flex justify-between items-center">
+              <div className="metric-footer flex flex-col gap-3 items-start">
                 <span>{presenceSummary?.outsideRate ?? 0}% outside premises</span>
                 <Button
-                  size="sm"
+                  size="md"
                   variant="outline"
                   onClick={fetchCurrentlyOutside}
                   isLoading={outsideLoading}
+                  leftIcon={<Eye size={15} />}
                 >
-                  View List
+                  View Outside Residents
                 </Button>
               </div>
             </Card>
@@ -759,11 +768,15 @@ export const ReportsPage: React.FC = () => {
             )}
 
             {movLoading ? (
-              <p className="text-sm text-muted py-6 text-center">Loading movement history...</p>
+              <p className="text-sm text-muted py-8 text-center">Loading movement history...</p>
             ) : movements.length === 0 ? (
-              <p className="text-sm text-muted py-8 text-center">
-                No movement records found.
-              </p>
+              <div className="py-10 text-center">
+                <ArrowRightLeft size={28} className="mx-auto text-slate-300 mb-3" />
+                <p className="text-base font-semibold text-slate-700">No movement records found</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  Try a wider date range or clear the resident search.
+                </p>
+              </div>
             ) : (
               <>
                 <div className="table-responsive">
