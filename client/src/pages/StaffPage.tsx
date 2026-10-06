@@ -189,22 +189,21 @@ export const StaffPage: React.FC = () => {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Total staff</span>
-          <div className="text-3xl font-bold text-slate-900 mt-1">{staff.length}</div>
+      <div className="metric-grid metric-grid-3">
+        <div className="metric-card">
+          <span className="metric-label">Total staff</span>
+          <strong className="metric-value">{staff.length}</strong>
+          <span className="metric-support">All active and inactive staff accounts</span>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Wardens</span>
-          <div className="text-3xl font-bold text-slate-900 mt-1">
-            {staff.filter((s) => s.role === 'WARDEN').length}
-          </div>
+        <div className="metric-card">
+          <span className="metric-label">Wardens</span>
+          <strong className="metric-value">{staff.filter((s) => s.role === 'WARDEN').length}</strong>
+          <span className="metric-support">Resident and hostel operations</span>
         </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <span className="text-sm text-slate-500">Guards</span>
-          <div className="text-3xl font-bold text-slate-900 mt-1">
-            {staff.filter((s) => s.role === 'GUARD').length}
-          </div>
+        <div className="metric-card">
+          <span className="metric-label">Guards</span>
+          <strong className="metric-value">{staff.filter((s) => s.role === 'GUARD').length}</strong>
+          <span className="metric-support">Gate entry and exit operations</span>
         </div>
       </div>
 
@@ -247,7 +246,7 @@ export const StaffPage: React.FC = () => {
                     <Badge type="status" value={member.status} />
                   </td>
                   <td className="text-right">
-                    <div className="inline-flex items-center justify-end gap-2 flex-wrap min-w-[280px]">
+                    <div className="staff-row-actions">
                       <Button variant="outline" size="sm" onClick={() => openEdit(member)} leftIcon={<Edit2 size={14} />}>
                         Edit
                       </Button>
@@ -421,7 +420,7 @@ export const StaffPage: React.FC = () => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Minimum 6 characters"
+            placeholder="Minimum 8 characters"
             required
           />
           <Select
