@@ -79,7 +79,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
 
         <div className="form-group mb-4">
           <label htmlFor="revoke-reason" className="form-label font-medium text-sm">
-            Reason for Removal <span className="text-danger">*</span>
+            Reason for Removal <span className="required">*</span>
           </label>
           <textarea
             id="revoke-reason"
