@@ -131,7 +131,7 @@ describe('Residents List & Management Feature', () => {
     renderComponent();
 
     await waitFor(() => {
-      expect(screen.getByText(/no residents registered in facility/i)).toBeInTheDocument();
+      expect(screen.getByText(/no residents registered yet/i)).toBeInTheDocument();
     });
   });
 
