@@ -25,6 +25,7 @@ import {
   ChevronUp,
   CircleHelp,
   MapPin,
+  ArrowRight,
 } from 'lucide-react';
 
 export const CamerasPage: React.FC = () => {
@@ -67,6 +68,7 @@ export const CamerasPage: React.FC = () => {
 
   // Register camera modal state
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
+  const [registerStep, setRegisterStep] = useState<1 | 2>(1);
   const [newCameraName, setNewCameraName] = useState('');
   const [newCameraSourceType, setNewCameraSourceType] = useState<'WEBCAM' | 'RTSP' | 'SMART_CAMERA'>('RTSP');
   const [newCameraRole, setNewCameraRole] = useState<'GENERAL' | 'IN' | 'OUT' | 'ATTENDANCE'>('IN');
@@ -378,6 +380,36 @@ export const CamerasPage: React.FC = () => {
     }
   };
 
+  const openRegisterModal = () => {
+    setRegisterStep(1);
+    setModalTestResult(null);
+    setShowAdvancedRegister(false);
+    setIsRegisterModalOpen(true);
+  };
+
+  const closeRegisterModal = () => {
+    if (isSubmittingCamera) return;
+    setIsRegisterModalOpen(false);
+    setRegisterStep(1);
+    setModalTestResult(null);
+  };
+
+  const handleRegisterNext = () => {
+    if (!newCameraName.trim()) {
+      toastError('Camera name is required');
+      return;
+    }
+    if (!newCameraFacilityId) {
+      toastError('Select a hostel for this camera');
+      return;
+    }
+    if ((newCameraRole === 'IN' || newCameraRole === 'OUT') && !newCameraLocationId) {
+      toastError('Select the gate / location monitored by this gate camera');
+      return;
+    }
+    setRegisterStep(2);
+  };
+
   const handleRegisterCamera = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCameraName.trim()) {
@@ -429,6 +461,7 @@ export const CamerasPage: React.FC = () => {
 
       success('Camera registered successfully');
       setIsRegisterModalOpen(false);
+      setRegisterStep(1);
       setNewCameraName('');
       setNewCameraDeviceIndex('0');
       setNewCameraRtspUrl('');
@@ -551,8 +584,7 @@ export const CamerasPage: React.FC = () => {
                 variant="primary"
                 size="md"
                 onClick={() => {
-                  setModalTestResult(null);
-                  setIsRegisterModalOpen(true);
+                  openRegisterModal();
                 }}
                 leftIcon={<Plus size={16} />}
               >
@@ -595,7 +627,7 @@ export const CamerasPage: React.FC = () => {
                 <button
                   type="button"
                   className="btn btn-primary btn-sm mt-3"
-                  onClick={() => setIsRegisterModalOpen(true)}
+                  onClick={openRegisterModal}
                 >
                   <Plus size={14} />
                   <span>Add First Camera</span>
@@ -1031,190 +1063,261 @@ export const CamerasPage: React.FC = () => {
         </div>
       )}
 
-      {/* Register Camera Modal */}
+      {/* Add Camera Modal */}
       {isRegisterModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsRegisterModalOpen(false)}>
-          <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" onClick={closeRegisterModal}>
+          <div className="modal-dialog modal-md" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
                 <h3 className="modal-title">Add Camera</h3>
-                <p className="modal-subtitle">Connect a camera to a hostel gate or monitoring location.</p>
+                <p className="modal-subtitle">
+                  {registerStep === 1
+                    ? 'Choose where the camera is installed and what it is used for.'
+                    : 'Enter the connection details and verify the camera.'}
+                </p>
               </div>
               <button
                 type="button"
                 className="modal-close-btn"
-                onClick={() => setIsRegisterModalOpen(false)}
+                onClick={closeRegisterModal}
                 aria-label="Close modal"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleRegisterCamera}>
+            <form
+              onSubmit={(e) => {
+                if (registerStep === 1) {
+                  e.preventDefault();
+                  handleRegisterNext();
+                  return;
+                }
+                handleRegisterCamera(e);
+              }}
+            >
               <div className="modal-body">
-                <div className="camera-choice-note mb-4">
-                  <CircleHelp size={17} className="shrink-0 mt-0.5 text-blue-600" />
-                  <span>
-                    For a gate camera, first create the gate under <strong>Facilities → Gates & Locations</strong>.
-                    Then assign the camera to that gate here.
-                  </span>
-                </div>
-
-                <div className="camera-form-section">
-                  <div className="camera-form-section-title">1. Camera placement</div>
-                  <div className="camera-form-section-copy">Name the camera and tell PRAVAHAx where it is installed.</div>
-
-                <div className="form-group">
-                  <label htmlFor="cam-name" className="form-label">
-                    Camera Name <span className="required">*</span>
-                  </label>
-                  <input
-                    id="cam-name"
-                    type="text"
-                    className="form-control"
-                    placeholder="e.g. Main Gate Camera 1"
-                    value={newCameraName}
-                    onChange={(e) => setNewCameraName(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="form-group">
-                    <label htmlFor="cam-facility" className="form-label">
-                      Facility <span className="required">*</span>
-                    </label>
-                    <select
-                      id="cam-facility"
-                      className="form-control"
-                      value={newCameraFacilityId}
-                      onChange={(e) => loadNewCameraLocations(e.target.value)}
-                      required
-                    >
-                      <option value="">Select facility</option>
-                      {facilities.map((facility) => (
-                        <option key={facility.id} value={facility.id}>{facility.name}</option>
-                      ))}
-                    </select>
+                <div className="camera-add-progress" aria-label="Camera setup progress">
+                  <div className={`camera-add-progress-step ${registerStep === 1 ? 'is-active' : ''}`}>
+                    <span className="camera-add-progress-number">1</span>
+                    Placement & purpose
                   </div>
-
-                  <div className="form-group">
-                    <label htmlFor="cam-location" className="form-label">Gate / Location</label>
-                    <select
-                      id="cam-location"
-                      className="form-control"
-                      value={newCameraLocationId}
-                      onChange={(e) => setNewCameraLocationId(e.target.value)}
-                      disabled={!newCameraFacilityId}
-                    >
-                      <option value="">Not assigned</option>
-                      {newCameraLocations.map((location) => (
-                        <option key={location.id} value={location.id}>{location.name}</option>
-                      ))}
-                    </select>
-                    <small className="form-hint">
-                        Required for Gate Entry / Gate Exit cameras. This makes reports and movement records show the correct gate.
-                      </small>
+                  <div className={`camera-add-progress-step ${registerStep === 2 ? 'is-active' : ''}`}>
+                    <span className="camera-add-progress-number">2</span>
+                    Connection
                   </div>
                 </div>
 
-                </div>
-
-                <div className="camera-form-section">
-                  <div className="camera-form-section-title">2. Connection & gate behavior</div>
-                  <div className="camera-form-section-copy">Choose the camera type and purpose. For IP cameras, add the RTSP address and test it before saving.</div>
-
-                <div className="form-group">
-                  <label htmlFor="cam-source" className="form-label">
-                    Camera Type <span className="required">*</span>
-                  </label>
-                  <select
-                    id="cam-source"
-                    className="form-control"
-                    value={newCameraSourceType}
-                    onChange={(e) => setNewCameraSourceType(e.target.value as any)}
-                  >
-                    <option value="RTSP">IP / Network Camera</option>
-                    <option value="WEBCAM">USB / Laptop Webcam</option>
-                    <option value="SMART_CAMERA">Smart / Edge Camera</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="cam-role" className="form-label">
-                    Camera Purpose
-                  </label>
-                  <select
-                    id="cam-role"
-                    className="form-control"
-                    value={newCameraRole}
-                    onChange={(e) => setNewCameraRole(e.target.value as any)}
-                  >
-                    <option value="GENERAL">General Monitoring</option>
-                    <option value="IN">Gate Entry</option>
-                    <option value="OUT">Gate Exit</option>
-                    <option value="ATTENDANCE">Existing Attendance Checkpoint</option>
-                  </select>
-                </div>
-
-                {(newCameraRole === 'IN' || newCameraRole === 'OUT') && (
-                  <label
-                    htmlFor="cam-movement-auto"
-                    className="camera-choice-note cursor-pointer mb-4"
-                  >
-                    <input
-                      id="cam-movement-auto"
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={newCameraMovementAutomation}
-                      onChange={(e) => setNewCameraMovementAutomation(e.target.checked)}
-                    />
-                    <span>
-                      <strong className="block text-slate-800">Automatic movement recording</strong>
-                      Record movement automatically only after a confirmed resident face match.
-                    </span>
-                  </label>
-                )}
-
-                {newCameraSourceType === 'RTSP' && (
-                  <>
-                    <div className="form-group">
-                      <label htmlFor="cam-rtsp" className="form-label">
-                        Camera Stream Address <span className="required">*</span>
-                      </label>
-                      <input
-                        id="cam-rtsp"
-                        type="text"
-                        className="form-control"
-                        placeholder="rtsp://192.168.1.100:554/ch0 or substream"
-                        value={newCameraRtspUrl}
-                        onChange={(e) => setNewCameraRtspUrl(e.target.value)}
-                        required
-                      />
-                      <small className="form-hint">
-                        Use the camera network stream address. A lower-resolution substream is preferred when available.
-                      </small>
+                {registerStep === 1 ? (
+                  <div className="camera-step-panel">
+                    <div className="camera-step-heading">Camera details</div>
+                    <div className="camera-step-copy">
+                      Give the camera a clear name, choose its hostel and gate, then select its purpose.
                     </div>
 
-                    <div className="border border-slate-200 rounded-lg p-3 my-2 bg-white">
-                      <button
-                        type="button"
-                        onClick={() => setShowAdvancedRegister(!showAdvancedRegister)}
-                        className="w-full flex items-center justify-between text-sm font-semibold text-slate-700 hover:text-slate-900"
-                      >
-                        <span>Advanced connection settings</span>
-                        {showAdvancedRegister ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
+                    <div className="form-group">
+                      <label htmlFor="cam-name" className="form-label">
+                        Camera Name <span className="required">*</span>
+                      </label>
+                      <input
+                        id="cam-name"
+                        type="text"
+                        className="form-control"
+                        placeholder="Example: Main Gate Camera"
+                        value={newCameraName}
+                        onChange={(e) => setNewCameraName(e.target.value)}
+                        autoFocus
+                        required
+                      />
+                    </div>
 
-                      {showAdvancedRegister && (
-                        <div className="mt-3 pt-3 border-t border-slate-200 space-y-3">
-                          <div className="form-group mb-0">
-                            <label htmlFor="cam-transport" className="form-label text-xs">
-                              Stream Transport
-                            </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="form-group">
+                        <label htmlFor="cam-facility" className="form-label">
+                          Hostel <span className="required">*</span>
+                        </label>
+                        <select
+                          id="cam-facility"
+                          className="form-control"
+                          value={newCameraFacilityId}
+                          onChange={(e) => loadNewCameraLocations(e.target.value)}
+                          required
+                        >
+                          <option value="">Select hostel</option>
+                          {facilities.map((facility) => (
+                            <option key={facility.id} value={facility.id}>{facility.name}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label htmlFor="cam-location" className="form-label">
+                          Gate / Location {(newCameraRole === 'IN' || newCameraRole === 'OUT') && (
+                            <span className="required">*</span>
+                          )}
+                        </label>
+                        <select
+                          id="cam-location"
+                          className="form-control"
+                          value={newCameraLocationId}
+                          onChange={(e) => setNewCameraLocationId(e.target.value)}
+                          disabled={!newCameraFacilityId}
+                        >
+                          <option value="">Select gate / location</option>
+                          {newCameraLocations.map((location) => (
+                            <option key={location.id} value={location.id}>{location.name}</option>
+                          ))}
+                        </select>
+                        <small className="form-hint">
+                          For Gate Entry / Gate Exit cameras, this is required.
+                        </small>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="form-group">
+                        <label htmlFor="cam-source" className="form-label">
+                          Camera Type <span className="required">*</span>
+                        </label>
+                        <select
+                          id="cam-source"
+                          className="form-control"
+                          value={newCameraSourceType}
+                          onChange={(e) => {
+                            setNewCameraSourceType(e.target.value as any);
+                            setModalTestResult(null);
+                          }}
+                        >
+                          <option value="RTSP">IP / Network Camera</option>
+                          <option value="WEBCAM">USB / Laptop Webcam</option>
+                          <option value="SMART_CAMERA">Smart / Edge Camera</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group">
+                        <label htmlFor="cam-role" className="form-label">Purpose</label>
+                        <select
+                          id="cam-role"
+                          className="form-control"
+                          value={newCameraRole}
+                          onChange={(e) => setNewCameraRole(e.target.value as any)}
+                        >
+                          <option value="GENERAL">General Monitoring</option>
+                          <option value="IN">Gate Entry</option>
+                          <option value="OUT">Gate Exit</option>
+                          <option value="ATTENDANCE">Existing Attendance Checkpoint</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {(newCameraRole === 'IN' || newCameraRole === 'OUT') && (
+                      <label htmlFor="cam-movement-auto" className="camera-choice-note cursor-pointer">
+                        <input
+                          id="cam-movement-auto"
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={newCameraMovementAutomation}
+                          onChange={(e) => setNewCameraMovementAutomation(e.target.checked)}
+                        />
+                        <span>
+                          <strong className="block text-slate-800">Automatic movement recording</strong>
+                          Record entry / exit automatically after a confirmed resident face match.
+                        </span>
+                      </label>
+                    )}
+
+                    {newCameraLocations.length === 0 && newCameraFacilityId && (
+                      <div className="camera-step-summary mt-3">
+                        No gate is configured for this hostel yet. Create one from <strong>Hostels → Gates & Locations</strong>.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="camera-step-panel">
+                    <div className="camera-step-heading">Connection details</div>
+                    <div className="camera-step-copy">
+                      {newCameraSourceType === 'RTSP'
+                        ? 'Enter the camera stream address. Username and password are only needed when the camera requires them.'
+                        : newCameraSourceType === 'WEBCAM'
+                        ? 'For a laptop or USB webcam, keep the default device unless another camera is connected.'
+                        : 'This camera type does not require browser connection details.'}
+                    </div>
+
+                    <div className="camera-step-summary">
+                      <strong>{newCameraName}</strong>
+                      <span> • </span>
+                      {facilities.find((facility) => facility.id === newCameraFacilityId)?.name || 'Hostel'}
+                      {newCameraLocationId && (
+                        <>
+                          <span> • </span>
+                          {newCameraLocations.find((location) => location.id === newCameraLocationId)?.name}
+                        </>
+                      )}
+                    </div>
+
+                    {newCameraSourceType === 'RTSP' && (
+                      <>
+                        <div className="form-group">
+                          <label htmlFor="cam-rtsp" className="form-label">
+                            Camera Stream Address <span className="required">*</span>
+                          </label>
+                          <input
+                            id="cam-rtsp"
+                            type="text"
+                            className="form-control"
+                            placeholder="rtsp://192.168.1.100:554/stream"
+                            value={newCameraRtspUrl}
+                            onChange={(e) => {
+                              setNewCameraRtspUrl(e.target.value);
+                              setModalTestResult(null);
+                            }}
+                            required
+                          />
+                          <small className="form-hint">
+                            Use the RTSP address provided by the camera manufacturer or NVR.
+                          </small>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="form-group">
+                            <label htmlFor="cam-user" className="form-label">Username (Optional)</label>
+                            <input
+                              id="cam-user"
+                              type="text"
+                              className="form-control"
+                              placeholder="Camera username"
+                              value={newCameraUsername}
+                              onChange={(e) => setNewCameraUsername(e.target.value)}
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label htmlFor="cam-pass" className="form-label">Password (Optional)</label>
+                            <input
+                              id="cam-pass"
+                              type="password"
+                              className="form-control"
+                              placeholder="Camera password"
+                              value={newCameraPassword}
+                              onChange={(e) => setNewCameraPassword(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowAdvancedRegister(!showAdvancedRegister)}
+                          className="w-full flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700"
+                        >
+                          <span>Advanced connection settings</span>
+                          {showAdvancedRegister ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+
+                        {showAdvancedRegister && (
+                          <div className="form-group mt-3 mb-0">
+                            <label htmlFor="cam-transport" className="form-label">Stream Transport</label>
                             <select
                               id="cam-transport"
-                              className="form-control text-sm"
+                              className="form-control"
                               value={newCameraTransport}
                               onChange={(e) => setNewCameraTransport(e.target.value as any)}
                             >
@@ -1222,109 +1325,92 @@ export const CamerasPage: React.FC = () => {
                               <option value="udp">UDP</option>
                             </select>
                           </div>
+                        )}
+
+                        <div className="flex items-center justify-between gap-3 mt-4 flex-wrap">
+                          <div className="text-xs text-slate-500">
+                            Test the connection before saving.
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleModalTestConnection}
+                            disabled={isModalTesting || !newCameraRtspUrl.trim()}
+                            leftIcon={<Wifi size={14} className={isModalTesting ? 'animate-spin' : ''} />}
+                          >
+                            {isModalTesting ? 'Testing...' : 'Test Connection'}
+                          </Button>
                         </div>
-                      )}
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="form-group">
-                        <label htmlFor="cam-user" className="form-label">
-                          Username (Optional)
-                        </label>
+                        {modalTestResult && (
+                          <div
+                            className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+                              modalTestResult.reachable
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                                : 'border-red-200 bg-red-50 text-red-700'
+                            }`}
+                          >
+                            {modalTestResult.reachable
+                              ? 'Connection successful. The camera is reachable.'
+                              : modalTestResult.message || 'Could not connect. Check the address, credentials, and network.'}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {newCameraSourceType === 'WEBCAM' && (
+                      <div className="form-group mb-0">
+                        <label htmlFor="cam-device" className="form-label">Webcam Device</label>
                         <input
-                          id="cam-user"
-                          type="text"
+                          id="cam-device"
+                          type="number"
+                          min="0"
+                          max="10"
                           className="form-control"
-                          placeholder="admin"
-                          value={newCameraUsername}
-                          onChange={(e) => setNewCameraUsername(e.target.value)}
+                          value={newCameraDeviceIndex}
+                          onChange={(e) => setNewCameraDeviceIndex(e.target.value)}
                         />
+                        <small className="form-hint">
+                          Keep 0 for the built-in webcam. Use 1 or higher only for another USB camera.
+                        </small>
                       </div>
-                      <div className="form-group">
-                        <label htmlFor="cam-pass" className="form-label">
-                          Password (Optional)
-                        </label>
-                        <input
-                          id="cam-pass"
-                          type="password"
-                          className="form-control"
-                          placeholder="••••••••"
-                          value={newCameraPassword}
-                          onChange={(e) => setNewCameraPassword(e.target.value)}
-                        />
+                    )}
+
+                    {newCameraSourceType === 'SMART_CAMERA' && (
+                      <div className="camera-step-summary">
+                        No additional connection details are required here. You can add the camera now.
                       </div>
-                    </div>
-
-                    <div className="pt-2">
-                      <div className="text-xs text-slate-500 mb-2">
-                        Test the connection before adding the camera. This catches an incorrect address or credentials early.
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        onClick={handleModalTestConnection}
-                        disabled={isModalTesting || !newCameraRtspUrl.trim()}
-                      >
-                        <Wifi size={14} className={isModalTesting ? 'animate-spin' : ''} />
-                        <span>{isModalTesting ? 'Testing...' : 'Test Connection'}</span>
-                      </button>
-
-                      {modalTestResult && (
-                        <div
-                          className={`mt-2 p-2 rounded text-xs border ${
-                            modalTestResult.reachable
-                              ? 'bg-emerald-950/40 border-emerald-700/50 text-emerald-200'
-                              : 'bg-rose-950/40 border-rose-700/50 text-rose-200'
-                          }`}
-                        >
-                          {modalTestResult.reachable ? (
-                            <span>Connection successful. The camera is reachable and ready to add.</span>
-                          ) : (
-                            <span>{modalTestResult.message || 'Could not connect. Check camera address, credentials and network.'}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {newCameraSourceType === 'WEBCAM' && (
-                  <div className="form-group">
-                    <label htmlFor="cam-device" className="form-label">
-                      Webcam Device
-                    </label>
-                    <input
-                      id="cam-device"
-                      type="number"
-                      min="0"
-                      max="10"
-                      className="form-control"
-                      value={newCameraDeviceIndex}
-                      onChange={(e) => setNewCameraDeviceIndex(e.target.value)}
-                    />
-                    <small className="form-hint">
-                      Keep 0 for the built-in laptop camera. Use 1 or higher only when another USB camera is connected.
-                    </small>
+                    )}
                   </div>
                 )}
-                </div>
               </div>
 
               <div className="modal-footer">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setIsRegisterModalOpen(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={isSubmittingCamera}
-                >
-                  {isSubmittingCamera ? 'Adding...' : 'Add Camera'}
-                </button>
+                {registerStep === 1 ? (
+                  <>
+                    <Button type="button" variant="outline" onClick={closeRegisterModal}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" variant="primary" rightIcon={<ArrowRight size={16} />}>
+                      Continue
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setRegisterStep(1)}
+                      disabled={isSubmittingCamera}
+                    >
+                      Back
+                    </Button>
+                    <Button type="submit" variant="primary" isLoading={isSubmittingCamera}>
+                      Add Camera
+                    </Button>
+                  </>
+                )}
               </div>
             </form>
           </div>
