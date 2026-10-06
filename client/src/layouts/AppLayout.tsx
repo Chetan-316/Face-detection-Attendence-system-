@@ -170,7 +170,7 @@ export const AppLayout: React.FC = () => {
             <div className="system-scope-card">
               <div className="scope-row">
                 <Building2 size={14} className="scope-icon" />
-                <span className="scope-label">Facility</span>
+                <span className="scope-label">Scope</span>
               </div>
               <span className="scope-value">
                 {user?.role === 'ADMIN'
