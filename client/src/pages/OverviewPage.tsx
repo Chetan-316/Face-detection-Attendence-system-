@@ -220,11 +220,16 @@ export const OverviewPage: React.FC = () => {
           <div>
             <span className="overview-stat-value">
               {!hasScopedReturnDeadline
-                ? 'Per facility'
+                ? 'Varies'
                 : isAfterReturnDeadline
                 ? currentlyOut
                 : returnDeadlineLabel}
             </span>
+            {!hasScopedReturnDeadline && (
+              <span className="block text-sm font-medium text-slate-500 mt-2">
+                Set separately for each hostel
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -245,22 +250,25 @@ export const OverviewPage: React.FC = () => {
           <div>
             <div className="font-bold text-[15px]">
               {!hasScopedReturnDeadline
-                ? 'Return deadlines are configured per facility'
+                ? 'Each hostel has its own return deadline'
                 : isAfterReturnDeadline
                 ? `${currentlyOut} ${currentlyOut === 1 ? 'resident has' : 'residents have'} not returned`
                 : `Return deadline is ${returnDeadlineLabel}`}
             </div>
             <div className="text-sm mt-0.5 opacity-80">
               {!hasScopedReturnDeadline
-                ? 'Open Hostels to review or change each return deadline. Current presence counts include all hostels in your organization.'
+                ? 'Open Hostels to review or change the deadline for each hostel. Presence counts above include all hostels in your organization.'
                 : isAfterReturnDeadline
                 ? 'This list updates automatically from the live IN / OUT presence state as residents return.'
                 : `${currentlyOut} ${currentlyOut === 1 ? 'resident is' : 'residents are'} currently outside. No separate night attendance is required.`}
             </div>
           </div>
         </div>
-        <Link to="/residents" className="resident-quick-link whitespace-nowrap">
-          Open resident list <ArrowRight size={15} />
+        <Link
+          to={!hasScopedReturnDeadline ? '/facilities' : '/residents'}
+          className="resident-quick-link whitespace-nowrap"
+        >
+          {!hasScopedReturnDeadline ? 'Manage hostel deadlines' : 'Open resident list'} <ArrowRight size={15} />
         </Link>
       </div>
 
