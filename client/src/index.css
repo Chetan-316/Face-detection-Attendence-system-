@@ -1121,19 +1121,19 @@ textarea.form-control {
 .alert-banner-error {
   background: var(--danger-subtle);
   border: 1px solid var(--danger-border);
-  color: #fca5a5;
+  color: #991B1B;
 }
 
 .alert-banner-warning {
   background: var(--warning-subtle);
   border: 1px solid var(--warning-border);
-  color: #fcd34d;
+  color: #92400E;
 }
 
 .alert-banner-info {
-  background: rgba(37, 99, 235, 0.12);
-  border: 1px solid rgba(37, 99, 235, 0.3);
-  color: #93c5fd;
+  background: var(--primary-subtle);
+  border: 1px solid #BFDBFE;
+  color: #1E40AF;
 }
 
 /* ==========================================================================
