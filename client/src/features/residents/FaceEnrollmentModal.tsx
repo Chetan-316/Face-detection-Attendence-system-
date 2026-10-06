@@ -350,7 +350,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
       }
     } catch (err: any) {
       if (err?.message?.includes('Active enrollment session') || err?.message?.includes('session')) {
-        setErrorMsg('Camera session re-synchronized. Please click Capture again.');
+        setErrorMsg('Camera refreshed. Please capture this angle again.');
       } else {
         setErrorMsg(err.message || 'Camera did not provide a fresh frame. Please try again.');
       }
@@ -466,7 +466,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                   {webcamError
                     ? 'Camera Permission Required'
                     : isCameraStarting
-                    ? 'Initializing camera hardware...'
+                    ? 'Starting camera...'
                     : 'Camera feed ready'}
                 </span>
                 <span className="text-xs text-slate-400 max-w-xs">
@@ -487,7 +487,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           {(isStreamLoaded || isWebcamActive) && (
             <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-2.5 py-1 bg-black/60 backdrop-blur-sm rounded-full text-white text-xs font-medium tracking-wider pointer-events-none">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>CAMERA READY</span>
+              <span>Camera ready</span>
             </div>
           )}
 
@@ -514,6 +514,16 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           <div className="text-sm font-medium text-slate-500">
             Step {currentStep.stepNum} of 5
           </div>
+          <div
+            className="face-enrollment-progress"
+            role="progressbar"
+            aria-label="Face enrollment progress"
+            aria-valuemin={0}
+            aria-valuemax={5}
+            aria-valuenow={completedPoses.size}
+          >
+            <span style={{ width: `${(completedPoses.size / 5) * 100}%` }} />
+          </div>
           <div className="text-xl font-bold text-slate-900">
             {currentStep.instruction}
           </div>
@@ -521,9 +531,9 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           {/* Single feedback message displayed at a time */}
           <div className="h-6 flex items-center justify-center mt-0.5">
             {errorMsg ? (
-              <span className="text-sm font-medium text-red-600">{errorMsg}</span>
+              <span className="text-sm font-medium text-red-600" role="alert">{errorMsg}</span>
             ) : statusMessage ? (
-              <span className="text-sm font-medium text-emerald-600">{statusMessage}</span>
+              <span className="text-sm font-medium text-emerald-600" role="status">{statusMessage}</span>
             ) : (
               <span className="text-sm text-slate-500">Center the resident in the guide, then capture this angle.</span>
             )}
@@ -586,6 +596,8 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                 key={pose.key}
                 type="button"
                 onClick={() => handleRetakePose(pose.key)}
+                disabled={!isDone && !isCurrent}
+                aria-current={isCurrent ? 'step' : undefined}
                 className={`flex items-center gap-1.5 py-1 px-2 rounded transition-colors ${
                   isCurrent
                     ? 'text-blue-600 font-semibold'
