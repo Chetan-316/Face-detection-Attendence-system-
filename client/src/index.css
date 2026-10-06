@@ -572,8 +572,14 @@ textarea.form-control {
 }
 
 .btn-password-toggle {
+  min-width: 36px;
+  min-height: 36px;
   color: var(--text-muted);
   padding: 0.25rem;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-password-toggle:hover {
@@ -834,6 +840,8 @@ textarea.form-control {
 }
 
 .btn-icon-table {
+  min-width: 36px;
+  min-height: 36px;
   padding: 0.35rem;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
@@ -1053,9 +1061,15 @@ textarea.form-control {
 
 .filter-search-clear {
   position: absolute;
-  right: 0.75rem;
+  right: 0.35rem;
   top: 50%;
   transform: translateY(-50%);
+  min-width: 32px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
   color: var(--text-muted);
 }
 
