@@ -414,7 +414,11 @@ export const CamerasPage: React.FC = () => {
       if (event.key === 'Escape') {
         if (snapshotData) setSnapshotData(null);
         else if (isEditModalOpen && !isSavingEdit) setIsEditModalOpen(false);
-        else if (isRegisterModalOpen && !isSubmittingCamera) closeRegisterModal();
+        else if (isRegisterModalOpen && !isSubmittingCamera) {
+          setIsRegisterModalOpen(false);
+          setRegisterStep(1);
+          setModalTestResult(null);
+        }
         return;
       }
 
