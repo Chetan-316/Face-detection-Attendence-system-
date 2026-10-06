@@ -30,7 +30,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
 }) => {
   if (isLoading) {
     return (
-      <div className="table-container bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="table-container bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
         <table className="data-table w-full">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 text-left text-sm font-semibold">
@@ -89,7 +89,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
   }
 
   return (
-    <div className="table-container bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+    <div className="table-container bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
       <table className="data-table w-full text-left border-collapse text-sm">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 font-semibold text-sm">
