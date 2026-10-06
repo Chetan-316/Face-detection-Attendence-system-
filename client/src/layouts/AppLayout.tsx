@@ -34,6 +34,9 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <header className="app-header">
         <div className="header-left">
           <button
@@ -191,7 +194,7 @@ export const AppLayout: React.FC = () => {
           </div>
         </aside>
 
-        <main className="app-main-content">
+        <main id="main-content" className="app-main-content" tabIndex={-1}>
           <Outlet />
         </main>
       </div>
