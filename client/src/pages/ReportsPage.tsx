@@ -273,6 +273,19 @@ export const ReportsPage: React.FC = () => {
     }
   }, [activeTab, fetchAttendanceReport, fetchMovementReport]);
 
+  const movementSourceLabel = (source?: string | null) => {
+    if (!source) return 'System';
+    if (source === 'FACE_RECOGNITION') return 'Camera Recognition';
+    if (source === 'GUARD_CONFIRMATION') return 'Guard Confirmation';
+    if (source === 'WARDEN_CORRECTION') return 'Staff Correction';
+    if (source === 'MANUAL') return 'Manual Entry';
+    return source
+      .toLowerCase()
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
   // ----------------------------------------------------
   // EXPORT HANDLERS
   // ----------------------------------------------------
@@ -680,7 +693,7 @@ export const ReportsPage: React.FC = () => {
               </div>
 
               <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Direction</label>
+                <label className="block text-xs font-semibold text-secondary mb-1">Movement</label>
                 <select
                   className="input-field text-xs py-1.5 px-3 border border-border rounded"
                   value={movDirection}
@@ -755,7 +768,7 @@ export const ReportsPage: React.FC = () => {
           </div>
 
           <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            Presence is derived from the latest verified IN / OUT movement. Corrected events remain clearly marked for audit.
+            Current presence is derived from the latest verified entry or exit. Staff corrections remain clearly marked for audit.
           </div>
 
           {/* Movement Table */}
@@ -816,7 +829,7 @@ export const ReportsPage: React.FC = () => {
                             </span>
                           </td>
                           <td>{ev.gateName}</td>
-                          <td className="text-xs text-secondary">{ev.source}</td>
+                          <td className="text-xs text-secondary">{movementSourceLabel(ev.source)}</td>
                           <td>
                             {ev.isCorrection ? (
                               <span className="badge badge-sm badge-info">Corrected</span>
@@ -993,11 +1006,11 @@ export const ReportsPage: React.FC = () => {
                                         mov.direction === 'IN' ? 'success' : 'amber'
                                       }`}
                                     >
-                                      {mov.direction}
+                                      {mov.direction === 'IN' ? 'Entered' : 'Left'}
                                     </span>
                                   </td>
                                   <td>{mov.gateName}</td>
-                                  <td className="text-muted">{mov.source}</td>
+                                  <td className="text-muted">{movementSourceLabel(mov.source)}</td>
                                 </tr>
                               ))}
                             </tbody>
