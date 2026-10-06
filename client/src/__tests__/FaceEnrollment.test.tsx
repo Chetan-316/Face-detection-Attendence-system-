@@ -241,7 +241,7 @@ describe('Step 05: Face Enrollment & Revocation Frontend UI Tests', () => {
       );
 
       // Verify modal headers and camera indicator
-      expect(screen.getByText(/Face Enrollment — R001/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Enroll Face — Aarav Sharma/i })).toBeInTheDocument();
       expect(screen.getByText(/Position Face Here/i)).toBeInTheDocument();
 
       // Verify quality inspection gates are rendered
@@ -353,7 +353,7 @@ describe('Step 05: Face Enrollment & Revocation Frontend UI Tests', () => {
         </MemoryRouter>
       );
 
-      const cancelBtn = screen.getByRole('button', { name: /Cancel Enrollment/i });
+      const cancelBtn = screen.getByRole('button', { name: /^Cancel$/i });
       fireEvent.click(cancelBtn);
 
       await waitFor(() => {
@@ -389,10 +389,10 @@ describe('Step 05: Face Enrollment & Revocation Frontend UI Tests', () => {
         </MemoryRouter>
       );
 
-      expect(screen.getByText(/Revoke Face Profile/i)).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /Revoke Face Enrollment/i })).toBeInTheDocument();
       expect(screen.getByText(/Privacy & Security Safeguard:/i)).toBeInTheDocument();
 
-      const textarea = screen.getByPlaceholderText(/e\.g\., Requested resident biometric reset/i);
+      const textarea = screen.getByLabelText(/Reason/i);
       const submitBtn = screen.getByRole('button', { name: /Confirm Revocation/i });
 
       // Enter reason and submit
