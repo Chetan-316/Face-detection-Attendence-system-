@@ -741,8 +741,8 @@ export const CamerasPage: React.FC = () => {
               {((selectedCamera.id === diagnostics?.cameraId && diagnostics?.healthStatus)
                 ? diagnostics.healthStatus
                 : selectedCamera.healthStatus) === 'DEGRADED' && (
-                <div className="p-3 rounded-lg border mb-3 flex items-center gap-2 bg-amber-950/40 border-amber-700/50 text-amber-200">
-                  <RefreshCw size={16} className="animate-spin text-amber-400 shrink-0" />
+                <div className="p-3 rounded-lg border mb-3 flex items-center gap-2 bg-amber-50 border-amber-200 text-amber-900">
+                  <RefreshCw size={16} className="animate-spin text-amber-600 shrink-0" />
                   <div className="text-sm">
                     <strong>Connection issue:</strong> Reconnecting to camera stream...
                   </div>
@@ -774,14 +774,14 @@ export const CamerasPage: React.FC = () => {
                 <div
                   className={`p-3 rounded-lg border mb-3 flex items-center gap-2 ${
                     testResult.reachable
-                      ? 'bg-emerald-950/40 border-emerald-700/50 text-emerald-200'
-                      : 'bg-rose-950/40 border-rose-700/50 text-rose-200'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-red-50 border-red-200 text-red-700'
                   }`}
                 >
                   {testResult.reachable ? (
-                    <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
                   ) : (
-                    <AlertCircle size={18} className="text-rose-400 shrink-0" />
+                    <AlertCircle size={18} className="text-red-600 shrink-0" />
                   )}
                   <div className="text-sm">
                     {testResult.reachable ? (
