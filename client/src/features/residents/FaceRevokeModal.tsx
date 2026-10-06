@@ -83,7 +83,7 @@ export const FaceRevokeModal: React.FC<FaceRevokeModalProps> = ({
           </label>
           <textarea
             id="revoke-reason"
-            className="form-textarea w-full p-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm focus:ring-2 focus:ring-amber-500"
+            className="form-control"
             rows={3}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
