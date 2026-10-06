@@ -3426,3 +3426,33 @@ a:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+.face-enrollment-progress {
+  width: min(100%, 320px);
+  height: 8px;
+  margin: 0.4rem auto 0.2rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #E2E8F0;
+}
+
+.face-enrollment-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary-500);
+  transition: width 180ms ease;
+}
+
+.face-enrollment-container button:disabled {
+  cursor: not-allowed;
+}
+
+.face-enrollment-container button[aria-current="step"] {
+  background: var(--primary-subtle);
+}
+
+.face-enrollment-container button:disabled:not(.btn) {
+  opacity: 0.48;
+}
