@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Modal } from '../components/Modal';
+import { PageHeader } from '../components/PageHeader';
+import { Button } from '../components/Button';
 import {
   AttendanceSession,
   AttendanceRosterItem,
@@ -519,39 +521,33 @@ export const AttendancePage: React.FC = () => {
 
   return (
     <div className="attendance-page max-w-7xl mx-auto space-y-6">
-      {/* Top Header Card */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Hostel Attendance</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Roll call, daily night attendance sessions, and attendance roster records
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => loadData(true)}
-            disabled={isRefreshing}
-            className="btn btn-secondary btn-sm"
-            title="Refresh attendance data"
-          >
-            <RefreshCw size={15} className={isRefreshing ? 'animate-spin text-blue-600' : ''} />
-            <span>Refresh</span>
-          </button>
-
-          {canManage && (
-            <button
+      <PageHeader
+        title="Hostel Attendance"
+        subtitle="Run attendance sessions, monitor live marking, and review resident records."
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
               type="button"
-              onClick={() => setIsCreateModalOpen(true)}
-              className="btn btn-primary btn-sm"
+              variant="outline"
+              onClick={() => loadData(true)}
+              isLoading={isRefreshing}
+              leftIcon={<RefreshCw size={16} />}
             >
-              <Plus size={16} />
-              <span>Create Attendance</span>
-            </button>
-          )}
-        </div>
-      </div>
+              Refresh
+            </Button>
+            {canManage && (
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => setIsCreateModalOpen(true)}
+                leftIcon={<Plus size={16} />}
+              >
+                Create Attendance
+              </Button>
+            )}
+          </div>
+        }
+      />
 
       {/* Main Content Area */}
       {isLoading ? (
@@ -713,12 +709,12 @@ export const AttendancePage: React.FC = () => {
 
                   {/* Summary Metric Counters */}
                   {stats && (
-                    <div className="grid grid-cols-3 gap-4 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
                       <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-center">
                         <span className="block text-sm font-semibold text-emerald-800">
                           Present
                         </span>
-                        <span className="text-3xl font-bold text-emerald-900 mt-1 block">
+                        <span className="text-4xl font-bold text-emerald-900 mt-1 block leading-none">
                           {stats.presentCount}
                         </span>
                       </div>
@@ -727,7 +723,7 @@ export const AttendancePage: React.FC = () => {
                           Pending
                           <span className="sr-only">Remaining</span>
                         </span>
-                        <span className="text-3xl font-bold text-amber-900 mt-1 block">
+                        <span className="text-4xl font-bold text-amber-900 mt-1 block leading-none">
                           {stats.remainingCount}
                         </span>
                       </div>
@@ -736,7 +732,7 @@ export const AttendancePage: React.FC = () => {
                           Total
                           <span className="sr-only">Expected</span>
                         </span>
-                        <span className="text-3xl font-bold text-slate-900 mt-1 block">
+                        <span className="text-4xl font-bold text-slate-900 mt-1 block leading-none">
                           {stats.expectedResidents}
                         </span>
                       </div>
@@ -784,12 +780,13 @@ export const AttendancePage: React.FC = () => {
                         <div className="flex items-center gap-2">
                           {cameras.length > 1 && cameraMode === 'BACKEND' && (
                             <select
+                              aria-label="Attendance camera"
                               value={activeLiveCameraId}
                               onChange={(e) => {
                                 setSelectedLiveCameraId(e.target.value);
                                 setStreamStatus('LOADING');
                               }}
-                              className="text-xs border border-slate-300 rounded px-2 py-1 bg-white font-medium focus:ring-1 focus:ring-blue-500"
+                              className="min-h-10 text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white font-medium focus:ring-2 focus:ring-blue-500"
                               title="Switch active camera"
                             >
                               {cameras.map((c) => (
@@ -811,7 +808,7 @@ export const AttendancePage: React.FC = () => {
                                 setStreamStatus('LOADING');
                               }
                             }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition shadow-xs"
+                            className="min-h-10 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
                             title="Toggle between Server Camera Stream and Direct Browser Webcam"
                           >
                             <Video size={13} />
@@ -878,7 +875,7 @@ export const AttendancePage: React.FC = () => {
                               <p className="text-base font-semibold text-white">Camera Stream Offline</p>
                               <p className="text-xs text-slate-400 max-w-xs mt-1 leading-relaxed">
                                 {activeLiveCameraId
-                                  ? 'The backend camera stream could not be reached, or no physical stream adapter is active.'
+                                  ? 'The selected camera feed is unavailable. Check the camera connection or use the device camera.'
                                   : 'No active camera is assigned to this attendance session.'}
                               </p>
                             </div>
@@ -986,7 +983,9 @@ export const AttendancePage: React.FC = () => {
                 <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
+                    <label htmlFor="attendance-roster-search" className="sr-only">Search attendance roster</label>
                     <input
+                      id="attendance-roster-search"
                       type="text"
                       placeholder="Search residents by code, name, or room..."
                       value={searchQuery}
@@ -997,12 +996,14 @@ export const AttendancePage: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Filter size={16} className="text-slate-400" />
+                    <Filter size={16} className="text-slate-400" aria-hidden="true" />
+                    <label htmlFor="attendance-status-filter" className="sr-only">Filter attendance by status</label>
                     <select
+                      id="attendance-status-filter"
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
                       className="form-select"
-                      style={{ width: 'auto', minWidth: '150px' }}
+                      style={{ minWidth: '170px' }}
                     >
                       <option value="ALL">All Statuses</option>
                       <option value="PRESENT">Present</option>
@@ -1020,7 +1021,7 @@ export const AttendancePage: React.FC = () => {
                   </div>
 
                   <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm" aria-label="Attendance roster">
                       <thead className="bg-slate-50/70 text-slate-600 font-semibold">
                         <tr>
                           <th scope="col" className="px-6 py-3.5 text-left">
@@ -1161,10 +1162,11 @@ export const AttendancePage: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label className="form-label">
+            <label htmlFor="new-session-type" className="form-label">
               Session Type
             </label>
             <select
+              id="new-session-type"
               value={newSessionType}
               onChange={(e) => setNewSessionType(e.target.value)}
               className="form-select"
@@ -1176,8 +1178,9 @@ export const AttendancePage: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Date</label>
+            <label htmlFor="new-session-date" className="form-label">Date</label>
             <input
+              id="new-session-date"
               type="date"
               value={newSessionDate}
               onChange={(e) => setNewSessionDate(e.target.value)}
@@ -1188,10 +1191,11 @@ export const AttendancePage: React.FC = () => {
 
           <div className="form-grid-2">
             <div className="form-group">
-              <label className="form-label">
+              <label htmlFor="new-session-start" className="form-label">
                 Start Time
               </label>
               <input
+                id="new-session-start"
                 type="time"
                 value={newSessionStartTime}
                 onChange={(e) => setNewSessionStartTime(e.target.value)}
@@ -1200,10 +1204,11 @@ export const AttendancePage: React.FC = () => {
               />
             </div>
             <div className="form-group">
-              <label className="form-label">
+              <label htmlFor="new-session-end" className="form-label">
                 End Time
               </label>
               <input
+                id="new-session-end"
                 type="time"
                 value={newSessionEndTime}
                 onChange={(e) => setNewSessionEndTime(e.target.value)}
@@ -1213,10 +1218,11 @@ export const AttendancePage: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label className="form-label">
+            <label htmlFor="new-session-camera" className="form-label">
               Camera (Optional)
             </label>
             <select
+              id="new-session-camera"
               value={newSessionCameraId}
               onChange={(e) => setNewSessionCameraId(e.target.value)}
               className="form-select"
@@ -1314,10 +1320,11 @@ export const AttendancePage: React.FC = () => {
             </div>
 
             <div className="form-group">
-              <label className="form-label">
+              <label htmlFor="attendance-correction-status" className="form-label">
                 Change to
               </label>
               <select
+                id="attendance-correction-status"
                 value={targetCorrectionStatus}
                 onChange={(e) => setTargetCorrectionStatus(e.target.value as any)}
                 className="form-select"
@@ -1328,10 +1335,11 @@ export const AttendancePage: React.FC = () => {
             </div>
 
             <div className="form-group">
-              <label className="form-label">
+              <label htmlFor="attendance-correction-reason" className="form-label">
                 Reason (Mandatory) <span className="required-mark">*</span>
               </label>
               <textarea
+                id="attendance-correction-reason"
                 rows={3}
                 value={correctionReason}
                 onChange={(e) => setCorrectionReason(e.target.value)}
