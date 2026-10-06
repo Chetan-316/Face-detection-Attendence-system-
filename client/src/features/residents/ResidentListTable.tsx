@@ -31,7 +31,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
   if (isLoading) {
     return (
       <div className="table-container bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <table className="data-table w-full">
+        <table className="data-table w-full" aria-label="Residents">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 text-left text-sm font-semibold">
               <th className="px-6 py-4">Resident</th>
@@ -66,7 +66,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
           <UserX size={32} />
         </div>
         <h3 className="text-xl font-bold text-slate-900 mb-2">
-          {hasActiveFilters ? 'No matching residents found' : 'No residents registered in facility'}
+          {hasActiveFilters ? 'No matching residents found' : 'No residents registered yet'}
         </h3>
         <p className="text-sm text-slate-500 max-w-sm mx-auto mb-6">
           {hasActiveFilters
@@ -90,7 +90,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
 
   return (
     <div className="table-container bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-      <table className="data-table w-full text-left border-collapse text-sm">
+      <table className="data-table w-full text-left border-collapse text-sm" aria-label="Residents">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 font-semibold text-sm">
             <th scope="col" className="px-6 py-4">Resident</th>
@@ -131,7 +131,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                       >
                         {resident.fullName}
                       </button>
-                      <span className="font-mono text-13px text-slate-500 mt-0.5">{resident.residentCode}</span>
+                      <span className="font-mono text-sm text-slate-500 mt-0.5">{resident.residentCode}</span>
                     </div>
                   </div>
                 </td>
@@ -168,30 +168,32 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                 {/* Action */}
                 <td className="px-6 py-3.5 text-right">
                   <div className="inline-flex items-center justify-end gap-2">
-                    <button
+                    <Button
                       type="button"
-                      className="px-3.5 py-1.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none transition"
+                      variant="outline"
+                      size="sm"
                       onClick={() => onSelect(resident)}
                       aria-label={`View details for ${resident.fullName}`}
                     >
                       Open Profile
-                    </button>
+                    </Button>
 
                     {canManage && (
                       <>
                         {resident.status === 'ACTIVE' &&
                           resident.faceEnrollmentStatus !== 'ENROLLED' &&
                           onEnrollFace && (
-                            <button
+                            <Button
                               type="button"
-                              className="px-3 py-1.5 text-sm font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition"
+                              variant="secondary"
+                              size="sm"
                               onClick={() => onEnrollFace(resident)}
                               aria-label={`Enroll face for ${resident.fullName}`}
                             >
                               {resident.faceEnrollmentStatus === 'NEEDS_REENROLLMENT'
                                 ? 'Re-enroll Face'
                                 : 'Enroll Face'}
-                            </button>
+                            </Button>
                           )}
 
                       </>
