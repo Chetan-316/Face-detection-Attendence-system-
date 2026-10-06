@@ -68,7 +68,7 @@ export const ResidentDeactivateModal: React.FC<ResidentDeactivateModalProps> = (
           <div className="alert-body">
             <p className="font-semibold">Confirm deactivation for {resident.fullName} ({resident.residentCode})</p>
             <p className="text-xs mt-1">
-              Deactivated residents are flagged as INACTIVE. They will be excluded from active roll-calls until reactivated. This action is permanently recorded in the institutional audit log.
+              Deactivated residents are marked inactive and excluded from normal resident operations until reactivated. This action remains in the audit history.
             </p>
           </div>
         </div>
