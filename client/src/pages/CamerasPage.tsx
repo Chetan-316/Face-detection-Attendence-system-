@@ -780,11 +780,11 @@ export const CamerasPage: React.FC = () => {
                       muted
                       className="live-preview-image object-contain"
                     />
-                    <div className="video-hud pointer-events-none">
+                    <div className="hud-overlay pointer-events-none">
                       <div className="hud-top-left">
-                        <span className="hud-live-badge">
-                          <span className="live-dot" />
-                          LIVE PREVIEW
+                        <span className="live-indicator">
+                          <span className="pulse-dot" />
+                          <span>LIVE PREVIEW</span>
                         </span>
                       </div>
                     </div>
@@ -799,11 +799,11 @@ export const CamerasPage: React.FC = () => {
                         setStreamError('Preview stream connection interrupted. Please restart stream.');
                       }}
                     />
-                    <div className="video-hud pointer-events-none">
+                    <div className="hud-overlay pointer-events-none">
                       <div className="hud-top-left">
-                        <span className="hud-live-badge">
-                          <span className="live-dot" />
-                          LIVE PREVIEW
+                        <span className="live-indicator">
+                          <span className="pulse-dot" />
+                          <span>LIVE PREVIEW</span>
                         </span>
                       </div>
                     </div>
