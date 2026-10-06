@@ -66,7 +66,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
           <UserX size={32} />
         </div>
         <h3 className="text-xl font-bold text-slate-900 mb-2">
-          {hasActiveFilters ? 'No matching residents found' : 'No residents registered in facility'}
+          {hasActiveFilters ? 'No matching residents found' : 'No residents registered in this hostel'}
         </h3>
         <p className="text-sm text-slate-500 max-w-sm mx-auto mb-6">
           {hasActiveFilters
