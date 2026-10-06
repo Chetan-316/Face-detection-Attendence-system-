@@ -260,7 +260,7 @@ export const ResidentCreateModal: React.FC<ResidentCreateModalProps> = ({
           ]}
         />
 
-        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+        <div className="resident-create-actions">
           <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
             Cancel
           </Button>
