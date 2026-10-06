@@ -625,7 +625,7 @@ export const ReportsPage: React.FC = () => {
                 {presenceSummary?.insideCount ?? 0}
               </div>
               <div className="metric-footer flex flex-col gap-3 items-start">
-                <span>{presenceSummary?.insideRate ?? 0}% of residents in facility</span>
+                <span>{presenceSummary?.insideRate ?? 0}% of residents in current scope</span>
                 <Button
                   size="md"
                   variant="outline"
@@ -802,7 +802,7 @@ export const ReportsPage: React.FC = () => {
                         <th>Room</th>
                         <th>Movement</th>
                         <th>Gate</th>
-                        <th>Recorded By</th>
+                        <th>Source</th>
                         <th>Record Status</th>
                       </tr>
                     </thead>
@@ -963,7 +963,11 @@ export const ReportsPage: React.FC = () => {
                         <div className="text-right border-l border-border pl-4">
                           <span className="text-xs text-secondary block">Last Movement</span>
                           <span className="text-sm font-semibold text-primary">
-                            {residentSummary.lastMovementDirection || 'No movement'}
+                            {residentSummary.lastMovementDirection === 'IN'
+                              ? 'Entered'
+                              : residentSummary.lastMovementDirection === 'OUT'
+                              ? 'Left'
+                              : 'No movement'}
                           </span>
                           <span className="text-xs text-muted block">
                             {residentSummary.lastMovementTime
