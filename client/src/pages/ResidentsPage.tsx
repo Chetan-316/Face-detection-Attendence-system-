@@ -235,6 +235,7 @@ export const ResidentsPage: React.FC = () => {
         pageSize={pageSize}
         onPageChange={(newPage: number) => setPage(newPage)}
         isLoading={isLoading}
+        itemLabel="residents"
       />
 
       {/* Add Resident Modal */}
