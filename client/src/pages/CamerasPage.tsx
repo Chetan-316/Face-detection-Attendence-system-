@@ -172,7 +172,7 @@ export const CamerasPage: React.FC = () => {
         setNewCameraLocations((locationRes.data || []).filter((location) => location.isActive));
       }
     } catch (err: any) {
-      toastError(err.message || 'Failed to load facilities');
+      toastError(err.message || 'Failed to load hostels');
     }
   }, [isAdmin, user?.hostelId, toastError]);
 
