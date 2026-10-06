@@ -478,7 +478,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
                 onClick={startWebcam}
                 className="mt-1 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow transition"
               >
-                Allow / Start Camera
+                Start camera
               </button>
             </div>
           )}
@@ -634,7 +634,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({
           </Button>
 
           <span className="text-xs text-slate-500">
-            Five guided angles are required for a complete enrollment.
+            Capture all five guided angles to complete enrollment.
           </span>
         </div>
       </div>
