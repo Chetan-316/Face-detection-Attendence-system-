@@ -339,7 +339,7 @@ export const ReportsPage: React.FC = () => {
       />
 
       {/* Primary Tab Navigation */}
-      <div className="reports-tab-nav mb-6 flex border-b border-border">
+      <div className="reports-tab-nav mb-6 flex border-b border-border" role="tablist" aria-label="Report sections">
         <button
           type="button"
           className={`tab-btn px-5 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
@@ -348,6 +348,8 @@ export const ReportsPage: React.FC = () => {
               : 'border-transparent text-secondary hover:text-primary'
           }`}
           onClick={() => setActiveTab('movement')}
+          role="tab"
+          aria-selected={activeTab === 'movement'}
         >
           <ArrowRightLeft size={16} />
           <span>Presence & Movement</span>
@@ -361,6 +363,8 @@ export const ReportsPage: React.FC = () => {
               : 'border-transparent text-secondary hover:text-primary'
           }`}
           onClick={() => setActiveTab('residents')}
+          role="tab"
+          aria-selected={activeTab === 'residents'}
         >
           <Users size={16} />
           <span>Residents</span>
@@ -625,7 +629,7 @@ export const ReportsPage: React.FC = () => {
                 {presenceSummary?.insideCount ?? 0}
               </div>
               <div className="metric-footer flex flex-col gap-3 items-start">
-                <span>{presenceSummary?.insideRate ?? 0}% of residents in facility</span>
+                <span>{presenceSummary?.insideRate ?? 0}% of residents in hostel</span>
                 <Button
                   size="md"
                   variant="outline"
