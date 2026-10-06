@@ -3682,3 +3682,28 @@ a:focus-visible {
   border-color: rgba(255, 255, 255, 0.3);
   border-top-color: #FFFFFF;
 }
+
+
+.modal-actions-bar {
+  flex-wrap: wrap;
+}
+
+.resident-create-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 560px) {
+  .resident-create-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .resident-create-actions .btn {
+    width: 100%;
+  }
+}
