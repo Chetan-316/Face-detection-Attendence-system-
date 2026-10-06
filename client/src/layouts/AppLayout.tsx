@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
@@ -31,6 +31,19 @@ export const AppLayout: React.FC = () => {
   };
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen]);
 
   return (
     <div className="app-shell">
@@ -170,7 +183,7 @@ export const AppLayout: React.FC = () => {
             <div className="system-scope-card">
               <div className="scope-row">
                 <Building2 size={14} className="scope-icon" />
-                <span className="scope-label">Facility</span>
+                <span className="scope-label">Hostel scope</span>
               </div>
               <span className="scope-value">
                 {user?.role === 'ADMIN'
