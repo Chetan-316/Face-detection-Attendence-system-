@@ -484,13 +484,12 @@ export class ResidentService {
       throw new NotFoundError('Resident', id);
     }
 
-    // Scope check: hostel isolation for Warden / Guard / scoped Admin
+    // Wardens and Guards are locked to their assigned hostel.
+    // Administrators can manage any resident in their organization.
     if (actor.role === StaffRole.WARDEN || actor.role === StaffRole.GUARD) {
       if (!actor.hostelId || actor.hostelId !== resident.hostelId) {
         throw new NotFoundError('Resident', id);
       }
-    } else if (actor.role === StaffRole.ADMIN && actor.hostelId && actor.hostelId !== resident.hostelId) {
-      throw new NotFoundError('Resident', id);
     }
 
     return this.toSafeResident(resident);
@@ -513,13 +512,11 @@ export class ResidentService {
       throw new NotFoundError('Resident with code', code);
     }
 
-    // Scope check: hostel isolation
+    // Wardens and Guards are locked to their assigned hostel.
     if (actor.role === StaffRole.WARDEN || actor.role === StaffRole.GUARD) {
       if (!actor.hostelId || actor.hostelId !== resident.hostelId) {
         throw new NotFoundError('Resident with code', code);
       }
-    } else if (actor.role === StaffRole.ADMIN && actor.hostelId && actor.hostelId !== resident.hostelId) {
-      throw new NotFoundError('Resident with code', code);
     }
 
     return this.toSafeResident(resident);
