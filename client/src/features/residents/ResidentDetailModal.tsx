@@ -114,7 +114,7 @@ export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
                 <XCircle size={18} className="text-slate-400 shrink-0" />
               )}
               <div>
-                <span className="font-semibold block text-slate-800">Face Biometrics</span>
+                <span className="font-semibold block text-slate-800">Face Enrollment</span>
                 <span className={isFaceEnrolled ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
                   {isFaceEnrolled ? 'Enrolled' : 'Not Enrolled'}
                 </span>
@@ -166,7 +166,7 @@ export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
 
           <div className="detail-section-card p-5 rounded-xl border border-slate-200 bg-white">
             <h4 className="detail-section-title font-semibold text-sm mb-3 flex items-center gap-2 text-slate-900">
-              <Home size={16} /> Facility & Contact
+              <Home size={16} /> Hostel & Contact
             </h4>
             <div className="detail-dl space-y-2 text-sm">
               <div className="detail-row flex justify-between items-center py-1">
@@ -174,7 +174,7 @@ export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
                 <span className="detail-dd font-semibold text-slate-800">{resident.roomGroup}</span>
               </div>
               <div className="detail-row flex justify-between items-center py-1 border-t border-slate-100">
-                <span className="detail-dt text-slate-500">Hostel Facility</span>
+                <span className="detail-dt text-slate-500">Hostel</span>
                 <span className="detail-dd text-slate-800">
                   {resident.hostel?.name ? `${resident.hostel.name} (${resident.hostel.code})` : 'Assigned Hostel'}
                 </span>
