@@ -172,7 +172,7 @@ export const CamerasPage: React.FC = () => {
         setNewCameraLocations((locationRes.data || []).filter((location) => location.isActive));
       }
     } catch (err: any) {
-      toastError(err.message || 'Failed to load facilities');
+      toastError(err.message || 'Failed to load hostels');
     }
   }, [isAdmin, user?.hostelId, toastError]);
 
@@ -417,7 +417,7 @@ export const CamerasPage: React.FC = () => {
       return;
     }
     if (!newCameraFacilityId) {
-      toastError('Select a facility for this camera');
+      toastError('Select a hostel for this camera');
       return;
     }
     if ((newCameraRole === 'IN' || newCameraRole === 'OUT') && !newCameraLocationId) {
