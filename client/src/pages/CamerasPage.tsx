@@ -105,6 +105,39 @@ export const CamerasPage: React.FC = () => {
   const [isWebcamPreviewActive, setIsWebcamPreviewActive] = useState<boolean>(false);
   const [webcamError, setWebcamError] = useState<string | null>(null);
 
+  useEffect(() => {
+    const hasDialog = Boolean(snapshotData || isRegisterModalOpen || isEditModalOpen);
+    if (!hasDialog) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+
+      if (snapshotData) {
+        setSnapshotData(null);
+      } else if (isEditModalOpen && !isSavingEdit) {
+        setIsEditModalOpen(false);
+      } else if (isRegisterModalOpen && !isSubmittingCamera) {
+        closeRegisterModal();
+      }
+    };
+
+    document.addEventListener('keydown', handleDialogKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleDialogKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [
+    snapshotData,
+    isRegisterModalOpen,
+    isEditModalOpen,
+    isSavingEdit,
+    isSubmittingCamera,
+  ]);
+
   const startWebcamPreview = useCallback(async () => {
     try {
       setWebcamError(null);
@@ -1005,7 +1038,13 @@ export const CamerasPage: React.FC = () => {
       {/* Snapshot Preview Modal */}
       {snapshotData && (
         <div className="modal-backdrop" onClick={() => setSnapshotData(null)}>
-          <div className="modal-dialog snapshot-modal" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-dialog snapshot-modal"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Camera Snapshot"
+          >
             <div className="modal-header">
               <div className="modal-title-group">
                 <CameraIcon size={20} className="modal-icon" />
@@ -1066,7 +1105,13 @@ export const CamerasPage: React.FC = () => {
       {/* Add Camera Modal */}
       {isRegisterModalOpen && (
         <div className="modal-backdrop" onClick={closeRegisterModal}>
-          <div className="modal-dialog modal-md" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-dialog modal-md"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Add Camera"
+          >
             <div className="modal-header">
               <div>
                 <h3 className="modal-title">Add Camera</h3>
@@ -1420,7 +1465,13 @@ export const CamerasPage: React.FC = () => {
       {/* Edit Camera Modal */}
       {isEditModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsEditModalOpen(false)}>
-          <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-dialog modal-lg"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit Camera"
+          >
             <div className="modal-header">
               <div className="modal-title-group">
                 <Edit2 size={20} className="modal-icon" />
