@@ -11,7 +11,6 @@ import {
   ValidationError,
 } from '../../common/errors';
 import {
-  assertUserCanOperateInHostel,
   assertUserCanOperateInOrganization,
 } from '../../modules/auth/permissions';
 import { toSafeCameraDto } from '../../modules/cameras/utils/camera-dto';
@@ -69,10 +68,6 @@ export function createCameraRouter(
 
     if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
       if (user.hostelId && camera.hostelId !== user.hostelId) {
-        throw new NotFoundError('Camera', cameraId);
-      }
-    } else if (user.role === StaffRole.ADMIN && user.hostelId) {
-      if (camera.hostelId !== user.hostelId) {
         throw new NotFoundError('Camera', cameraId);
       }
     }
@@ -141,7 +136,7 @@ export function createCameraRouter(
         }
         targetHostelId = user.hostelId;
       } else if (user.role === StaffRole.ADMIN) {
-        targetHostelId = hostelIdQuery || user.hostelId || undefined;
+        targetHostelId = hostelIdQuery || undefined;
       }
 
       const cameras = await cameraService.listCameras(
@@ -220,7 +215,10 @@ export function createCameraRouter(
           }
         }
 
-        assertUserCanOperateInHostel(user, user.organizationId, hostelId);
+        const targetHostel = await db.hostel.findUnique({ where: { id: hostelId } });
+        if (!targetHostel || targetHostel.organizationId !== user.organizationId || !targetHostel.isActive) {
+          throw new ValidationError('Selected facility is not active in this organization');
+        }
 
         if (parsed.data.locationId) {
           const location = await db.location.findUnique({ where: { id: parsed.data.locationId } });
