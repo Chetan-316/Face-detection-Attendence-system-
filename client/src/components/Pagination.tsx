@@ -8,6 +8,7 @@ export interface PaginationProps {
   pageSize: number;
   onPageChange: (page: number) => void;
   isLoading?: boolean;
+  itemLabel?: string;
 }
 
 export const Pagination: React.FC<PaginationProps> = ({
@@ -17,6 +18,7 @@ export const Pagination: React.FC<PaginationProps> = ({
   pageSize,
   onPageChange,
   isLoading = false,
+  itemLabel = 'items',
 }) => {
   if (totalItems === 0) return null;
 
@@ -28,7 +30,7 @@ export const Pagination: React.FC<PaginationProps> = ({
       <div className="pagination-info">
         Showing <span className="font-semibold">{startItem}</span> to{' '}
         <span className="font-semibold">{endItem}</span> of{' '}
-        <span className="font-semibold">{totalItems}</span> residents
+        <span className="font-semibold">{totalItems}</span> {itemLabel}
       </div>
       <div className="pagination-actions">
         <button
