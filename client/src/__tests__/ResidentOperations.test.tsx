@@ -284,7 +284,11 @@ describe('Resident Operations & Modals', () => {
       ));
 
       const reasonInput = screen.getByLabelText(/mandatory reason/i);
+      await user.click(reasonInput);
       await user.type(reasonInput, 'Student resumed hostel residency for next semester');
+      await waitFor(() => {
+        expect(reasonInput).toHaveValue('Student resumed hostel residency for next semester');
+      });
       await user.click(screen.getByRole('button', { name: /confirm reactivation/i }));
 
       await waitFor(() => {
