@@ -213,7 +213,7 @@ export const CamerasPage: React.FC = () => {
   const fetchCameras = useCallback(async () => {
     try {
       setIsLoading(true);
-      const res = await camerasApi.listCameras(user?.hostelId || undefined);
+      const res = await camerasApi.listCameras(isAdmin ? undefined : user?.hostelId || undefined);
       setCameras(res.data);
 
       if (res.data.length > 0 && !selectedCameraId) {
@@ -228,7 +228,7 @@ export const CamerasPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.hostelId, selectedCameraId, toastError]);
+  }, [isAdmin, user?.hostelId, selectedCameraId, toastError]);
 
   useEffect(() => {
     fetchCameras();
@@ -1158,7 +1158,6 @@ export const CamerasPage: React.FC = () => {
                       className="form-control"
                       value={newCameraFacilityId}
                       onChange={(e) => loadNewCameraLocations(e.target.value)}
-                      disabled={!!user?.hostelId}
                       required
                     >
                       <option value="">Select facility</option>
