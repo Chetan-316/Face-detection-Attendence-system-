@@ -43,7 +43,7 @@ vi.mock('../api/recognition.api', () => ({
   },
 }));
 
-describe('Step 06: Continuous Face Recognition Monitor Interface', () => {
+describe('Step 06: Continuous Face Recognition Interface', () => {
   const mockCameras = [
     {
       id: 'cam-001',
@@ -111,7 +111,7 @@ describe('Step 06: Continuous Face Recognition Monitor Interface', () => {
     renderComponent();
 
     await waitFor(() => {
-      expect(screen.getByText(/Face Recognition Monitor/i)).toBeInTheDocument();
+      expect(screen.getByText(/Face Recognition/i)).toBeInTheDocument();
       expect(screen.getAllByText(/Main Gate Webcam/i).length).toBeGreaterThan(0);
       expect(screen.getByTestId('start-recognition-btn')).toBeInTheDocument();
     });
@@ -302,7 +302,7 @@ describe('Step 06: Continuous Face Recognition Monitor Interface', () => {
     renderComponent();
 
     await waitFor(() => {
-      expect(screen.getByText(/Face Recognition Monitor/i)).toBeInTheDocument();
+      expect(screen.getByText(/Face Recognition/i)).toBeInTheDocument();
     });
 
     const bodyHtml = document.body.innerHTML;
