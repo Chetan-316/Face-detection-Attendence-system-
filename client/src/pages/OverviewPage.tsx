@@ -220,7 +220,7 @@ export const OverviewPage: React.FC = () => {
           <div>
             <span className="overview-stat-value">
               {!hasScopedReturnDeadline
-                ? 'Per facility'
+                ? 'Per hostel'
                 : isAfterReturnDeadline
                 ? currentlyOut
                 : returnDeadlineLabel}
@@ -245,7 +245,7 @@ export const OverviewPage: React.FC = () => {
           <div>
             <div className="font-bold text-[15px]">
               {!hasScopedReturnDeadline
-                ? 'Return deadlines are configured per facility'
+                ? 'Return deadlines are configured per hostel'
                 : isAfterReturnDeadline
                 ? `${currentlyOut} ${currentlyOut === 1 ? 'resident has' : 'residents have'} not returned`
                 : `Return deadline is ${returnDeadlineLabel}`}
