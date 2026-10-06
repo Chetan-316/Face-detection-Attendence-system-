@@ -101,6 +101,7 @@ export const CamerasPage: React.FC = () => {
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const customModalRef = useRef<HTMLDivElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const [isWebcamPreviewActive, setIsWebcamPreviewActive] = useState<boolean>(false);
   const [webcamError, setWebcamError] = useState<string | null>(null);
@@ -394,6 +395,59 @@ export const CamerasPage: React.FC = () => {
     setModalTestResult(null);
   };
 
+  useEffect(() => {
+    const isCustomModalOpen = Boolean(snapshotData) || isRegisterModalOpen || isEditModalOpen;
+    if (!isCustomModalOpen) return;
+
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const frame = window.requestAnimationFrame(() => {
+      const firstFocusable = customModalRef.current?.querySelector<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href]'
+      );
+      (firstFocusable || customModalRef.current)?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (snapshotData) setSnapshotData(null);
+        else if (isEditModalOpen && !isSavingEdit) setIsEditModalOpen(false);
+        else if (isRegisterModalOpen && !isSubmittingCamera) closeRegisterModal();
+        return;
+      }
+
+      if (event.key !== 'Tab' || !customModalRef.current) return;
+      const focusable = Array.from(
+        customModalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        customModalRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus?.();
+    };
+  }, [snapshotData, isRegisterModalOpen, isEditModalOpen, isSubmittingCamera, isSavingEdit]);
   const handleRegisterNext = () => {
     if (!newCameraName.trim()) {
       toastError('Camera name is required');
@@ -1005,7 +1059,7 @@ export const CamerasPage: React.FC = () => {
       {/* Snapshot Preview Modal */}
       {snapshotData && (
         <div className="modal-backdrop" onClick={() => setSnapshotData(null)}>
-          <div className="modal-dialog snapshot-modal" role="dialog" aria-modal="true" aria-labelledby="camera-snapshot-title" onClick={(e) => e.stopPropagation()}>
+          <div ref={customModalRef} tabIndex={-1} className="modal-dialog snapshot-modal" role="dialog" aria-modal="true" aria-labelledby="camera-snapshot-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-group">
                 <CameraIcon size={20} className="modal-icon" />
@@ -1066,7 +1120,7 @@ export const CamerasPage: React.FC = () => {
       {/* Add Camera Modal */}
       {isRegisterModalOpen && (
         <div className="modal-backdrop" onClick={closeRegisterModal}>
-          <div className="modal-dialog modal-md" role="dialog" aria-modal="true" aria-labelledby="add-camera-title" onClick={(e) => e.stopPropagation()}>
+          <div ref={customModalRef} tabIndex={-1} className="modal-dialog modal-md" role="dialog" aria-modal="true" aria-labelledby="add-camera-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
                 <h3 id="add-camera-title" className="modal-title">Add Camera</h3>
@@ -1420,7 +1474,7 @@ export const CamerasPage: React.FC = () => {
       {/* Edit Camera Modal */}
       {isEditModalOpen && (
         <div className="modal-backdrop" onClick={() => setIsEditModalOpen(false)}>
-          <div className="modal-dialog modal-lg" role="dialog" aria-modal="true" aria-labelledby="edit-camera-title" onClick={(e) => e.stopPropagation()}>
+          <div ref={customModalRef} tabIndex={-1} className="modal-dialog modal-lg" role="dialog" aria-modal="true" aria-labelledby="edit-camera-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title-group">
                 <Edit2 size={20} className="modal-icon" />
