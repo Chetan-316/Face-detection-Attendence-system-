@@ -585,10 +585,10 @@ export const RecognitionPage: React.FC = () => {
           <h1 className="page-title text-2xl font-bold flex items-center gap-2">
             <Eye className="text-primary-500" size={24} />
             Gate Monitor
-            <span className="text-slate-400 text-sm font-normal">| Face Recognition Monitor</span>
+            <span className="text-slate-500 text-sm font-normal">Face Recognition</span>
           </h1>
-          <p className="page-subtitle text-slate-400 text-sm mt-1">
-            Supervised resident entry and exit monitoring — Observation Mode
+          <p className="page-subtitle text-slate-600 text-sm mt-1">
+            Live resident identification and supervised gate movement controls.
           </p>
         </div>
 
@@ -597,14 +597,14 @@ export const RecognitionPage: React.FC = () => {
           <div className="camera-select-wrapper">
             <select
               aria-label="Select Camera"
-              className="select-input bg-slate-800 border-slate-700 text-white rounded px-3 py-2 text-sm"
+              className="form-select min-w-[220px]"
               value={selectedCameraId}
               onChange={handleCameraChange}
               disabled={isLoading || isActionPending}
             >
               {cameras.map((cam) => (
                 <option key={cam.id} value={cam.id}>
-                  {cam.name} ({cam.role})
+                  {cam.name} — {cam.role === 'IN' ? 'Entry' : cam.role === 'OUT' ? 'Exit' : cam.role === 'ATTENDANCE' ? 'Attendance' : 'General'}
                 </option>
               ))}
             </select>
