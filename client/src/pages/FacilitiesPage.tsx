@@ -29,7 +29,6 @@ export const FacilitiesPage: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [returnDeadlineTime, setReturnDeadlineTime] = useState('21:00');
 
-  const isOrganizationAdmin = !user?.hostelId;
 
   const minutesToTime = (minutes = 1260) => {
     const safeMinutes = Math.min(Math.max(minutes, 0), 1439);
@@ -91,9 +90,9 @@ export const FacilitiesPage: React.FC = () => {
       setIsCreateOpen(false);
       resetForm();
       await fetchFacilities();
-      success('Facility created successfully.');
+      success('Hostel created successfully.');
     } catch (err: any) {
-      setFormError(err.message || 'Unable to create facility.');
+      setFormError(err.message || 'Unable to create hostel.');
     } finally {
       setIsSubmitting(false);
     }
@@ -211,8 +210,8 @@ export const FacilitiesPage: React.FC = () => {
   return (
     <div className="facilities-page">
       <PageHeader
-        title="Facilities"
-        subtitle="Create and manage the hostels available to your organization."
+        title="Hostels & Facilities"
+        subtitle="Create hostels, set return deadlines, and manage gates and locations."
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -223,18 +222,16 @@ export const FacilitiesPage: React.FC = () => {
             >
               Refresh
             </Button>
-            {isOrganizationAdmin && (
-              <Button
-                variant="primary"
-                onClick={() => {
-                  resetForm();
-                  setIsCreateOpen(true);
-                }}
-                leftIcon={<Plus size={16} />}
-              >
-                Add Facility
-              </Button>
-            )}
+            <Button
+              variant="primary"
+              onClick={() => {
+                resetForm();
+                setIsCreateOpen(true);
+              }}
+              leftIcon={<Plus size={16} />}
+            >
+              Add Hostel
+            </Button>
           </div>
         }
       />
@@ -330,16 +327,14 @@ export const FacilitiesPage: React.FC = () => {
                 <Button variant="outline" size="sm" onClick={() => openEdit(facility)} className="flex-1">
                   Edit
                 </Button>
-                {isOrganizationAdmin && (
-                  <Button
-                    variant={facility.isActive ? 'ghost' : 'secondary'}
-                    size="sm"
-                    onClick={() => handleStatusChange(facility)}
-                    className="flex-1"
-                  >
-                    {facility.isActive ? 'Deactivate' : 'Reactivate'}
-                  </Button>
-                )}
+                <Button
+                  variant={facility.isActive ? 'ghost' : 'secondary'}
+                  size="sm"
+                  onClick={() => handleStatusChange(facility)}
+                  className="flex-1"
+                >
+                  {facility.isActive ? 'Deactivate' : 'Reactivate'}
+                </Button>
               </div>
             </div>
           ))}
@@ -349,8 +344,8 @@ export const FacilitiesPage: React.FC = () => {
       <Modal
         isOpen={isCreateOpen}
         onClose={() => !isSubmitting && setIsCreateOpen(false)}
-        title="Add Facility"
-        subtitle="Create a hostel that can receive residents, staff, and cameras."
+        title="Add Hostel"
+        subtitle="Create a new hostel and set its default return deadline."
         size="sm"
         footer={
           <div className="flex justify-end gap-2 w-full">
@@ -365,24 +360,24 @@ export const FacilitiesPage: React.FC = () => {
               Cancel
             </Button>
             <Button variant="primary" onClick={handleCreate} isLoading={isSubmitting}>
-              Create Facility
+              Create Hostel
             </Button>
           </div>
         }
       >
         <Input
-          label="Facility Name"
+          label="Hostel Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Example: Girls Hostel A"
           required
         />
         <Input
-          label="Facility Code"
+          label="Hostel Code"
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           placeholder="Example: GHA"
-          hint="Short unique code used internally."
+          hint="Use a short unique code, for example GHA or BOYS-A."
           required
         />
         <Input
