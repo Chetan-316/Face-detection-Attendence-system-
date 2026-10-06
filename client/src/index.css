@@ -2763,6 +2763,16 @@ textarea.form-control {
 .max-w-\[90px\] { max-width: 90px !important; }
 .text-\[10px\] { font-size: 10px !important; line-height: 1.35 !important; }
 .text-\[11px\] { font-size: 11px !important; line-height: 1.35 !important; }
+.bg-emerald-100 { background-color: #DCFCE7 !important; }
+.text-emerald-800 { color: #166534 !important; }
+.bg-amber-100 { background-color: #FEF3C7 !important; }
+.text-amber-800 { color: #92400E !important; }
+
+@media (min-width: 640px) {
+  .sm\:h-\[360px\] { height: 360px !important; }
+  .sm\:w-56 { width: 14rem !important; }
+  .sm\:h-72 { height: 18rem !important; }
+}
 
 /* Positioning & Z-index */
 .relative { position: relative !important; }
