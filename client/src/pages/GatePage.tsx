@@ -34,6 +34,7 @@ export const GatePage: React.FC = () => {
   const [cameras, setCameras] = useState<CameraEntity[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
   const [selectedCamera, setSelectedCamera] = useState<CameraEntity | null>(null);
+  const isBrowserWebcam = selectedCamera?.sourceType === 'WEBCAM';
 
   const [presenceCounts, setPresenceCounts] = useState<PresenceCounts | null>(null);
   const [recentMovements, setRecentMovements] = useState<MovementEventEntity[]>([]);
@@ -387,7 +388,6 @@ export const GatePage: React.FC = () => {
   const isLowQuality = activeObservation?.classification === 'QUALITY_INSUFFICIENT';
   const isUncertain = activeObservation?.classification === 'UNCERTAIN';
   const cameraHealth = selectedCamera?.healthStatus || 'OFFLINE';
-  const isBrowserWebcam = selectedCamera?.sourceType === 'WEBCAM';
   const cameraIsOnline = isBrowserWebcam ? isCameraActive : cameraHealth === 'ONLINE';
   const cameraStatusLabel = isBrowserWebcam
     ? isCameraActive
