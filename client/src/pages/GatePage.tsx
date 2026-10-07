@@ -107,10 +107,17 @@ export const GatePage: React.FC = () => {
     };
   }, []);
 
-  // Auto-attempt start on mount
+  // Browser webcam is only used for cameras explicitly configured as WEBCAM.
+  // Network/IP cameras stay on the persistent server-side stream.
   useEffect(() => {
-    startLaptopCamera();
-  }, [startLaptopCamera]);
+    setStreamError(null);
+
+    if (selectedCamera?.sourceType === 'WEBCAM') {
+      startLaptopCamera();
+    } else {
+      stopLaptopCamera();
+    }
+  }, [selectedCamera?.id, selectedCamera?.sourceType, startLaptopCamera, stopLaptopCamera]);
 
   const handleRegisterVisitorSuccess = () => {
     fetchMovementData();
@@ -120,7 +127,7 @@ export const GatePage: React.FC = () => {
   const fetchCameras = useCallback(async () => {
     try {
       const res = await camerasApi.listCameras(user?.hostelId || undefined);
-      const list = res.data || [];
+      const list = (res.data || []).filter((camera) => camera.role === 'IN' || camera.role === 'OUT');
       setCameras(list);
 
       const activeId = selectedCameraId || (list.length > 0 ? list[0].id : '');
@@ -207,16 +214,15 @@ export const GatePage: React.FC = () => {
     }
   }, [selectedCameraId, isConfirming, isScanningFace]);
 
-  // Periodic auto-scan when laptop camera is active (every 1.8 seconds)
+  // Continuous browser-webcam scan. Never stop the scanner just because one
+  // resident was recognized; backpressure in captureAndProcessFrame prevents overlap.
   useEffect(() => {
-    if (!isCameraActive || isConfirming) return;
+    if (!isCameraActive || isConfirming || !isBrowserWebcam) return;
     const interval = setInterval(() => {
-      if (!activeObservation || activeObservation.classification !== 'MATCH') {
-        captureAndProcessFrame();
-      }
-    }, 1800);
+      captureAndProcessFrame();
+    }, 1000);
     return () => clearInterval(interval);
-  }, [isCameraActive, isConfirming, activeObservation, captureAndProcessFrame]);
+  }, [isCameraActive, isConfirming, isBrowserWebcam, captureAndProcessFrame]);
 
   // Connect live recognition stream via SSE using short-lived stream token
   useEffect(() => {
@@ -231,16 +237,6 @@ export const GatePage: React.FC = () => {
 
     const connectStream = async () => {
       try {
-        // Auto-start recognition if not currently running
-        if (user?.role === 'ADMIN' || user?.role === 'WARDEN') {
-          try {
-            const st = await recognitionApi.getStatus(selectedCameraId);
-            if (st.state !== 'RUNNING') {
-              await recognitionApi.startRecognition(selectedCameraId);
-            }
-          } catch {}
-        }
-
         const { streamToken } = await recognitionApi.getStreamToken(selectedCameraId);
         if (!isMounted) return;
 
@@ -258,12 +254,28 @@ export const GatePage: React.FC = () => {
             setLastActionSuccessMsg(null);
 
             if (obs.classification === 'MATCH' && obs.resident) {
-              setActiveResidentPresence(null);
-              movementsApi.getResidentPresence(obs.resident.id).then((pres) => {
-                if (isMounted && pres?.currentState) {
-                  setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
-                }
-              }).catch(() => {});
+              const decision = obs.movementDecision;
+
+              if (decision?.status === 'MOVEMENT_CREATED' && decision.direction) {
+                const directionLabel = decision.direction === 'IN' ? 'Entry' : 'Exit';
+                setActiveResidentPresence(decision.currentPresence || decision.direction);
+                setLastActionSuccessMsg(`${directionLabel} recorded automatically for ${obs.resident.fullName}.`);
+                fetchMovementData();
+
+                if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+                resetTimerRef.current = setTimeout(() => {
+                  setActiveObservation(null);
+                  setActiveResidentPresence(null);
+                  setLastActionSuccessMsg(null);
+                }, 2200);
+              } else {
+                setActiveResidentPresence(null);
+                movementsApi.getResidentPresence(obs.resident.id).then((pres) => {
+                  if (isMounted && pres?.currentState) {
+                    setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
+                  }
+                }).catch(() => {});
+              }
             }
           } catch (e) {}
         });
@@ -298,12 +310,21 @@ export const GatePage: React.FC = () => {
 
             setActiveObservation(latest);
             if (latest.classification === 'MATCH' && latest.resident) {
-              setActiveResidentPresence(null);
-              movementsApi.getResidentPresence(latest.resident.id).then((pres) => {
-                if (isMounted && pres?.currentState) {
-                  setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
-                }
-              }).catch(() => {});
+              const decision = latest.movementDecision;
+              if (decision?.status === 'MOVEMENT_CREATED' && decision.direction) {
+                setActiveResidentPresence(decision.currentPresence || decision.direction);
+                setLastActionSuccessMsg(
+                  `${decision.direction === 'IN' ? 'Entry' : 'Exit'} recorded automatically for ${latest.resident.fullName}.`
+                );
+                fetchMovementData();
+              } else {
+                setActiveResidentPresence(null);
+                movementsApi.getResidentPresence(latest.resident.id).then((pres) => {
+                  if (isMounted && pres?.currentState) {
+                    setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
+                  }
+                }).catch(() => {});
+              }
             }
           }
         }).catch(() => {});
@@ -430,6 +451,12 @@ export const GatePage: React.FC = () => {
 
           <div className="gate-presence-summary">
             <div>
+              <span className="text-slate-500 block text-sm font-medium">Total</span>
+              <span className="text-2xl font-bold text-slate-900">
+                {presenceCounts?.totalResidents ?? '—'}
+              </span>
+            </div>
+            <div>
               <span className="text-slate-500 block text-sm font-medium">Inside</span>
               <span className="text-2xl font-bold text-emerald-700">
                 {presenceCounts?.currentlyIn ?? '—'}
@@ -461,7 +488,7 @@ export const GatePage: React.FC = () => {
         {/* Left Column: Live Camera Video Stream (Dominant 440-480px height) */}
         <div className="gate-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
           <div className="relative bg-slate-900 flex items-center justify-center overflow-hidden min-h-[440px] sm:min-h-[480px] h-full">
-            {isCameraActive ? (
+            {isBrowserWebcam && isCameraActive ? (
               <div className="relative w-full h-full min-h-[440px] sm:min-h-[480px]">
                 <video
                   ref={(el) => {
@@ -505,40 +532,42 @@ export const GatePage: React.FC = () => {
                   </button>
                 </div>
               </div>
-            ) : selectedCameraId && !streamError ? (
+            ) : !isBrowserWebcam && selectedCameraId && !streamError ? (
               <div className="relative w-full h-full">
                 <img
                   src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
-                  alt="Gate Live Feed"
+                  alt="Gate live feed"
                   className="w-full h-full object-cover"
                   onError={() => setStreamError('Stream interrupted')}
                 />
-                <button
-                  type="button"
-                  onClick={startLaptopCamera}
-                  className="gate-camera-overlay-button absolute top-3 right-3"
-                >
-                  <CameraIcon size={12} />
-                  <span>Use Laptop Camera</span>
-                </button>
+                <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Persistent network camera</span>
+                </div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center text-slate-400 p-8 text-center gap-3">
                 <CameraIcon size={48} className="text-slate-500" />
-                <p className="text-base font-semibold text-slate-200">Laptop Camera Ready</p>
-                <p className="text-sm text-slate-400 max-w-xs">
-                  {cameraError
-                    ? `Camera access: ${cameraError}`
-                    : 'Click below to stream video directly from your laptop camera.'}
+                <p className="text-base font-semibold text-slate-200">
+                  {isBrowserWebcam ? 'Laptop Camera Ready' : 'Camera stream unavailable'}
                 </p>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={startLaptopCamera}
-                  className="mt-2"
-                >
-                  Start Laptop Camera
-                </Button>
+                <p className="text-sm text-slate-400 max-w-xs">
+                  {isBrowserWebcam
+                    ? cameraError
+                      ? `Camera access: ${cameraError}`
+                      : 'Start the configured laptop camera to continue scanning.'
+                    : 'The network camera will reconnect automatically. Check its connection from Camera Setup if this persists.'}
+                </p>
+                {isBrowserWebcam && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={startLaptopCamera}
+                    className="mt-2"
+                  >
+                    Start Laptop Camera
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -620,52 +649,45 @@ export const GatePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Guard sees only the valid next movement based on current presence */}
               <div className="pt-4 border-t border-slate-200 flex flex-col gap-3">
                 <div>
                   <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                    Next movement
+                    Automatic movement
                   </span>
-                  <p className="text-sm text-slate-500 mt-1">
-                    {activeResidentPresence === 'IN'
-                      ? 'Resident is currently inside. Record an exit when they leave.'
-                      : activeResidentPresence === 'OUT'
-                      ? 'Resident is currently outside. Record an entry when they return.'
-                      : 'Checking the latest resident presence before enabling a movement action.'}
+                  <p className="text-sm text-slate-600 mt-1">
+                    {activeObservation.movementDecision?.status === 'MOVEMENT_CREATED'
+                      ? `${activeObservation.movementDecision.direction === 'IN' ? 'Entry' : 'Exit'} was recorded automatically from this camera.`
+                      : activeObservation.movementDecision?.status === 'ALREADY_IN'
+                      ? 'Resident is already inside. Duplicate entry was safely ignored.'
+                      : activeObservation.movementDecision?.status === 'ALREADY_OUT'
+                      ? 'Resident is already outside. Duplicate exit was safely ignored.'
+                      : activeObservation.movementDecision?.status === 'TRANSITION_SUPPRESSED'
+                      ? 'A very recent opposite movement exists, so this transition was safely ignored.'
+                      : activeObservation.movementDecision?.status === 'AUTOMATION_DISABLED'
+                      ? 'Automatic movement is unavailable for this camera. Use the manual fallback only if required.'
+                      : 'The system is confirming this resident across frames. No manual action is normally required.'}
                   </p>
                 </div>
 
-                {activeResidentPresence === 'IN' ? (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="lg"
-                    className="w-full h-13 text-base font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-sm"
-                    onClick={() => handleMarkMovement('OUT')}
-                    isLoading={isConfirming}
-                    disabled={isConfirming}
-                    leftIcon={<LogOut size={20} />}
-                  >
-                    Mark Outside
-                  </Button>
-                ) : activeResidentPresence === 'OUT' ? (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="lg"
-                    className="w-full h-13 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm"
-                    onClick={() => handleMarkMovement('IN')}
-                    isLoading={isConfirming}
-                    disabled={isConfirming}
-                    leftIcon={<LogIn size={20} />}
-                  >
-                    Mark Inside
-                  </Button>
-                ) : (
-                  <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600 text-center">
-                    Checking latest presence...
-                  </div>
-                )}
+                {activeObservation.movementDecision &&
+                  ['AUTOMATION_DISABLED', 'ERROR', 'CAMERA_NOT_MOVEMENT_CAPABLE'].includes(
+                    activeObservation.movementDecision.status
+                  ) &&
+                  activeResidentPresence && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="md"
+                      className="w-full"
+                      onClick={() =>
+                        handleMarkMovement(selectedCamera?.role === 'OUT' ? 'OUT' : 'IN')
+                      }
+                      isLoading={isConfirming}
+                      disabled={isConfirming}
+                    >
+                      Manual movement fallback
+                    </Button>
+                  )}
               </div>
             </div>
           ) : isUnknown ? (
@@ -721,7 +743,7 @@ export const GatePage: React.FC = () => {
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Ready for next resident</h3>
                 <p className="text-sm text-slate-500 max-w-xs leading-relaxed mt-1">
-                  The camera scans automatically. Movement controls appear after a resident is identified.
+                  The camera scans continuously. Entry and exit are recorded automatically from the camera purpose.
                 </p>
               </div>
             </div>
