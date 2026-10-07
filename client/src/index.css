@@ -2905,6 +2905,27 @@ textarea.form-control {
   color: #0F172A;
 }
 
+.camera-add-dialog {
+  max-height: min(86vh, 760px);
+}
+
+.camera-add-dialog .modal-header {
+  padding: 1rem 1.5rem;
+}
+
+.camera-add-dialog .modal-body {
+  padding: 1.15rem 1.5rem;
+}
+
+.camera-add-dialog .modal-footer {
+  background: #FFFFFF;
+  box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.04);
+}
+
+.camera-add-dialog .camera-step-panel {
+  padding: 0.9rem;
+}
+
 .camera-add-progress {
   display: grid;
   grid-template-columns: 1fr 1fr;
