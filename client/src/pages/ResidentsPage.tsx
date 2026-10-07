@@ -6,6 +6,7 @@ import {
   ResidentStatus,
   PresenceState,
   FaceEnrollmentStatus,
+  ResidentSummary,
 } from '../types/resident.types';
 import { useAuth } from '../auth/AuthContext';
 import { useDebounce } from '../hooks/useDebounce';
@@ -30,6 +31,7 @@ export const ResidentsPage: React.FC = () => {
   const [residents, setResidents] = useState<SafeResident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [summary, setSummary] = useState<ResidentSummary | null>(null);
 
   // Pagination state
   const [page, setPage] = useState(1);
@@ -69,20 +71,26 @@ export const ResidentsPage: React.FC = () => {
     setErrorMessage(null);
 
     try {
-      const response = await residentsApi.listResidents({
-        page,
-        pageSize,
-        search: debouncedSearch.trim() || undefined,
-        status: statusFilter || undefined,
-        presence: presenceFilter || undefined,
-        faceEnrollmentStatus: faceStatusFilter || undefined,
-        roomGroup: debouncedRoomGroup.trim() || undefined,
-        hostelId: user?.role === 'ADMIN' ? hostelFilter || undefined : undefined,
-      });
+      const [response, summaryData] = await Promise.all([
+        residentsApi.listResidents({
+          page,
+          pageSize,
+          search: debouncedSearch.trim() || undefined,
+          status: statusFilter || undefined,
+          presence: presenceFilter || undefined,
+          faceEnrollmentStatus: faceStatusFilter || undefined,
+          roomGroup: debouncedRoomGroup.trim() || undefined,
+          hostelId: user?.role === 'ADMIN' ? hostelFilter || undefined : undefined,
+        }),
+        Promise.resolve(
+          residentsApi.getSummary(user?.role === 'ADMIN' ? hostelFilter || undefined : undefined)
+        ).catch(() => null),
+      ]);
 
       setResidents(response.data);
       setTotalItems(response.pagination.total);
       setTotalPages(response.pagination.totalPages);
+      setSummary(summaryData || null);
     } catch (err: any) {
       setErrorMessage(err.message || 'Unable to fetch resident records');
       toastError(err.message || 'Error communicating with resident service');
@@ -152,7 +160,11 @@ export const ResidentsPage: React.FC = () => {
     <div className="residents-page">
       <PageHeader
         title="Residents"
-        subtitle="Search residents, check current presence, and complete face enrollment."
+        subtitle={
+          user?.role === 'GUARD'
+            ? 'Search your assigned hostel directory and check who is currently inside or outside.'
+            : 'Search residents, check current presence, and complete face enrollment.'
+        }
         actions={
           <div className="flex items-center gap-3">
             <Button
@@ -190,6 +202,26 @@ export const ResidentsPage: React.FC = () => {
         </div>
       )}
 
+      {user?.role === 'GUARD' && summary && (
+        <div className="metric-grid metric-grid-3 mb-4" aria-label="Hostel resident summary">
+          <div className="metric-card">
+            <span className="metric-label">Total Residents</span>
+            <span className="metric-value">{summary.total}</span>
+            <span className="metric-support">Assigned hostel directory</span>
+          </div>
+          <div className="metric-card">
+            <span className="metric-label">Inside Hostel</span>
+            <span className="metric-value">{summary.currentlyIn}</span>
+            <span className="metric-support">Currently recorded inside</span>
+          </div>
+          <div className="metric-card">
+            <span className="metric-label">Outside Hostel</span>
+            <span className="metric-value">{summary.currentlyOut}</span>
+            <span className="metric-support">Currently recorded outside</span>
+          </div>
+        </div>
+      )}
+
       {/* Filter and Search Bar */}
       <ResidentFilterBar
         search={searchInput}
@@ -222,6 +254,7 @@ export const ResidentsPage: React.FC = () => {
             setIsFaceEnrollOpen(true);
           }}
           canManage={canManage}
+          canOpenProfile={user?.role !== 'GUARD'}
           hasActiveFilters={isFiltered}
           onOpenAdd={() => setIsCreateOpen(true)}
         />

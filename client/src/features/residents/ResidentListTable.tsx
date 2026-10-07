@@ -15,6 +15,7 @@ interface ResidentListTableProps {
   onSelect: (resident: SafeResident) => void;
   onEnrollFace?: (resident: SafeResident) => void;
   canManage: boolean;
+  canOpenProfile?: boolean;
   hasActiveFilters: boolean;
   onOpenAdd?: () => void;
 }
@@ -25,6 +26,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
   onSelect,
   onEnrollFace,
   canManage,
+  canOpenProfile = true,
   hasActiveFilters,
   onOpenAdd,
 }) => {
@@ -124,13 +126,19 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                     </div>
 
                     <div className="flex flex-col min-w-0">
-                      <button
-                        type="button"
-                        className="font-semibold text-slate-900 text-left hover:text-blue-600 truncate text-15px"
-                        onClick={() => onSelect(resident)}
-                      >
-                        {resident.fullName}
-                      </button>
+                      {canOpenProfile ? (
+                        <button
+                          type="button"
+                          className="font-semibold text-slate-900 text-left hover:text-blue-600 truncate text-15px"
+                          onClick={() => onSelect(resident)}
+                        >
+                          {resident.fullName}
+                        </button>
+                      ) : (
+                        <span className="font-semibold text-slate-900 truncate text-15px">
+                          {resident.fullName}
+                        </span>
+                      )}
                       <span className="font-mono text-sm text-slate-500 mt-0.5">{resident.residentCode}</span>
                     </div>
                   </div>
@@ -168,15 +176,19 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                 {/* Action */}
                 <td className="px-6 py-3.5 text-right">
                   <div className="inline-flex items-center justify-end gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onSelect(resident)}
-                      aria-label={`View details for ${resident.fullName}`}
-                    >
-                      Open Profile
-                    </Button>
+                    {canOpenProfile ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onSelect(resident)}
+                        aria-label={`View details for ${resident.fullName}`}
+                      >
+                        Open Profile
+                      </Button>
+                    ) : (
+                      <span className="text-sm font-medium text-slate-400">Read only</span>
+                    )}
 
                     {canManage && (
                       <>

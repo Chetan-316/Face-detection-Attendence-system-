@@ -12,8 +12,6 @@ import { useToast } from '../components/ToastContext';
 import { Button } from '../components/Button';
 import {
   Camera as CameraIcon,
-  LogIn,
-  LogOut,
   AlertTriangle,
   UserX,
   User as UserIcon,
@@ -21,10 +19,8 @@ import {
   Eye,
   UserPlus,
   Scan,
-  Search,
   X,
   RefreshCw,
-  Sparkles,
 } from 'lucide-react';
 
 export const GatePage: React.FC = () => {
@@ -176,16 +172,23 @@ export const GatePage: React.FC = () => {
       if (res.observation) {
         if (res.observation.classification === 'MATCH' && res.observation.resident) {
           setActiveObservation(res.observation);
-          setActiveResidentPresence(null);
-          const pres = await movementsApi.getResidentPresence(res.observation.resident.id).catch(() => null);
-          if (pres?.currentState) {
-            setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
+          setActiveResidentPresence(
+            res.observation.movementDecision?.currentPresence as 'IN' | 'OUT' | null || null
+          );
+          if (res.observation.movementDecision?.status === 'MOVEMENT_CREATED') {
+            fetchMovementData();
+          }
+          if (!res.observation.movementDecision?.currentPresence) {
+            const pres = await movementsApi.getResidentPresence(res.observation.resident.id).catch(() => null);
+            if (pres?.currentState) {
+              setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
+            }
           }
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
           resetTimerRef.current = setTimeout(() => {
             setActiveObservation(null);
             setActiveResidentPresence(null);
-          }, 12000);
+          }, 4000);
         } else if (res.observation.classification === 'UNKNOWN') {
           setActiveObservation(res.observation);
           if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -205,18 +208,17 @@ export const GatePage: React.FC = () => {
     } finally {
       setIsScanningFace(false);
     }
-  }, [selectedCameraId, isConfirming, isScanningFace]);
+  }, [selectedCameraId, isConfirming, isScanningFace, fetchMovementData]);
 
-  // Periodic auto-scan when laptop camera is active (every 1.8 seconds)
+  // Continuous gate scan. Never pause the whole scanner after recognizing one resident.
+  // isScanningFace provides backpressure so requests cannot overlap.
   useEffect(() => {
     if (!isCameraActive || isConfirming) return;
     const interval = setInterval(() => {
-      if (!activeObservation || activeObservation.classification !== 'MATCH') {
-        captureAndProcessFrame();
-      }
-    }, 1800);
+      captureAndProcessFrame();
+    }, 1200);
     return () => clearInterval(interval);
-  }, [isCameraActive, isConfirming, activeObservation, captureAndProcessFrame]);
+  }, [isCameraActive, isConfirming, captureAndProcessFrame]);
 
   // Connect live recognition stream via SSE using short-lived stream token
   useEffect(() => {
@@ -258,12 +260,19 @@ export const GatePage: React.FC = () => {
             setLastActionSuccessMsg(null);
 
             if (obs.classification === 'MATCH' && obs.resident) {
-              setActiveResidentPresence(null);
-              movementsApi.getResidentPresence(obs.resident.id).then((pres) => {
-                if (isMounted && pres?.currentState) {
-                  setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
-                }
-              }).catch(() => {});
+              if (obs.movementDecision?.currentPresence) {
+                setActiveResidentPresence(obs.movementDecision.currentPresence);
+              } else {
+                setActiveResidentPresence(null);
+                movementsApi.getResidentPresence(obs.resident.id).then((pres) => {
+                  if (isMounted && pres?.currentState) {
+                    setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
+                  }
+                }).catch(() => {});
+              }
+              if (obs.movementDecision?.status === 'MOVEMENT_CREATED') {
+                fetchMovementData();
+              }
             }
           } catch (e) {}
         });
@@ -298,12 +307,19 @@ export const GatePage: React.FC = () => {
 
             setActiveObservation(latest);
             if (latest.classification === 'MATCH' && latest.resident) {
-              setActiveResidentPresence(null);
-              movementsApi.getResidentPresence(latest.resident.id).then((pres) => {
-                if (isMounted && pres?.currentState) {
-                  setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
-                }
-              }).catch(() => {});
+              if (latest.movementDecision?.currentPresence) {
+                setActiveResidentPresence(latest.movementDecision.currentPresence);
+              } else {
+                setActiveResidentPresence(null);
+                movementsApi.getResidentPresence(latest.resident.id).then((pres) => {
+                  if (isMounted && pres?.currentState) {
+                    setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
+                  }
+                }).catch(() => {});
+              }
+              if (latest.movementDecision?.status === 'MOVEMENT_CREATED') {
+                fetchMovementData();
+              }
             }
           }
         }).catch(() => {});
@@ -321,7 +337,7 @@ export const GatePage: React.FC = () => {
         clearTimeout(resetTimerRef.current);
       }
     };
-  }, [selectedCameraId, isConfirming]);
+  }, [selectedCameraId, isConfirming, fetchMovementData]);
 
   // Execute movement action (MARK OUT or MARK IN)
   const handleMarkMovement = async (forcedDirection?: 'IN' | 'OUT') => {
@@ -429,6 +445,12 @@ export const GatePage: React.FC = () => {
           )}
 
           <div className="gate-presence-summary">
+            <div>
+              <span className="text-slate-500 block text-sm font-medium">Total</span>
+              <span className="text-2xl font-bold text-slate-900">
+                {presenceCounts?.totalResidents ?? '—'}
+              </span>
+            </div>
             <div>
               <span className="text-slate-500 block text-sm font-medium">Inside</span>
               <span className="text-2xl font-bold text-emerald-700">
@@ -620,50 +642,59 @@ export const GatePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Guard sees only the valid next movement based on current presence */}
+              {/* Automatic movement is the normal path. Manual confirmation is exception-only. */}
               <div className="pt-4 border-t border-slate-200 flex flex-col gap-3">
-                <div>
-                  <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">
-                    Next movement
-                  </span>
-                  <p className="text-sm text-slate-500 mt-1">
-                    {activeResidentPresence === 'IN'
-                      ? 'Resident is currently inside. Record an exit when they leave.'
-                      : activeResidentPresence === 'OUT'
-                      ? 'Resident is currently outside. Record an entry when they return.'
-                      : 'Checking the latest resident presence before enabling a movement action.'}
-                  </p>
-                </div>
-
-                {activeResidentPresence === 'IN' ? (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="lg"
-                    className="w-full h-13 text-base font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-sm"
-                    onClick={() => handleMarkMovement('OUT')}
-                    isLoading={isConfirming}
-                    disabled={isConfirming}
-                    leftIcon={<LogOut size={20} />}
-                  >
-                    Mark Outside
-                  </Button>
-                ) : activeResidentPresence === 'OUT' ? (
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="lg"
-                    className="w-full h-13 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-sm"
-                    onClick={() => handleMarkMovement('IN')}
-                    isLoading={isConfirming}
-                    disabled={isConfirming}
-                    leftIcon={<LogIn size={20} />}
-                  >
-                    Mark Inside
-                  </Button>
+                {activeObservation.movementDecision?.status === 'MOVEMENT_CREATED' ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                    <div className="flex items-center gap-2 text-emerald-800 font-bold">
+                      <Check size={18} />
+                      {activeObservation.movementDecision.direction === 'IN'
+                        ? 'Entry recorded automatically'
+                        : 'Exit recorded automatically'}
+                    </div>
+                    <p className="text-sm text-emerald-700 mt-1">
+                      No guard action is required. The camera assignment determines the movement direction.
+                    </p>
+                  </div>
+                ) : activeObservation.movementDecision?.status === 'ALREADY_IN' ||
+                  activeObservation.movementDecision?.status === 'ALREADY_OUT' ||
+                  activeObservation.movementDecision?.status === 'DUPLICATE_OBSERVATION_SUPPRESSED' ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="font-semibold text-slate-800">No duplicate movement created</div>
+                    <p className="text-sm text-slate-500 mt-1">
+                      The resident is already recorded in the correct state. Continuous scanning remains active.
+                    </p>
+                  </div>
+                ) : activeObservation.movementDecision &&
+                  ['AUTOMATION_DISABLED', 'CAMERA_NOT_MOVEMENT_CAPABLE', 'INITIAL_PRESENCE_MISSING', 'ERROR'].includes(
+                    activeObservation.movementDecision.status
+                  ) ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <div className="font-semibold text-amber-900">Automatic movement needs assistance</div>
+                    <p className="text-sm text-amber-800 mt-1 mb-3">
+                      Use manual confirmation only for this exception. The action is audit logged.
+                    </p>
+                    {activeResidentPresence && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="md"
+                        className="w-full"
+                        onClick={() => handleMarkMovement(activeResidentPresence === 'IN' ? 'OUT' : 'IN')}
+                        isLoading={isConfirming}
+                        disabled={isConfirming}
+                        leftIcon={<AlertTriangle size={18} />}
+                      >
+                        Manual fallback — mark {activeResidentPresence === 'IN' ? 'Outside' : 'Inside'}
+                      </Button>
+                    )}
+                  </div>
                 ) : (
-                  <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600 text-center">
-                    Checking latest presence...
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                    <div className="font-semibold text-blue-900">Confirming automatic movement...</div>
+                    <p className="text-sm text-blue-700 mt-1">
+                      Keep the resident in view briefly. Entry or exit will be recorded from the configured camera role.
+                    </p>
                   </div>
                 )}
               </div>
@@ -721,7 +752,7 @@ export const GatePage: React.FC = () => {
               <div>
                 <h3 className="text-lg font-bold text-slate-800">Ready for next resident</h3>
                 <p className="text-sm text-slate-500 max-w-xs leading-relaxed mt-1">
-                  The camera scans automatically. Movement controls appear after a resident is identified.
+                  The camera scans continuously. Entry or exit is recorded automatically after a stable match.
                 </p>
               </div>
             </div>

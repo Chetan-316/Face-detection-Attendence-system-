@@ -97,14 +97,24 @@ export const AppLayout: React.FC = () => {
 
           <nav className="sidebar-nav" aria-label="Primary navigation">
             {user?.role === 'GUARD' ? (
-              <NavLink
-                to="/gate"
-                className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
-                onClick={closeMobileMenu}
-              >
-                <Eye size={18} />
-                <span>Gate</span>
-              </NavLink>
+              <>
+                <NavLink
+                  to="/gate"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={closeMobileMenu}
+                >
+                  <Eye size={18} />
+                  <span>Gate</span>
+                </NavLink>
+                <NavLink
+                  to="/residents"
+                  className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}
+                  onClick={closeMobileMenu}
+                >
+                  <Users size={18} />
+                  <span>Residents</span>
+                </NavLink>
+              </>
             ) : (
               <>
                 <NavLink

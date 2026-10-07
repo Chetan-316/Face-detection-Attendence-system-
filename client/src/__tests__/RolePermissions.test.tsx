@@ -59,6 +59,17 @@ describe('Role-Aware UI Permissions', () => {
       data: [mockResident],
       pagination: { page: 1, pageSize: 15, total: 1, totalPages: 1 },
     });
+    (residentsApi.getSummary as any).mockResolvedValue({
+      total: 100,
+      active: 98,
+      inactive: 2,
+      currentlyIn: 82,
+      currentlyOut: 18,
+      faceEnrolled: 90,
+      notEnrolled: 8,
+      needsReEnrollment: 2,
+      revoked: 0,
+    });
   });
 
   it('allows WARDEN to add residents and access profile/enrollment actions', async () => {
@@ -121,7 +132,14 @@ describe('Role-Aware UI Permissions', () => {
     // Guard MUST NOT see Add Resident button
     expect(screen.queryByRole('button', { name: /add resident/i })).not.toBeInTheDocument();
 
-    // Guard MUST NOT see resident enrollment or mutation actions
+    // Guard gets a read-only operational directory with hostel totals.
+    expect(screen.getByText('Total Residents')).toBeInTheDocument();
+    expect(screen.getByText('82')).toBeInTheDocument();
+    expect(screen.getByText('18')).toBeInTheDocument();
+    expect(screen.getByText('Read only')).toBeInTheDocument();
+
+    // Guard MUST NOT see resident enrollment, profile-management, or mutation actions.
+    expect(screen.queryByRole('button', { name: /view details for alex kumar/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /enroll face for alex kumar/i })).not.toBeInTheDocument();
   });
 });
