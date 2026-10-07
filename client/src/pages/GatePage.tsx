@@ -318,6 +318,13 @@ export const GatePage: React.FC = () => {
                   `${decision.direction === 'IN' ? 'Entry' : 'Exit'} recorded automatically for ${latest.resident.fullName}.`
                 );
                 fetchMovementData();
+
+                if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+                resetTimerRef.current = setTimeout(() => {
+                  setActiveObservation(null);
+                  setActiveResidentPresence(null);
+                  setLastActionSuccessMsg(null);
+                }, 2200);
               } else {
                 setActiveResidentPresence(null);
                 movementsApi.getResidentPresence(latest.resident.id).then((pres) => {
