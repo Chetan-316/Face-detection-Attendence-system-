@@ -15,6 +15,7 @@ interface ResidentListTableProps {
   onSelect: (resident: SafeResident) => void;
   onEnrollFace?: (resident: SafeResident) => void;
   canManage: boolean;
+  canViewDetails?: boolean;
   hasActiveFilters: boolean;
   onOpenAdd?: () => void;
 }
@@ -25,6 +26,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
   onSelect,
   onEnrollFace,
   canManage,
+  canViewDetails = true,
   hasActiveFilters,
   onOpenAdd,
 }) => {
@@ -39,7 +41,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
               <th className="px-6 py-4">Presence</th>
               <th className="px-6 py-4">Face</th>
               <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4 text-right">Actions</th>
+              {canViewDetails && <th className="px-6 py-4 text-right">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -50,7 +52,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                 <td className="px-6 py-4"><span className="skeleton-cell w-20 h-5 rounded" /></td>
                 <td className="px-6 py-4"><span className="skeleton-cell w-24 h-5 rounded" /></td>
                 <td className="px-6 py-4"><span className="skeleton-cell w-16 h-5 rounded" /></td>
-                <td className="px-6 py-4 text-right"><span className="skeleton-cell w-16 h-5 rounded ml-auto" /></td>
+                {canViewDetails && <td className="px-6 py-4 text-right"><span className="skeleton-cell w-16 h-5 rounded ml-auto" /></td>}
               </tr>
             ))}
           </tbody>
@@ -98,7 +100,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
             <th scope="col" className="px-6 py-4">Presence</th>
             <th scope="col" className="px-6 py-4">Face</th>
             <th scope="col" className="px-6 py-4">Status</th>
-            <th scope="col" className="px-6 py-4 text-right">Actions</th>
+            {canViewDetails && <th scope="col" className="px-6 py-4 text-right">Actions</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -124,13 +126,19 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                     </div>
 
                     <div className="flex flex-col min-w-0">
-                      <button
-                        type="button"
-                        className="font-semibold text-slate-900 text-left hover:text-blue-600 truncate text-15px"
-                        onClick={() => onSelect(resident)}
-                      >
-                        {resident.fullName}
-                      </button>
+                      {canViewDetails ? (
+                        <button
+                          type="button"
+                          className="font-semibold text-slate-900 text-left hover:text-blue-600 truncate text-15px"
+                          onClick={() => onSelect(resident)}
+                        >
+                          {resident.fullName}
+                        </button>
+                      ) : (
+                        <span className="font-semibold text-slate-900 truncate text-15px">
+                          {resident.fullName}
+                        </span>
+                      )}
                       <span className="font-mono text-sm text-slate-500 mt-0.5">{resident.residentCode}</span>
                     </div>
                   </div>
@@ -166,8 +174,9 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                 </td>
 
                 {/* Action */}
-                <td className="px-6 py-3.5 text-right">
-                  <div className="inline-flex items-center justify-end gap-2">
+                {canViewDetails && (
+                  <td className="px-6 py-3.5 text-right">
+                    <div className="inline-flex items-center justify-end gap-2">
                     <Button
                       type="button"
                       variant="outline"
@@ -198,8 +207,9 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
 
                       </>
                     )}
-                  </div>
-                </td>
+                    </div>
+                  </td>
+                )}
               </tr>
             );
           })}
