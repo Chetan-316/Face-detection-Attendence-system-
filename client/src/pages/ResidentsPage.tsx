@@ -6,6 +6,7 @@ import {
   ResidentStatus,
   PresenceState,
   FaceEnrollmentStatus,
+  ResidentSummary,
 } from '../types/resident.types';
 import { useAuth } from '../auth/AuthContext';
 import { useDebounce } from '../hooks/useDebounce';
@@ -36,6 +37,7 @@ export const ResidentsPage: React.FC = () => {
   const [pageSize] = useState(15);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState<ResidentSummary | null>(null);
 
   // Filter & Search state
   const [searchInput, setSearchInput] = useState('');
@@ -83,6 +85,12 @@ export const ResidentsPage: React.FC = () => {
       setResidents(response.data);
       setTotalItems(response.pagination.total);
       setTotalPages(response.pagination.totalPages);
+
+      if (user?.role === 'GUARD') {
+        residentsApi.getSummary()
+          .then(setSummary)
+          .catch(() => setSummary(null));
+      }
     } catch (err: any) {
       setErrorMessage(err.message || 'Unable to fetch resident records');
       toastError(err.message || 'Error communicating with resident service');
@@ -152,7 +160,11 @@ export const ResidentsPage: React.FC = () => {
     <div className="residents-page">
       <PageHeader
         title="Residents"
-        subtitle="Search residents, check current presence, and complete face enrollment."
+        subtitle={
+          user?.role === 'GUARD'
+            ? 'Search your hostel directory and check who is currently inside or outside.'
+            : 'Search residents, check current presence, and complete face enrollment.'
+        }
         actions={
           <div className="flex items-center gap-3">
             <Button
@@ -179,6 +191,26 @@ export const ResidentsPage: React.FC = () => {
           </div>
         }
       />
+
+      {user?.role === 'GUARD' && (
+        <div className="metric-grid metric-grid-3 mb-4" aria-label="Resident presence summary">
+          <div className="metric-card">
+            <span className="metric-label">Total Residents</span>
+            <strong className="metric-value">{summary?.total ?? totalItems}</strong>
+            <span className="metric-support">Assigned to this hostel</span>
+          </div>
+          <div className="metric-card">
+            <span className="metric-label">Inside Hostel</span>
+            <strong className="metric-value">{summary?.currentlyIn ?? '—'}</strong>
+            <span className="metric-support">Currently recorded inside</span>
+          </div>
+          <div className="metric-card">
+            <span className="metric-label">Outside Hostel</span>
+            <strong className="metric-value">{summary?.currentlyOut ?? '—'}</strong>
+            <span className="metric-support">Currently recorded outside</span>
+          </div>
+        </div>
+      )}
 
       {errorMessage && (
         <div className="alert-banner alert-banner-error mb-4" role="alert">
@@ -215,13 +247,16 @@ export const ResidentsPage: React.FC = () => {
           residents={residents}
           isLoading={isLoading}
           onSelect={(resident: SafeResident) => {
-            navigate(`/residents/${resident.id}`);
+            if (canManage) {
+              navigate(`/residents/${resident.id}`);
+            }
           }}
           onEnrollFace={(resident: SafeResident) => {
             setSelectedResident(resident);
             setIsFaceEnrollOpen(true);
           }}
           canManage={canManage}
+          canViewDetails={canManage}
           hasActiveFilters={isFiltered}
           onOpenAdd={() => setIsCreateOpen(true)}
         />
