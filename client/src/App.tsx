@@ -57,7 +57,7 @@ export const App: React.FC = () => {
               <Route
                 path="residents"
                 element={
-                  <RoleRoute allowed={['ADMIN', 'WARDEN']}>
+                  <RoleRoute allowed={['ADMIN', 'WARDEN', 'GUARD']}>
                     <ResidentsPage />
                   </RoleRoute>
                 }
