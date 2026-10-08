@@ -47,6 +47,7 @@ export const GatePage: React.FC = () => {
   const [isRegisterVisitorOpen, setIsRegisterVisitorOpen] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const resetTimerRef = useRef<any>(null);
+  const actionTimerRef = useRef<any>(null);
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -729,7 +730,10 @@ export const GatePage: React.FC = () => {
                   ) ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                     <div className="font-semibold text-amber-900">Automatic movement needs assistance</div>
-                    <p className="text-sm text-amber-800 mt-1 mb-3">
+                    <p className="text-sm text-amber-800 mt-1 mb-2">
+                      {activeObservation.movementDecision.reason || 'The automatic movement could not be completed.'}
+                    </p>
+                    <p className="text-sm text-amber-800 mb-3">
                       Use manual confirmation only for this exception. The action is audit logged.
                     </p>
                     {activeResidentPresence && (
