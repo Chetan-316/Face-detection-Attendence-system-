@@ -1124,7 +1124,7 @@ export const CamerasPage: React.FC = () => {
       {/* Add Camera Modal */}
       {isRegisterModalOpen && (
         <div className="modal-backdrop" onClick={closeRegisterModal}>
-          <div ref={customModalRef} tabIndex={-1} className="modal-dialog modal-md" role="dialog" aria-modal="true" aria-labelledby="add-camera-title" onClick={(e) => e.stopPropagation()}>
+          <div ref={customModalRef} tabIndex={-1} className="modal-dialog modal-md camera-add-dialog" role="dialog" aria-modal="true" aria-labelledby="add-camera-title" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
                 <h3 id="add-camera-title" className="modal-title">Add Camera</h3>
@@ -1138,13 +1138,14 @@ export const CamerasPage: React.FC = () => {
                 type="button"
                 className="modal-close-btn"
                 onClick={closeRegisterModal}
-                aria-label="Close modal"
+                aria-label="Close add camera"
               >
                 <X size={18} />
               </button>
             </div>
 
             <form
+              className="camera-add-form"
               onSubmit={(e) => {
                 if (registerStep === 1) {
                   e.preventDefault();

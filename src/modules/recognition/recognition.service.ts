@@ -172,7 +172,7 @@ export class RecognitionService {
   public async verifyActorScope(
     cameraId: string,
     actor: AuthenticatedActor,
-    action: 'VIEW' | 'CONTROL' = 'VIEW'
+    action: 'VIEW' | 'CONTROL' | 'OPERATE' = 'VIEW'
   ) {
     if (action === 'CONTROL' && actor.role === StaffRole.GUARD) {
       throw new ForbiddenError('Guards are not authorized to start or stop face recognition sessions');
@@ -202,6 +202,15 @@ export class RecognitionService {
       throw new NotFoundError('Camera', cameraId);
     }
 
+    if (
+      action === 'OPERATE' &&
+      actor.role === StaffRole.GUARD &&
+      camera.role !== CameraRole.IN &&
+      camera.role !== CameraRole.OUT
+    ) {
+      throw new ForbiddenError('Guards may only operate assigned gate entry or gate exit cameras');
+    }
+
     return camera;
   }
 
@@ -211,9 +220,10 @@ export class RecognitionService {
   public async startRecognition(
     cameraId: string,
     actor: AuthenticatedActor,
-    customThresholds?: Partial<MatcherThresholds>
+    customThresholds?: Partial<MatcherThresholds>,
+    authorization: 'CONTROL' | 'OPERATE' = 'CONTROL'
   ): Promise<RecognitionSessionStatus> {
-    const camera = await this.verifyActorScope(cameraId, actor, 'CONTROL');
+    const camera = await this.verifyActorScope(cameraId, actor, authorization);
 
     if (!camera.isEnabled) {
       throw new ValidationError(`Camera '${camera.name}' (${camera.id}) is disabled`);
@@ -483,10 +493,10 @@ export class RecognitionService {
     let session = this.activeSessions.get(cameraId);
     if (!session || session.state !== 'RUNNING') {
       try {
-        await this.startRecognition(cameraId, {
-          ...actor,
-          role: StaffRole.ADMIN,
-        });
+        // Gate operation may auto-start recognition for an authorized viewer without
+        // granting camera administration privileges. Guards remain unable to call the
+        // explicit start/stop control endpoints.
+        await this.startRecognition(cameraId, actor, undefined, 'OPERATE');
         session = this.activeSessions.get(cameraId);
       } catch (err) {
         console.warn(`[RecognitionService] processClientFrame auto-start error:`, err);

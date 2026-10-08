@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { camerasApi } from '../api/cameras.api';
 import { movementsApi } from '../api/movements.api';
 import { recognitionApi } from '../api/recognition.api';
@@ -21,10 +22,12 @@ import {
   Scan,
   X,
   RefreshCw,
+  Users,
 } from 'lucide-react';
 
 export const GatePage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { success, error: toastError } = useToast();
 
   const [cameras, setCameras] = useState<CameraEntity[]>([]);
@@ -103,10 +106,16 @@ export const GatePage: React.FC = () => {
     };
   }, []);
 
-  // Auto-attempt start on mount
+  // Browser webcam is only used for cameras explicitly configured as WEBCAM.
+  // IP/RTSP cameras remain server-driven and must never be replaced by the laptop camera.
   useEffect(() => {
-    startLaptopCamera();
-  }, [startLaptopCamera]);
+    if (!selectedCamera) return;
+    if (selectedCamera.sourceType === 'WEBCAM') {
+      startLaptopCamera();
+    } else {
+      stopLaptopCamera();
+    }
+  }, [selectedCamera?.id, selectedCamera?.sourceType, startLaptopCamera, stopLaptopCamera]);
 
   const handleRegisterVisitorSuccess = () => {
     fetchMovementData();
@@ -154,7 +163,13 @@ export const GatePage: React.FC = () => {
 
   // Capture webcam frame from video and submit to backend recognition
   const captureAndProcessFrame = useCallback(async () => {
-    if (!videoRef.current || !selectedCameraId || isConfirming || isScanningFace) return;
+    if (
+      !videoRef.current ||
+      !selectedCameraId ||
+      selectedCamera?.sourceType !== 'WEBCAM' ||
+      isConfirming ||
+      isScanningFace
+    ) return;
     try {
       const video = videoRef.current;
       if (video.videoWidth === 0 || video.videoHeight === 0) return;
@@ -208,17 +223,17 @@ export const GatePage: React.FC = () => {
     } finally {
       setIsScanningFace(false);
     }
-  }, [selectedCameraId, isConfirming, isScanningFace, fetchMovementData]);
+  }, [selectedCameraId, selectedCamera?.sourceType, isConfirming, isScanningFace, fetchMovementData]);
 
   // Continuous gate scan. Never pause the whole scanner after recognizing one resident.
   // isScanningFace provides backpressure so requests cannot overlap.
   useEffect(() => {
-    if (!isCameraActive || isConfirming) return;
+    if (selectedCamera?.sourceType !== 'WEBCAM' || !isCameraActive || isConfirming) return;
     const interval = setInterval(() => {
       captureAndProcessFrame();
-    }, 1200);
+    }, 700);
     return () => clearInterval(interval);
-  }, [isCameraActive, isConfirming, captureAndProcessFrame]);
+  }, [selectedCamera?.sourceType, isCameraActive, isConfirming, captureAndProcessFrame]);
 
   // Connect live recognition stream via SSE using short-lived stream token
   useEffect(() => {
@@ -233,16 +248,7 @@ export const GatePage: React.FC = () => {
 
     const connectStream = async () => {
       try {
-        // Auto-start recognition if not currently running
-        if (user?.role === 'ADMIN' || user?.role === 'WARDEN') {
-          try {
-            const st = await recognitionApi.getStatus(selectedCameraId);
-            if (st.state !== 'RUNNING') {
-              await recognitionApi.startRecognition(selectedCameraId);
-            }
-          } catch {}
-        }
-
+        // Requesting the stream token also ensures an authorized gate session is running.
         const { streamToken } = await recognitionApi.getStreamToken(selectedCameraId);
         if (!isMounted) return;
 
@@ -432,6 +438,7 @@ export const GatePage: React.FC = () => {
                   setActiveObservation(null);
                   setActiveResidentPresence(null);
                   setLastActionSuccessMsg(null);
+                  setStreamError(null);
                 }}
                 className="bg-white border border-slate-300 text-slate-900 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -467,6 +474,16 @@ export const GatePage: React.FC = () => {
 
           <Button
             type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/residents')}
+            leftIcon={<Users size={16} />}
+          >
+            Resident Directory
+          </Button>
+
+          <Button
+            type="button"
             variant="primary"
             size="sm"
             onClick={() => setIsRegisterVisitorOpen(true)}
@@ -483,7 +500,7 @@ export const GatePage: React.FC = () => {
         {/* Left Column: Live Camera Video Stream (Dominant 440-480px height) */}
         <div className="gate-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
           <div className="relative bg-slate-900 flex items-center justify-center overflow-hidden min-h-[440px] sm:min-h-[480px] h-full">
-            {isCameraActive ? (
+            {isBrowserWebcam && isCameraActive ? (
               <div className="relative w-full h-full min-h-[440px] sm:min-h-[480px]">
                 <video
                   ref={(el) => {

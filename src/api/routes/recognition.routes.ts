@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient, StaffRole } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
 import { tokenService } from '../auth/token.service';
@@ -137,10 +137,10 @@ export function createRecognitionRouter(
         try {
           const status = await recognitionService.getStatus(cameraId, actor);
           if (status.state !== 'RUNNING') {
-            await recognitionService.startRecognition(cameraId, {
-              ...actor,
-              role: StaffRole.ADMIN,
-            });
+            // Operational auto-start is deliberately narrower than camera CONTROL.
+            // A Guard may auto-start only an assigned IN/OUT gate camera; explicit
+            // start/stop endpoints remain forbidden to Guards.
+            await recognitionService.startRecognition(cameraId, actor, undefined, 'OPERATE');
           }
         } catch (e: any) {
           // Non-blocking fallback

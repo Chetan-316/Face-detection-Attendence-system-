@@ -296,6 +296,31 @@ describe('Step 06: Continuous Face Recognition Engine Tests', () => {
       expect(resultsRes.body).toHaveProperty('results');
     });
 
+    it('auto-starts an assigned gate session for Guard via stream token without granting manual control', async () => {
+      await request(app)
+        .post(`/api/v1/cameras/${testCamera.id}/recognition/stop`)
+        .set('Authorization', `Bearer ${wardenToken}`);
+
+      const tokenRes = await request(app)
+        .post(`/api/v1/cameras/${testCamera.id}/recognition/stream-token`)
+        .set('Authorization', `Bearer ${guardToken}`);
+
+      expect(tokenRes.status).toBe(200);
+      expect(tokenRes.body).toHaveProperty('streamToken');
+
+      const statusRes = await request(app)
+        .get(`/api/v1/cameras/${testCamera.id}/recognition/status`)
+        .set('Authorization', `Bearer ${guardToken}`);
+
+      expect(statusRes.status).toBe(200);
+      expect(statusRes.body.state).toBe('RUNNING');
+
+      const manualStopRes = await request(app)
+        .post(`/api/v1/cameras/${testCamera.id}/recognition/stop`)
+        .set('Authorization', `Bearer ${guardToken}`);
+      expect(manualStopRes.status).toBe(403);
+    });
+
     it('allows Admin to manage recognition across organization cameras', async () => {
       const res1 = await request(app)
         .post(`/api/v1/cameras/${testCamera.id}/recognition/start`)
