@@ -349,7 +349,10 @@ export class MovementDecisionService {
     }
 
     // 10. Rapid Camera Transition Guard
-    if (currentPresence?.lastMovementTime) {
+    // Single-camera TOGGLE mode already has stronger per-appearance deduplication in
+    // TemporalStabilizer. Do not block the first valid recognition with a timer.
+    // Keep this guard only for legacy ROLE mode (separate IN/OUT cameras).
+    if (movementMode === 'ROLE' && currentPresence?.lastMovementTime) {
       const elapsedMs =
         Date.now() - new Date(currentPresence.lastMovementTime).getTime();
       if (elapsedMs < this.minTransitionIntervalMs) {

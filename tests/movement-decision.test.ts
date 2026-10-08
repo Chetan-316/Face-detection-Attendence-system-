@@ -260,6 +260,12 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
   // Test 54: SAME CAMERA TOGGLES OUT
   it('54: same automatic gate toggles resident from IN -> OUT on the next appearance', async () => {
     const resident = await createTestResident('R_IN_2', PresenceState.IN);
+    // Even if the previous movement was moments ago, a new recognized appearance
+    // in TOGGLE mode must change state immediately.
+    await testPrisma.residentPresence.update({
+      where: { residentId: resident.id },
+      data: { lastMovementTime: new Date() },
+    });
     const obs = createObservation(inCameraId, resident, 'MATCH');
 
     const decision = await movementDecisionService.evaluateObservation(obs);
@@ -481,6 +487,16 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
   // Test 63: TRANSITION GUARD
   it('63: suppresses rapid opposite transition within minimum transition interval (Result = TRANSITION_SUPPRESSED)', async () => {
     const resident = await createTestResident('R_GUARD_1', PresenceState.OUT);
+
+    // Explicit legacy ROLE mode retains the rapid-transition guard.
+    await testPrisma.camera.update({
+      where: { id: inCameraId },
+      data: { configMetadata: { movementAutomationEnabled: true, movementMode: 'ROLE' } },
+    });
+    await testPrisma.camera.update({
+      where: { id: outCameraId },
+      data: { configMetadata: { movementAutomationEnabled: true, movementMode: 'ROLE' } },
+    });
 
     // 1. IN movement at Gate IN
     const inObs = createObservation(inCameraId, resident, 'MATCH');

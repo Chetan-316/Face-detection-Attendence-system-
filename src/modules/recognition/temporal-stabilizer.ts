@@ -226,6 +226,14 @@ export class TemporalStabilizer {
     return this.tracks.size;
   }
 
+  /**
+   * Re-arms the current appearance only when the movement side effect failed
+   * transiently. A successful movement remains locked until the resident leaves.
+   */
+  public releaseResidentEpisode(residentId: string): void {
+    this.residentEpisodeEmitted.delete(residentId);
+  }
+
   public clear(): void {
     this.tracks.clear();
     this.residentLastSeenAt.clear();

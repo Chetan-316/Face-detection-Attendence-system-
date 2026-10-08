@@ -653,6 +653,19 @@ export class RecognitionService {
                 (session.cameraRole === CameraRole.IN || session.cameraRole === CameraRole.OUT)
               ) {
                 obs.movementDecision = await this.movementBridge.processObservation(obs);
+
+                if (obs.movementDecision.status === 'MOVEMENT_CREATED') {
+                  console.info(
+                    `[GateAutomation] camera=${cameraId} status=MOVEMENT_CREATED direction=${obs.movementDecision.direction}`
+                  );
+                } else if (obs.movementDecision.status === 'ERROR') {
+                  // A transient DB/runtime failure must not consume the whole appearance.
+                  // The next confirmed frame can retry immediately.
+                  session.stabilizer.releaseResidentEpisode(stabilized.resident.id);
+                  console.warn(
+                    `[GateAutomation] camera=${cameraId} status=ERROR reason=${obs.movementDecision.reason || 'unknown'}`
+                  );
+                }
               } else {
                 session.eventEmitter.emit('stableMatch', obs);
               }

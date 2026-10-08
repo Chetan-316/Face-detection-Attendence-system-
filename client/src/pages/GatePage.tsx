@@ -192,6 +192,14 @@ export const GatePage: React.FC = () => {
             res.observation.movementDecision?.currentPresence as 'IN' | 'OUT' | null || null
           );
           if (res.observation.movementDecision?.status === 'MOVEMENT_CREATED') {
+            const direction = res.observation.movementDecision.direction;
+            setLastActionSuccessMsg(
+              direction === 'IN'
+                ? `${res.observation.resident.fullName} entered automatically.`
+                : `${res.observation.resident.fullName} exited automatically.`
+            );
+            if (actionTimerRef.current) clearTimeout(actionTimerRef.current);
+            actionTimerRef.current = setTimeout(() => setLastActionSuccessMsg(null), 3000);
             fetchMovementData();
           }
           if (!res.observation.movementDecision?.currentPresence) {
@@ -264,7 +272,6 @@ export const GatePage: React.FC = () => {
             if (isConfirming) return;
 
             setActiveObservation(obs);
-            setLastActionSuccessMsg(null);
 
             if (obs.classification === 'MATCH' && obs.resident) {
               if (obs.movementDecision?.currentPresence) {
@@ -278,6 +285,14 @@ export const GatePage: React.FC = () => {
                 }).catch(() => {});
               }
               if (obs.movementDecision?.status === 'MOVEMENT_CREATED') {
+                const direction = obs.movementDecision.direction;
+                setLastActionSuccessMsg(
+                  direction === 'IN'
+                    ? `${obs.resident.fullName} entered automatically.`
+                    : `${obs.resident.fullName} exited automatically.`
+                );
+                if (actionTimerRef.current) clearTimeout(actionTimerRef.current);
+                actionTimerRef.current = setTimeout(() => setLastActionSuccessMsg(null), 3000);
                 fetchMovementData();
               }
             }
@@ -325,6 +340,14 @@ export const GatePage: React.FC = () => {
                 }).catch(() => {});
               }
               if (latest.movementDecision?.status === 'MOVEMENT_CREATED') {
+                const direction = latest.movementDecision.direction;
+                setLastActionSuccessMsg(
+                  direction === 'IN'
+                    ? `${latest.resident.fullName} entered automatically.`
+                    : `${latest.resident.fullName} exited automatically.`
+                );
+                if (actionTimerRef.current) clearTimeout(actionTimerRef.current);
+                actionTimerRef.current = setTimeout(() => setLastActionSuccessMsg(null), 3000);
                 fetchMovementData();
               }
             }
@@ -342,6 +365,9 @@ export const GatePage: React.FC = () => {
       clearInterval(pollInterval);
       if (resetTimerRef.current) {
         clearTimeout(resetTimerRef.current);
+      }
+      if (actionTimerRef.current) {
+        clearTimeout(actionTimerRef.current);
       }
     };
   }, [selectedCameraId, isConfirming, fetchMovementData]);
@@ -676,7 +702,7 @@ export const GatePage: React.FC = () => {
                         : 'Exit recorded automatically'}
                     </div>
                     <p className="text-sm text-emerald-700 mt-1">
-                      No guard action is required. The camera assignment determines the movement direction.
+                      No guard action is required. The resident's current presence determines the next automatic state.
                     </p>
                   </div>
                 ) : activeObservation.movementDecision?.status === 'ALREADY_IN' ||
