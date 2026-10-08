@@ -285,25 +285,6 @@ export class MovementDecisionService {
       where: { residentId: resident.id },
     });
 
-    // Handle initial presence state policy
-    if (!currentPresence) {
-      if (targetDirection === MovementType.OUT) {
-        // OUT with no prior presence is refused — cannot assume resident is inside
-        return {
-          status: 'INITIAL_PRESENCE_MISSING',
-          cameraId: camera.id,
-          cameraRole: camera.role,
-          residentId: resident.id,
-          residentCode: resident.residentCode,
-          residentName: resident.fullName,
-          timestamp,
-          reason: 'No prior presence record found; automatic OUT movement refused',
-        };
-      }
-      // IN with no prior presence: fall through to MovementService which will atomically
-      // create the presence row and the movement event inside a single transaction.
-    }
-
     const currentState = currentPresence?.currentState ?? null;
     const movementMode = cameraConfig.movementMode === 'ROLE' ? 'ROLE' : 'TOGGLE';
     const targetDirection: MovementType =
@@ -314,6 +295,21 @@ export class MovementDecisionService {
         : camera.role === CameraRole.IN
           ? MovementType.IN
           : MovementType.OUT;
+
+    // New residents default to IN on their first automatic-gate recognition.
+    // The refusal below remains only for explicit legacy ROLE-mode OUT cameras.
+    if (!currentPresence && targetDirection === MovementType.OUT) {
+      return {
+        status: 'INITIAL_PRESENCE_MISSING',
+        cameraId: camera.id,
+        cameraRole: camera.role,
+        residentId: resident.id,
+        residentCode: resident.residentCode,
+        residentName: resident.fullName,
+        timestamp,
+        reason: 'No prior presence record found; automatic OUT movement refused',
+      };
+    }
 
     // 9. Duplicate State Suppression (used only by legacy ROLE mode)
     if (currentState === PresenceState.IN && targetDirection === MovementType.IN) {
