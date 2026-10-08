@@ -44,6 +44,11 @@ export interface CreateAppOptions {
 export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppOptions) {
   const app = express();
 
+  // Render terminates TLS and forwards the real client address through one proxy hop.
+  if (process.env.RENDER === 'true' || config.appEnv === 'production') {
+    app.set('trust proxy', 1);
+  }
+
   const movementDecisionService =
     options?.movementDecisionService || new MovementDecisionService(db);
   const movementBridge =

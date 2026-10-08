@@ -35,6 +35,12 @@ export const camerasApi = {
     });
   },
 
+  async deleteCamera(id: string): Promise<{ data: { id: string }; message: string }> {
+    return apiClient<{ data: { id: string }; message: string }>(`/cameras/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
   async startCamera(id: string): Promise<{ data: CameraDiagnostics; message: string }> {
     return apiClient<{ data: CameraDiagnostics; message: string }>(`/cameras/${id}/start`, {
       method: 'POST',

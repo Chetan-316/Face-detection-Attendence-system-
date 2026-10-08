@@ -47,10 +47,19 @@ export async function testCameraConnection(
 
   if (input.sourceType === 'SMART_CAMERA') {
     return {
-      reachable: true,
+      reachable: false,
       sourceType: 'SMART_CAMERA',
       latencyMs: Date.now() - startTime,
-      message: 'Smart Camera endpoint verified',
+      message: 'Smart / Edge Camera direct integration is not enabled yet',
+    };
+  }
+
+  if (input.rtspUrl && !/^rtsps?:\/\//i.test(input.rtspUrl.trim())) {
+    return {
+      reachable: false,
+      sourceType: 'RTSP',
+      latencyMs: Date.now() - startTime,
+      message: 'Enter a valid RTSP URL beginning with rtsp:// or rtsps://',
     };
   }
 

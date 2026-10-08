@@ -41,12 +41,14 @@ export class PresenceService {
         where: {
           hostelId,
           currentState: PresenceState.IN,
+          resident: { status: 'ACTIVE' },
         },
       }),
       this.db.residentPresence.count({
         where: {
           hostelId,
           currentState: PresenceState.OUT,
+          resident: { status: 'ACTIVE' },
         },
       }),
       this.db.resident.count({

@@ -5,6 +5,7 @@ import { useToast } from '../components/ToastContext';
 import { Badge } from '../components/Badge';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
+import { Modal } from '../components/Modal';
 import { camerasApi } from '../api/cameras.api';
 import { facilitiesApi, Facility, FacilityLocation } from '../api/facilities.api';
 import { CameraEntity, CameraDiagnostics, CameraTestResult } from '../types/camera.types';
@@ -26,6 +27,7 @@ import {
   CircleHelp,
   MapPin,
   ArrowRight,
+  Trash2,
 } from 'lucide-react';
 
 export const CamerasPage: React.FC = () => {
@@ -98,6 +100,8 @@ export const CamerasPage: React.FC = () => {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [showAdvancedEdit, setShowAdvancedEdit] = useState(false);
   const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
+  const [cameraPendingDelete, setCameraPendingDelete] = useState<CameraEntity | null>(null);
+  const [isDeletingCamera, setIsDeletingCamera] = useState(false);
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -465,6 +469,10 @@ export const CamerasPage: React.FC = () => {
       toastError('Select the gate / location monitored by this gate camera');
       return;
     }
+    if (newCameraSourceType === 'SMART_CAMERA') {
+      toastError('Smart / Edge Camera direct integration is not available yet');
+      return;
+    }
     setRegisterStep(2);
   };
 
@@ -482,6 +490,14 @@ export const CamerasPage: React.FC = () => {
       toastError('Select the gate / location monitored by this gate camera');
       return;
     }
+    if (newCameraSourceType === 'RTSP' && !/^rtsps?:\/\//i.test(newCameraRtspUrl.trim())) {
+      toastError('Enter a valid RTSP stream URL beginning with rtsp:// or rtsps://');
+      return;
+    }
+    if (newCameraSourceType === 'SMART_CAMERA') {
+      toastError('Smart / Edge Camera direct integration is not available yet');
+      return;
+    }
 
     try {
       setIsSubmittingCamera(true);
@@ -492,6 +508,7 @@ export const CamerasPage: React.FC = () => {
       if (newCameraSourceType === 'WEBCAM') {
         configMetadata.deviceIndex = parseInt(newCameraDeviceIndex, 10) || 0;
         configMetadata.fps = 15;
+        configMetadata.captureMode = 'browser';
       } else if (newCameraSourceType === 'RTSP') {
         const trimmed = newCameraRtspUrl.trim();
         const match = trimmed.match(/^(rtsp[s]?:\/\/)([^:@\s]+)(?::([^@\s]*))?@(.+)$/i);
@@ -605,6 +622,32 @@ export const CamerasPage: React.FC = () => {
     }
   };
 
+  const handleDeleteCamera = async () => {
+    if (!cameraPendingDelete || isDeletingCamera) return;
+
+    try {
+      setIsDeletingCamera(true);
+      await camerasApi.deleteCamera(cameraPendingDelete.id);
+
+      if (selectedCameraId === cameraPendingDelete.id) {
+        stopWebcamPreview();
+        setSelectedCameraId(null);
+        setSelectedCamera(null);
+        setDiagnostics(null);
+        setStreamError(null);
+        setTestResult(null);
+      }
+
+      success(`${cameraPendingDelete.name} deleted successfully`);
+      setCameraPendingDelete(null);
+      await fetchCameras();
+    } catch (err: any) {
+      toastError(err.message || 'Failed to delete camera');
+    } finally {
+      setIsDeletingCamera(false);
+    }
+  };
+
   const canManageCameras = user?.role === 'ADMIN';
   const isStreaming = diagnostics?.isActive ?? false;
   const cameraPurposeLabel = (role: CameraEntity['role']) => {
@@ -615,8 +658,8 @@ export const CamerasPage: React.FC = () => {
   };
   const cameraTypeLabel = (sourceType: CameraEntity['sourceType']) => {
     if (sourceType === 'RTSP') return 'IP / Network Camera';
-    if (sourceType === 'WEBCAM') return 'USB / Laptop Webcam';
-    return 'Smart / Edge Camera';
+    if (sourceType === 'WEBCAM') return 'Browser / USB Webcam';
+    return 'Smart / Edge Camera (legacy)';
   };
 
   return (
@@ -656,9 +699,9 @@ export const CamerasPage: React.FC = () => {
       <div className="camera-help-card">
         <CircleHelp size={20} className="shrink-0 mt-0.5" />
         <div>
-          <strong>Camera setup is simple:</strong> choose the hostel and gate, select the camera type,
-          enter its connection details, then test the connection before saving. Laptop webcams can be
-          previewed directly in the browser.
+          <strong>Camera setup:</strong> production IP cameras require a reachable RTSP stream URL,
+          plus credentials when the camera requires them. Browser / USB webcams use this computer directly
+          and do not need an IP address.
         </div>
       </div>
 
@@ -1247,9 +1290,8 @@ export const CamerasPage: React.FC = () => {
                             setModalTestResult(null);
                           }}
                         >
-                          <option value="RTSP">IP / Network Camera</option>
-                          <option value="WEBCAM">USB / Laptop Webcam</option>
-                          <option value="SMART_CAMERA">Smart / Edge Camera</option>
+                          <option value="RTSP">IP / Network Camera (RTSP)</option>
+                          <option value="WEBCAM">Browser / USB Webcam (this device)</option>
                         </select>
                       </div>
 
@@ -1296,10 +1338,8 @@ export const CamerasPage: React.FC = () => {
                     <div className="camera-step-heading">Connection details</div>
                     <div className="camera-step-copy">
                       {newCameraSourceType === 'RTSP'
-                        ? 'Enter the camera stream address. Username and password are only needed when the camera requires them.'
-                        : newCameraSourceType === 'WEBCAM'
-                        ? 'For a laptop or USB webcam, keep the default device unless another camera is connected.'
-                        : 'This camera type does not require browser connection details.'}
+                        ? 'Enter the full RTSP stream URL. The backend must be able to reach that address over the network.'
+                        : 'This webcam is captured by the current browser. It does not need an IP address or cloud-side webcam device.'}
                     </div>
 
                     <div className="camera-step-summary">
@@ -1318,13 +1358,13 @@ export const CamerasPage: React.FC = () => {
                       <>
                         <div className="form-group">
                           <label htmlFor="cam-rtsp" className="form-label">
-                            Camera Stream Address <span className="required">*</span>
+                            RTSP Stream URL <span className="required">*</span>
                           </label>
                           <input
                             id="cam-rtsp"
                             type="text"
                             className="form-control"
-                            placeholder="rtsp://192.168.1.100:554/stream"
+                            placeholder="rtsp://192.168.1.50:554/Streaming/Channels/101"
                             value={newCameraRtspUrl}
                             onChange={(e) => {
                               setNewCameraRtspUrl(e.target.value);
@@ -1333,7 +1373,7 @@ export const CamerasPage: React.FC = () => {
                             required
                           />
                           <small className="form-hint">
-                            Use the RTSP address provided by the camera manufacturer or NVR.
+                            Use the exact RTSP URL from the camera or NVR. Private 192.168.x.x addresses must be reachable from the server network.
                           </small>
                         </div>
 
@@ -1431,7 +1471,7 @@ export const CamerasPage: React.FC = () => {
                           onChange={(e) => setNewCameraDeviceIndex(e.target.value)}
                         />
                         <small className="form-hint">
-                          Keep 0 for the built-in webcam. Use 1 or higher only for another USB camera.
+                          Browser capture is used for this mode. No camera IP address is required.
                         </small>
                       </div>
                     )}
@@ -1702,25 +1742,78 @@ export const CamerasPage: React.FC = () => {
               </div>
 
               <div className="modal-footer">
-                <button
+                <Button
                   type="button"
-                  className="btn btn-secondary"
+                  variant="danger"
+                  className="mr-auto"
+                  onClick={() => {
+                    if (selectedCamera) {
+                      setIsEditModalOpen(false);
+                      setCameraPendingDelete(selectedCamera);
+                    }
+                  }}
+                  leftIcon={<Trash2 size={16} />}
+                >
+                  Delete Camera
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
                   onClick={() => setIsEditModalOpen(false)}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  className="btn btn-primary"
-                  disabled={isSavingEdit}
+                  variant="primary"
+                  isLoading={isSavingEdit}
                 >
-                  {isSavingEdit ? 'Saving...' : 'Save Changes'}
-                </button>
+                  Save Changes
+                </Button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={Boolean(cameraPendingDelete)}
+        onClose={() => {
+          if (!isDeletingCamera) setCameraPendingDelete(null);
+        }}
+        title="Delete Camera"
+        subtitle="Remove this camera configuration from PRAVAHAx."
+        size="sm"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCameraPendingDelete(null)}
+              disabled={isDeletingCamera}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={handleDeleteCamera}
+              isLoading={isDeletingCamera}
+              leftIcon={<Trash2 size={16} />}
+            >
+              Delete Camera
+            </Button>
+          </>
+        }
+      >
+        <div className="alert-banner alert-banner-warning">
+          <AlertCircle size={18} className="alert-icon" />
+          <span>
+            <strong>{cameraPendingDelete?.name}</strong> will be removed. Historical movement and attendance
+            records are preserved, but they will no longer be linked to this camera.
+          </span>
+        </div>
+      </Modal>
     </div>
   );
 };

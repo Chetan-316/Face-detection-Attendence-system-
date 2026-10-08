@@ -20,7 +20,8 @@ export const config = {
     historyLimit: parseInt(process.env.RECOGNITION_HISTORY_LIMIT || '100', 10),
   },
   movement: {
-    automationEnabled: process.env.MOVEMENT_AUTOMATION_ENABLED === 'true',
+    // Gate IN/OUT automation is enabled by default unless explicitly disabled.
+    automationEnabled: process.env.MOVEMENT_AUTOMATION_ENABLED !== 'false',
     minTransitionIntervalMs: parseInt(process.env.MOVEMENT_MIN_TRANSITION_INTERVAL_MS || '5000', 10),
   },
 };

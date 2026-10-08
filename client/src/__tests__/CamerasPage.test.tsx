@@ -33,6 +33,7 @@ vi.mock('../api/cameras.api', () => ({
     getCamera: vi.fn(),
     createCamera: vi.fn(),
     updateCamera: vi.fn(),
+    deleteCamera: vi.fn(),
     startCamera: vi.fn(),
     stopCamera: vi.fn(),
     testCameraConnection: vi.fn(),

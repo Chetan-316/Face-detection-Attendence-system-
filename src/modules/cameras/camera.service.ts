@@ -4,6 +4,7 @@ import {
   CameraSourceType,
   CameraRole,
   CameraHealthStatus,
+  StaffRole,
 } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { NotFoundError, ValidationError } from '../../common/errors';
@@ -79,6 +80,23 @@ export class CameraService {
     }
 
     const cleanConfig = normalizeCameraConfig(input.configMetadata || {});
+
+    if (input.sourceType === CameraSourceType.RTSP) {
+      const rtspUrl = String(cleanConfig.rtspUrl || '').trim();
+      if (!/^rtsps?:\/\//i.test(rtspUrl)) {
+        throw new ValidationError('A valid RTSP stream URL is required for an IP / network camera');
+      }
+    }
+
+    if (input.sourceType === CameraSourceType.SMART_CAMERA) {
+      throw new ValidationError(
+        'Smart / Edge Camera direct integration is not enabled yet. Use an RTSP network camera or browser webcam.'
+      );
+    }
+
+    if (input.sourceType === CameraSourceType.WEBCAM && !cleanConfig.captureMode) {
+      cleanConfig.captureMode = 'browser';
+    }
 
     return this.db.$transaction(async (tx) => {
       const camera = await tx.camera.create({
@@ -485,6 +503,49 @@ export class CameraService {
       await adapter.disconnect();
       this.activeAdapters.delete(cameraId);
     }
+  }
+
+  public async deleteCamera(
+    cameraId: string,
+    deletedByUserId?: string,
+    deletedByRole?: StaffRole
+  ): Promise<Camera> {
+    const existing = await this.getCamera(cameraId);
+
+    // Stop recognition and camera listeners before removing the configuration.
+    const disabledCamera = { ...existing, isEnabled: false } as Camera;
+    for (const callback of this.onCameraChangeCallbacks) {
+      try {
+        await callback(disabledCamera, existing.role);
+      } catch (err) {
+        console.error('[CameraService] Error stopping camera listeners before delete:', err);
+      }
+    }
+
+    await this.releaseCamera(cameraId);
+
+    return this.db.$transaction(async (tx) => {
+      await this.auditService.record(
+        {
+          organizationId: existing.organizationId,
+          hostelId: existing.hostelId,
+          entityType: 'CAMERA',
+          entityId: existing.id,
+          action: 'DELETE',
+          performedByUserId: deletedByUserId || null,
+          performedByRole: deletedByRole || null,
+          oldValues: {
+            name: existing.name,
+            sourceType: existing.sourceType,
+            role: existing.role,
+            isEnabled: existing.isEnabled,
+          },
+        },
+        tx
+      );
+
+      return tx.camera.delete({ where: { id: cameraId } });
+    });
   }
 
   public async shutdownAll(): Promise<void> {

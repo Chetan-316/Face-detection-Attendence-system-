@@ -31,6 +31,8 @@ export interface ActiveCameraSession {
   cameraId: string;
   hostelId: string;
   organizationId: string;
+  cameraRole: CameraRole;
+  captureMode: 'CLIENT' | 'STREAM';
   state: RecognitionSessionState;
   startedAt: Date;
   unsubscribeStream?: () => void;
@@ -229,6 +231,14 @@ export class RecognitionService {
       throw new ValidationError(`Camera '${camera.name}' (${camera.id}) is disabled`);
     }
 
+    const cameraConfig = (camera.configMetadata as Record<string, any>) || {};
+    // Browser webcams send frames from getUserMedia. They must not try to
+    // open a physical webcam inside Render or another cloud server.
+    const captureMode: 'CLIENT' | 'STREAM' =
+      camera.sourceType === CameraSourceType.WEBCAM && cameraConfig.captureMode !== 'server'
+        ? 'CLIENT'
+        : 'STREAM';
+
     // Verify worker health
     const workerHealth = await this.workerClient.health();
     if (workerHealth.status !== 'UP' && !workerHealth.mock) {
@@ -265,6 +275,8 @@ export class RecognitionService {
       cameraId: camera.id,
       hostelId: camera.hostelId,
       organizationId: camera.organizationId,
+      cameraRole: camera.role,
+      captureMode,
       state: 'RUNNING',
       startedAt: new Date(),
       stabilizer: new TemporalStabilizer({ cooldownMs: config.recognition.cooldownMs }),
@@ -287,19 +299,22 @@ export class RecognitionService {
     // Keep max 50 event listeners per camera
     session.eventEmitter.setMaxListeners(50);
 
-    // Subscribe to shared CameraService stream
-    try {
-      const unsubscribe = await this.cameraService.subscribeToStream(cameraId, (frame) => {
-        this.handleCameraFrame(cameraId, frame).catch((err) => {
-          console.error(`[RecognitionService] Error handling frame for camera ${cameraId}:`, err);
+    // Server-stream cameras subscribe to CameraService. Browser webcams are
+    // client-fed through processClientFrame and need no server hardware stream.
+    if (captureMode === 'STREAM') {
+      try {
+        const unsubscribe = await this.cameraService.subscribeToStream(cameraId, (frame) => {
+          this.handleCameraFrame(cameraId, frame).catch((err) => {
+            console.error(`[RecognitionService] Error handling frame for camera ${cameraId}:`, err);
+          });
         });
-      });
-      session.unsubscribeStream = unsubscribe;
-    } catch (err: any) {
-      session.state = 'ERROR';
-      session.lastError = err.message || 'Failed to subscribe to camera stream';
-      this.activeSessions.set(cameraId, session);
-      throw new ValidationError(`Unable to connect recognition to camera stream: ${err.message}`);
+        session.unsubscribeStream = unsubscribe;
+      } catch (err: any) {
+        session.state = 'ERROR';
+        session.lastError = err.message || 'Failed to subscribe to camera stream';
+        this.activeSessions.set(cameraId, session);
+        throw new ValidationError(`Unable to connect recognition to camera stream: ${err.message}`);
+      }
     }
 
     this.activeSessions.set(cameraId, session);
@@ -630,9 +645,17 @@ export class RecognitionService {
             // SOLE authoritative path that calls decisionService.evaluateObservation().
             // Do NOT call processObservation() here – that would cause double evaluation.
             if (stabilized.isStable && stabilized.shouldEmitEvent && stabilized.resident) {
-              session.eventEmitter.emit('stableMatch', obs);
-              // obs.movementDecision will be populated asynchronously when the bridge emits
-              // 'movementDecision' back (see onDecision handler registered in startRecognition).
+              // For browser-fed gate frames, await the movement decision so the Guard
+              // receives a final IN/OUT result in the same process-frame response.
+              if (
+                session.captureMode === 'CLIENT' &&
+                this.movementBridge &&
+                (session.cameraRole === CameraRole.IN || session.cameraRole === CameraRole.OUT)
+              ) {
+                obs.movementDecision = await this.movementBridge.processObservation(obs);
+              } else {
+                session.eventEmitter.emit('stableMatch', obs);
+              }
             }
           } else if (stabilized.classification === 'UNCERTAIN') {
             session.uncertains++;

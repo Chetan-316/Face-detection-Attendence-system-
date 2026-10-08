@@ -199,6 +199,19 @@ export function createCameraRouter(
           throw new ValidationError('Synthetic camera testInputOverride is disabled in production environments');
         }
 
+        if (parsed.data.sourceType === CameraSourceType.SMART_CAMERA) {
+          throw new ValidationError(
+            'Smart / Edge Camera direct integration is not enabled yet. Use an RTSP network camera or browser webcam.'
+          );
+        }
+
+        if (parsed.data.sourceType === CameraSourceType.RTSP) {
+          const rtspUrl = String(parsed.data.configMetadata?.rtspUrl || '').trim();
+          if (!/^rtsps?:\/\//i.test(rtspUrl)) {
+            throw new ValidationError('A valid RTSP stream URL is required for an IP / network camera');
+          }
+        }
+
         const user = req.user!;
         let hostelId = parsed.data.hostelId;
 
@@ -307,7 +320,27 @@ export function createCameraRouter(
     }
   );
 
-  // 4.1 POST /api/v1/cameras/:id/test - Test connection to configured camera (ADMIN only)
+  // 4.1 DELETE /api/v1/cameras/:id - Permanently remove a camera configuration (ADMIN only)
+  router.delete(
+    '/:id',
+    requireAuth,
+    requireRole(StaffRole.ADMIN),
+    async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const camera = await resolveAndAuthorizeCamera(req, req.params.id);
+        await cameraService.deleteCamera(camera.id, req.user!.id, req.user!.role);
+
+        res.status(200).json({
+          message: 'Camera deleted successfully',
+          data: { id: camera.id },
+        });
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // 4.2 POST /api/v1/cameras/:id/test - Test connection to configured camera (ADMIN only)
   router.post(
     '/:id/test',
     requireAuth,

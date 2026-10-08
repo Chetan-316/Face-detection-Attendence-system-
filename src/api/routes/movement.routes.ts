@@ -275,6 +275,7 @@ export function createMovementRouter(
         by: ['currentState'],
         where: {
           hostel: { organizationId: actor.organizationId },
+          resident: { status: 'ACTIVE' },
         },
         _count: { residentId: true },
       });

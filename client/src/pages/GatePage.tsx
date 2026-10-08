@@ -125,7 +125,8 @@ export const GatePage: React.FC = () => {
   const fetchCameras = useCallback(async () => {
     try {
       const res = await camerasApi.listCameras(user?.hostelId || undefined);
-      const list = res.data || [];
+      // Gate Operations only uses cameras with an authoritative movement direction.
+      const list = (res.data || []).filter((camera) => camera.role === 'IN' || camera.role === 'OUT');
       setCameras(list);
 
       const activeId = selectedCameraId || (list.length > 0 ? list[0].id : '');
@@ -406,6 +407,16 @@ export const GatePage: React.FC = () => {
           <div className="gate-header-title-row">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gate Operations</h1>
             <span className="gate-camera-name">{selectedCamera?.name || 'Main Gate'}</span>
+            {selectedCamera?.role === 'IN' && (
+              <span className="inline-flex items-center px-2 py-1 rounded-md text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                Entry camera
+              </span>
+            )}
+            {selectedCamera?.role === 'OUT' && (
+              <span className="inline-flex items-center px-2 py-1 rounded-md text-sm font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                Exit camera
+              </span>
+            )}
             <span
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-semibold border ${
                 cameraIsOnline
@@ -683,7 +694,16 @@ export const GatePage: React.FC = () => {
                     </p>
                   </div>
                 ) : activeObservation.movementDecision &&
-                  ['AUTOMATION_DISABLED', 'CAMERA_NOT_MOVEMENT_CAPABLE', 'INITIAL_PRESENCE_MISSING', 'ERROR'].includes(
+                  [
+                    'AUTOMATION_DISABLED',
+                    'CAMERA_NOT_MOVEMENT_CAPABLE',
+                    'INITIAL_PRESENCE_MISSING',
+                    'RESIDENT_INACTIVE',
+                    'RESIDENT_NOT_ENROLLED',
+                    'CROSS_HOSTEL_MISMATCH',
+                    'TRANSITION_SUPPRESSED',
+                    'ERROR',
+                  ].includes(
                     activeObservation.movementDecision.status
                   ) ? (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -706,11 +726,18 @@ export const GatePage: React.FC = () => {
                       </Button>
                     )}
                   </div>
+                ) : activeObservation.isStable && activeObservation.shouldEmitEvent === false ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="font-semibold text-slate-800">Recognition confirmed — scanner remains active</div>
+                    <p className="text-sm text-slate-600 mt-1">
+                      A recent recognition for this resident is still inside the duplicate-protection window. No duplicate movement was created.
+                    </p>
+                  </div>
                 ) : (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                     <div className="font-semibold text-blue-900">Confirming automatic movement...</div>
                     <p className="text-sm text-blue-700 mt-1">
-                      Keep the resident in view briefly. Entry or exit will be recorded from the configured camera role.
+                      Keep the resident in view briefly. This {selectedCamera?.role === 'OUT' ? 'exit' : 'entry'} camera records the movement automatically.
                     </p>
                   </div>
                 )}
