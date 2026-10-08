@@ -220,9 +220,9 @@ export class MovementDecisionService {
       };
     }
 
-    // 5. Direction MUST come from camera role (server-authoritative)
-    const targetDirection: MovementType =
-      camera.role === CameraRole.IN ? MovementType.IN : MovementType.OUT;
+    // 5. Direction is resolved after reading authoritative presence.
+    // Normal gate mode is TOGGLE: OUT -> IN, IN -> OUT. A legacy ROLE mode
+    // remains available for installations that intentionally use separate cameras.
 
     // 6. Validate Resident Eligibility Server-Side
     const resident = await this.db.resident.findUnique({
@@ -305,8 +305,17 @@ export class MovementDecisionService {
     }
 
     const currentState = currentPresence?.currentState ?? null;
+    const movementMode = cameraConfig.movementMode === 'ROLE' ? 'ROLE' : 'TOGGLE';
+    const targetDirection: MovementType =
+      movementMode === 'TOGGLE'
+        ? currentState === PresenceState.IN
+          ? MovementType.OUT
+          : MovementType.IN
+        : camera.role === CameraRole.IN
+          ? MovementType.IN
+          : MovementType.OUT;
 
-    // 9. Duplicate State Suppression
+    // 9. Duplicate State Suppression (used only by legacy ROLE mode)
     if (currentState === PresenceState.IN && targetDirection === MovementType.IN) {
       const result: MovementDecisionResult = {
         status: 'ALREADY_IN',
@@ -378,7 +387,10 @@ export class MovementDecisionService {
         source: MovementSource.FACE_RECOGNITION,
         performedByUserId: null,
         performedByRole: null,
-        notes: `Automated face recognition at ${camera.name} (${camera.role})`,
+        notes:
+          movementMode === 'TOGGLE'
+            ? `Automatic single-camera presence toggle at ${camera.name}`
+            : `Automated face recognition at ${camera.name} (${camera.role})`,
         recognitionReference: observationId || null,
         effectiveTimestamp: new Date(),
       });

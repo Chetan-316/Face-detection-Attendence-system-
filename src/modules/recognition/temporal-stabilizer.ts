@@ -33,10 +33,11 @@ export interface ActiveTrack {
 
 export class TemporalStabilizer {
   private tracks: Map<string, ActiveTrack> = new Map();
-  private residentLastEmittedAt: Map<string, number> = new Map(); // residentId -> timestamp
+  private residentLastSeenAt: Map<string, number> = new Map(); // residentId -> last matched frame
+  private residentEpisodeEmitted: Set<string> = new Set(); // one movement trigger per appearance
   private windowSize: number;
   private minConsistentFrames: number;
-  private cooldownMs: number;
+  private rearmAbsenceMs: number;
   private trackTimeoutMs: number;
 
   constructor(options?: {
@@ -47,7 +48,9 @@ export class TemporalStabilizer {
   }) {
     this.windowSize = options?.windowSize ?? 5;
     this.minConsistentFrames = options?.minConsistentFrames ?? (process.env.BIOMETRIC_MOCK === 'true' || process.env.NODE_ENV === 'test' ? 1 : 2);
-    this.cooldownMs = options?.cooldownMs ?? 8000;
+    // Kept under the existing cooldownMs option for backwards-compatible configuration.
+    // Semantics are now safer: the resident must be absent for this duration before re-arming.
+    this.rearmAbsenceMs = options?.cooldownMs ?? 8000;
     this.trackTimeoutMs = options?.trackTimeoutMs ?? 10000;
   }
 
@@ -109,6 +112,21 @@ export class TemporalStabilizer {
     this.pruneOldTracks(now);
 
     const track = this.findOrCreateTrack(bbox, now);
+
+    // Recognition episode tracking. Continuous visibility keeps the resident locked,
+    // regardless of how long they remain in front of the camera. Only a genuine
+    // absence period re-arms that resident for the next IN/OUT toggle.
+    if (matchResult.classification === 'MATCH' && matchResult.resident?.id) {
+      const residentId = matchResult.resident.id;
+      const previousSeenAt = this.residentLastSeenAt.get(residentId);
+      if (
+        previousSeenAt === undefined ||
+        now - previousSeenAt >= this.rearmAbsenceMs
+      ) {
+        this.residentEpisodeEmitted.delete(residentId);
+      }
+      this.residentLastSeenAt.set(residentId, now);
+    }
 
     // Record observation in sliding history
     track.history.push({
@@ -173,12 +191,11 @@ export class TemporalStabilizer {
     track.stableClassification = stabilizedClassification;
     track.stableResident = stabilizedResident;
 
-    // Determine event emission with cooldown
+    // Emit exactly once for this resident's current appearance.
     let shouldEmitEvent = false;
     if (stabilizedClassification === 'MATCH' && stabilizedResident) {
-      const lastEmitted = this.residentLastEmittedAt.get(stabilizedResident.id);
-      if (lastEmitted === undefined || now - lastEmitted >= this.cooldownMs) {
-        this.residentLastEmittedAt.set(stabilizedResident.id, now);
+      if (!this.residentEpisodeEmitted.has(stabilizedResident.id)) {
+        this.residentEpisodeEmitted.add(stabilizedResident.id);
         shouldEmitEvent = true;
       }
     }
@@ -211,6 +228,7 @@ export class TemporalStabilizer {
 
   public clear(): void {
     this.tracks.clear();
-    this.residentLastEmittedAt.clear();
+    this.residentLastSeenAt.clear();
+    this.residentEpisodeEmitted.clear();
   }
 }

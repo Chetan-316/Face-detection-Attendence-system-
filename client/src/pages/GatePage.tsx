@@ -407,14 +407,9 @@ export const GatePage: React.FC = () => {
           <div className="gate-header-title-row">
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gate Operations</h1>
             <span className="gate-camera-name">{selectedCamera?.name || 'Main Gate'}</span>
-            {selectedCamera?.role === 'IN' && (
+            {(selectedCamera?.role === 'IN' || selectedCamera?.role === 'OUT') && (
               <span className="inline-flex items-center px-2 py-1 rounded-md text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                Entry camera
-              </span>
-            )}
-            {selectedCamera?.role === 'OUT' && (
-              <span className="inline-flex items-center px-2 py-1 rounded-md text-sm font-semibold bg-violet-50 text-violet-700 border border-violet-200">
-                Exit camera
+                Automatic IN / OUT
               </span>
             )}
             <span
@@ -730,14 +725,14 @@ export const GatePage: React.FC = () => {
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                     <div className="font-semibold text-slate-800">Recognition confirmed — scanner remains active</div>
                     <p className="text-sm text-slate-600 mt-1">
-                      A recent recognition for this resident is still inside the duplicate-protection window. No duplicate movement was created.
+                      This resident is still part of the same camera appearance. No duplicate movement is created until they leave and appear again.
                     </p>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                     <div className="font-semibold text-blue-900">Confirming automatic movement...</div>
                     <p className="text-sm text-blue-700 mt-1">
-                      Keep the resident in view briefly. This {selectedCamera?.role === 'OUT' ? 'exit' : 'entry'} camera records the movement automatically.
+                      Keep the resident in view briefly. The first confirmed appearance toggles the resident's presence automatically; continuous visibility is ignored until they leave the camera view.
                     </p>
                   </div>
                 )}

@@ -504,6 +504,7 @@ export const CamerasPage: React.FC = () => {
       const configMetadata: Record<string, any> = {};
       if (newCameraRole === 'IN' || newCameraRole === 'OUT') {
         configMetadata.movementAutomationEnabled = newCameraMovementAutomation;
+        configMetadata.movementMode = 'TOGGLE';
       }
       if (newCameraSourceType === 'WEBCAM') {
         configMetadata.deviceIndex = parseInt(newCameraDeviceIndex, 10) || 0;
@@ -554,7 +555,7 @@ export const CamerasPage: React.FC = () => {
 
   const openEditModal = (camera: CameraEntity) => {
     setEditCameraName(camera.name);
-    setEditCameraRole(camera.role);
+    setEditCameraRole(camera.role === 'OUT' ? 'IN' : camera.role);
     setEditCameraMovementAutomation(camera.configMetadata?.movementAutomationEnabled !== false);
     loadEditCameraLocations(camera.hostelId, camera.locationId);
 
@@ -585,6 +586,7 @@ export const CamerasPage: React.FC = () => {
 
       if (editCameraRole === 'IN' || editCameraRole === 'OUT') {
         deltaConfig.movementAutomationEnabled = editCameraMovementAutomation;
+        deltaConfig.movementMode = 'TOGGLE';
       }
 
       if (selectedCamera.sourceType === 'RTSP') {
@@ -651,8 +653,7 @@ export const CamerasPage: React.FC = () => {
   const canManageCameras = user?.role === 'ADMIN';
   const isStreaming = diagnostics?.isActive ?? false;
   const cameraPurposeLabel = (role: CameraEntity['role']) => {
-    if (role === 'IN') return 'Gate Entry';
-    if (role === 'OUT') return 'Gate Exit';
+    if (role === 'IN' || role === 'OUT') return 'Automatic Gate';
     if (role === 'ATTENDANCE') return 'Existing Attendance Checkpoint';
     return 'General Monitoring';
   };
@@ -1304,8 +1305,7 @@ export const CamerasPage: React.FC = () => {
                           onChange={(e) => setNewCameraRole(e.target.value as any)}
                         >
                           <option value="GENERAL">General Monitoring</option>
-                          <option value="IN">Gate Entry</option>
-                          <option value="OUT">Gate Exit</option>
+                          <option value="IN">Gate — Automatic IN / OUT</option>
                           <option value="ATTENDANCE">Existing Attendance Checkpoint</option>
                         </select>
                       </div>
@@ -1596,8 +1596,7 @@ export const CamerasPage: React.FC = () => {
                     onChange={(e) => setEditCameraRole(e.target.value as any)}
                   >
                     <option value="GENERAL">General Monitoring</option>
-                    <option value="IN">Gate Entry</option>
-                    <option value="OUT">Gate Exit</option>
+                    <option value="IN">Gate — Automatic IN / OUT</option>
                     <option value="ATTENDANCE">Existing Attendance Checkpoint</option>
                   </select>
                 </div>
@@ -1612,7 +1611,7 @@ export const CamerasPage: React.FC = () => {
                       onChange={(e) => setEditCameraMovementAutomation(e.target.checked)}
                     />
                     <label htmlFor="edit-movement-auto" className="text-sm text-slate-700 font-medium">
-                      Automatically record IN / OUT after a confirmed face match
+                      Automatically toggle IN / OUT once per resident appearance
                     </label>
                   </div>
                 )}

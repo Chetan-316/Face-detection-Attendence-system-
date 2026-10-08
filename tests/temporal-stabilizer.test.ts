@@ -47,24 +47,26 @@ describe('TemporalStabilizer Unit Tests', () => {
     expect(f3.shouldEmitEvent).toBe(true); // First stable emission
   });
 
-  it('enforces cooldown to prevent event spamming on subsequent frames', () => {
+  it('emits once per continuous appearance and rearms only after absence', () => {
     const stabilizer = new TemporalStabilizer({ minConsistentFrames: 3, windowSize: 5, cooldownMs: 5000, trackTimeoutMs: 10000 });
 
-    // Frames 1-3 establish stable match
     stabilizer.update(bbox, matchResA, 1000);
     stabilizer.update(bbox, matchResA, 1200);
     const f3 = stabilizer.update(bbox, matchResA, 1400);
     expect(f3.shouldEmitEvent).toBe(true);
 
-    // Frame 4 (at 2000ms, cooldown is 5000ms so within cooldown):
     const f4 = stabilizer.update(bbox, matchResA, 2000);
-    expect(f4.classification).toBe('MATCH');
-    expect(f4.shouldEmitEvent).toBe(false); // SUPPRESSED BY COOLDOWN!
+    expect(f4.shouldEmitEvent).toBe(false);
 
-    // Frame 5 (at 7000ms, 7000 - 1400 = 5600ms >= cooldownMs 5000ms):
+    // Still continuously visible well beyond the old timer: must remain locked.
     const f5 = stabilizer.update(bbox, matchResA, 7000);
     expect(f5.classification).toBe('MATCH');
-    expect(f5.shouldEmitEvent).toBe(true); // ALLOWED AFTER COOLDOWN!
+    expect(f5.shouldEmitEvent).toBe(false);
+
+    // Resident disappears for >5 seconds, then returns. This is a new appearance.
+    const f6 = stabilizer.update(bbox, matchResA, 13050);
+    expect(f6.classification).toBe('MATCH');
+    expect(f6.shouldEmitEvent).toBe(true);
   });
 
   it('stabilizes UNKNOWN without flickering', () => {

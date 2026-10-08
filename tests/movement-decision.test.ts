@@ -257,27 +257,21 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     expect(movementCount).toBe(1);
   });
 
-  // Test 54: DUPLICATE IN
-  it('54: suppresses duplicate IN transition when resident is already IN (Result = ALREADY_IN, no DB movement)', async () => {
+  // Test 54: SAME CAMERA TOGGLES OUT
+  it('54: same automatic gate toggles resident from IN -> OUT on the next appearance', async () => {
     const resident = await createTestResident('R_IN_2', PresenceState.IN);
     const obs = createObservation(inCameraId, resident, 'MATCH');
 
     const decision = await movementDecisionService.evaluateObservation(obs);
 
-    expect(decision.status).toBe('ALREADY_IN');
-    expect(decision.currentPresence).toBe(PresenceState.IN);
-    expect(decision.movementEventId).toBeUndefined();
-
-    // No movement event written
-    const movementCount = await testPrisma.movementEvent.count({
-      where: { residentId: resident.id },
-    });
-    expect(movementCount).toBe(0);
+    expect(decision.status).toBe('MOVEMENT_CREATED');
+    expect(decision.direction).toBe(MovementType.OUT);
+    expect(decision.currentPresence).toBe(PresenceState.OUT);
 
     const presence = await testPrisma.residentPresence.findUnique({
       where: { residentId: resident.id },
     });
-    expect(presence?.currentState).toBe(PresenceState.IN);
+    expect(presence?.currentState).toBe(PresenceState.OUT);
   });
 
   // Test 55: OUT TRANSITION
@@ -298,21 +292,16 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     expect(presence?.currentState).toBe(PresenceState.OUT);
   });
 
-  // Test 56: DUPLICATE OUT
-  it('56: suppresses duplicate OUT transition when resident is already OUT (Result = ALREADY_OUT)', async () => {
+  // Test 56: ANY AUTOMATIC GATE ROLE USES CURRENT PRESENCE
+  it('56: an OUT legacy gate record still toggles OUTSIDE resident to IN in automatic mode', async () => {
     const resident = await createTestResident('R_OUT_2', PresenceState.OUT);
     const obs = createObservation(outCameraId, resident, 'MATCH');
 
     const decision = await movementDecisionService.evaluateObservation(obs);
 
-    expect(decision.status).toBe('ALREADY_OUT');
-    expect(decision.currentPresence).toBe(PresenceState.OUT);
-    expect(decision.movementEventId).toBeUndefined();
-
-    const movementCount = await testPrisma.movementEvent.count({
-      where: { residentId: resident.id },
-    });
-    expect(movementCount).toBe(0);
+    expect(decision.status).toBe('MOVEMENT_CREATED');
+    expect(decision.direction).toBe(MovementType.IN);
+    expect(decision.currentPresence).toBe(PresenceState.IN);
   });
 
   // Test 57: GENERAL CAMERA
@@ -692,25 +681,20 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     expect(movementCount).toBe(1);
   });
 
-  // Test 69: INITIAL PRESENCE OUT POLICY MAINTAINED
-  it('69: OUT camera on resident with no prior ResidentPresence is safely refused (INITIAL_PRESENCE_MISSING)', async () => {
+  // Test 69: INITIAL PRESENCE FOR SINGLE-CAMERA AUTO GATE
+  it('69: first recognition with no prior presence initializes the resident as IN', async () => {
     const resident = await createResidentNoPresence('R_INIT_OUT_1');
 
     const obs = createObservation(outCameraId, resident, 'MATCH');
     const decision = await movementDecisionService.evaluateObservation(obs);
 
-    expect(decision.status).toBe('INITIAL_PRESENCE_MISSING');
-
-    // No movement, no presence row created
-    const movementCount = await testPrisma.movementEvent.count({
-      where: { residentId: resident.id },
-    });
-    expect(movementCount).toBe(0);
+    expect(decision.status).toBe('MOVEMENT_CREATED');
+    expect(decision.direction).toBe(MovementType.IN);
 
     const presence = await testPrisma.residentPresence.findUnique({
       where: { residentId: resident.id },
     });
-    expect(presence).toBeNull();
+    expect(presence?.currentState).toBe(PresenceState.IN);
   });
 
   // Test 70: SAFETY SWITCH VERIFICATION
