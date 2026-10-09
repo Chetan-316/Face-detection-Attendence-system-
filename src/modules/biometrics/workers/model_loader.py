@@ -16,6 +16,10 @@ import sys
 import urllib.request
 from typing import Optional, Tuple
 
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../../../")
+)
+
 ACTIVE_ENGINE = os.environ.get("BIOMETRIC_ENGINE", "legacy").strip().lower()
 if ACTIVE_ENGINE not in {"legacy", "scrfd_adaface"}:
     raise RuntimeError(
@@ -80,18 +84,22 @@ else:
     }
 
 
+def _project_resolve(path_value: str) -> str:
+    if os.path.isabs(path_value):
+        return os.path.abspath(path_value)
+    return os.path.abspath(os.path.join(PROJECT_ROOT, path_value))
+
+
 def get_models_dir() -> str:
     env_dir = os.environ.get("MODELS_DIR") or os.environ.get("MODEL_DIR")
     if env_dir:
-        abs_env = os.path.abspath(env_dir)
-        os.makedirs(abs_env, exist_ok=True)
-        return abs_env
+        resolved = _project_resolve(env_dir)
+        os.makedirs(resolved, exist_ok=True)
+        return resolved
 
-    cwd_models = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../../../models")
-    )
-    os.makedirs(cwd_models, exist_ok=True)
-    return cwd_models
+    default_models = os.path.join(PROJECT_ROOT, "models")
+    os.makedirs(default_models, exist_ok=True)
+    return default_models
 
 
 def _sha256(path: str) -> str:
@@ -124,7 +132,7 @@ def _resolve_operator_model(
 ) -> str:
     configured_path = os.environ.get(path_env)
     path = (
-        os.path.abspath(configured_path)
+        _project_resolve(configured_path)
         if configured_path
         else os.path.join(models_dir, filename)
     )
@@ -180,20 +188,8 @@ def ensure_models_downloaded(models_dir: str = None) -> Tuple[str, str]:
     yunet_path = os.path.join(models_dir, DETECTOR_INFO["filename"])
     sface_path = os.path.join(models_dir, EMBEDDER_INFO["filename"])
 
-    root_yunet = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../../../models",
-            DETECTOR_INFO["filename"],
-        )
-    )
-    root_sface = os.path.abspath(
-        os.path.join(
-            os.path.dirname(__file__),
-            "../../../../models",
-            EMBEDDER_INFO["filename"],
-        )
-    )
+    root_yunet = os.path.join(PROJECT_ROOT, "models", DETECTOR_INFO["filename"])
+    root_sface = os.path.join(PROJECT_ROOT, "models", EMBEDDER_INFO["filename"])
 
     if not os.path.exists(yunet_path) or os.path.getsize(yunet_path) < 100_000:
         if os.path.exists(root_yunet) and os.path.getsize(root_yunet) >= 100_000:

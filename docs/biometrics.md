@@ -45,7 +45,7 @@ The biometric worker is versioned by `BIOMETRIC_ENGINE`.
 
 ### Model-artifact licensing boundary
 
-Source code and model weights are treated separately. The repository does **not** automatically bundle SCRFD/AdaFace research checkpoints. Operators must supply model paths or approved download URLs and may optionally pin SHA-256 checksums. The worker fails closed when the selected real engine cannot load its model artifacts; mock fallback is allowed only when explicitly enabled.
+Source code and model weights are treated separately. The repository does **not** automatically bundle SCRFD/AdaFace research checkpoints. Operators must supply model paths or approved download URLs and may optionally pin SHA-256 checksums. The worker fails closed when the selected real engine cannot load its model artifacts; mock fallback is allowed only when explicitly enabled. Relative model paths are resolved from the repository/project root so build-time verification and runtime loading use the same artifacts.
 
 ### Template migration rule
 
