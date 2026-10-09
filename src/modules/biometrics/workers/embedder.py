@@ -7,7 +7,8 @@ scrfd_adaface engine: AdaFace IR50 ONNX, 512-D
 Both paths return L2-normalized vectors and share the same aggregation contract.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+import os
 
 import cv2
 import numpy as np
@@ -128,6 +129,11 @@ class _AdaFaceEmbedder(_BaseAggregator):
 
         super().__init__(consistency_threshold)
         self.model_path = model_path
+        self.color_space = os.environ.get("ADAFACE_COLOR_SPACE", "RGB").strip().upper()
+        if self.color_space not in {"RGB", "BGR"}:
+            raise RuntimeError(
+                f"Unsupported ADAFACE_COLOR_SPACE '{self.color_space}'. Use RGB or BGR."
+            )
 
         available = ort.get_available_providers()
         providers = []
@@ -190,8 +196,12 @@ class _AdaFaceEmbedder(_BaseAggregator):
         )
 
     def _preprocess(self, aligned_bgr: np.ndarray) -> np.ndarray:
-        rgb = cv2.cvtColor(aligned_bgr, cv2.COLOR_BGR2RGB)
-        arr = rgb.astype(np.float32) / 255.0
+        model_image = (
+            cv2.cvtColor(aligned_bgr, cv2.COLOR_BGR2RGB)
+            if self.color_space == "RGB"
+            else aligned_bgr
+        )
+        arr = model_image.astype(np.float32) / 255.0
         arr = (arr - 0.5) / 0.5
         arr = np.transpose(arr, (2, 0, 1))[None, ...]
         return np.ascontiguousarray(arr, dtype=np.float32)
@@ -227,7 +237,7 @@ class _AdaFaceEmbedder(_BaseAggregator):
 
 
 class FaceEmbedder:
-    def __init__(self, model_path: str, consistency_threshold: float = None):
+    def __init__(self, model_path: str, consistency_threshold: Optional[float] = None):
         if ACTIVE_ENGINE == "scrfd_adaface":
             threshold = (
                 consistency_threshold

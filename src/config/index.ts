@@ -4,6 +4,11 @@ import path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const biometricEngine = (process.env.BIOMETRIC_ENGINE || 'legacy').trim().toLowerCase();
+if (!['legacy', 'scrfd_adaface'].includes(biometricEngine)) {
+  throw new Error(
+    `Unsupported BIOMETRIC_ENGINE '${biometricEngine}'. Use 'legacy' or 'scrfd_adaface'.`
+  );
+}
 const isAdaFaceEngine = biometricEngine === 'scrfd_adaface';
 const biometricEmbeddingDimension = isAdaFaceEngine ? 512 : 128;
 const biometricTemplateVersion = isAdaFaceEngine ? '2.0.0' : '1.0.0';

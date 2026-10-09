@@ -178,6 +178,14 @@ describe('TemplateMatcher Unit Tests', () => {
     expect(result.resident).toBeUndefined();
   });
 
+  it('validates the 512-D AdaFace migration contract without accepting it as legacy 128-D', () => {
+    const adafaceVector = TemplateMatcher.normalizeVector(new Array(512).fill(0.01));
+
+    expect(TemplateMatcher.isValidVector(adafaceVector, 512)).toBe(true);
+    expect(TemplateMatcher.isValidVector(adafaceVector, 128)).toBe(false);
+    expect(TemplateMatcher.isValidVector(new Array(128).fill(0.01), 512)).toBe(false);
+  });
+
   it('validates threshold constructor order (matchThreshold must be > uncertainThreshold)', () => {
     expect(() => {
       new TemplateMatcher({ matchThreshold: 0.4, uncertainThreshold: 0.6 });

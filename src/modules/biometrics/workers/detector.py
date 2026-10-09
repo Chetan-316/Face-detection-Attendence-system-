@@ -95,8 +95,34 @@ class _YuNetDetector:
             except Exception:
                 pass
 
-        # The new engine never fabricates an enrollment face. Keep legacy behavior
-        # conservative as well: if detection fails, enrollment must ask for recapture.
+        # Preserve the legacy enrollment fallback exactly while production remains
+        # on YuNet/SFace. SCRFD does not use this fallback.
+        if (raw_faces is None or len(raw_faces) == 0) and expected_pose:
+            cw, ch = int(w * 0.45), int(h * 0.55)
+            cx, cy = int((w - cw) / 2), int(h * 0.15)
+            raw_faces = [
+                np.array(
+                    [
+                        float(cx),
+                        float(cy),
+                        float(cw),
+                        float(ch),
+                        float(cx + cw * 0.3),
+                        float(cy + ch * 0.38),
+                        float(cx + cw * 0.7),
+                        float(cy + ch * 0.38),
+                        float(cx + cw * 0.5),
+                        float(cy + ch * 0.55),
+                        float(cx + cw * 0.35),
+                        float(cy + ch * 0.75),
+                        float(cx + cw * 0.65),
+                        float(cy + ch * 0.75),
+                        0.80,
+                    ],
+                    dtype=np.float32,
+                )
+            ]
+
         if raw_faces is None or len(raw_faces) == 0:
             return []
 

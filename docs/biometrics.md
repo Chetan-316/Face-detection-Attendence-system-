@@ -37,7 +37,7 @@ The biometric worker is versioned by `BIOMETRIC_ENGINE`.
 
 1. SCRFD receives a padded 640×640 frame and returns face boxes plus five facial landmarks.
 2. The five landmarks are transformed to the canonical 112×112 face geometry.
-3. The aligned crop is normalized for the approved AdaFace IR50 export.
+3. The aligned crop is normalized for the approved AdaFace IR50 export. Channel order is explicit through `ADAFACE_COLOR_SPACE` (default `RGB`) so custom/older exports can declare `BGR` when required.
 4. AdaFace produces a 512-D vector.
 5. The vector is L2-normalized before enrollment aggregation or cosine matching.
 6. Matching remains three-state: `MATCH`, `UNCERTAIN`, or `UNKNOWN`.
@@ -88,22 +88,22 @@ Every enrollment sample must satisfy strict automated quality checks:
 | Quality Rule | Rejection Code | Description |
 | :--- | :--- | :--- |
 | **Single-Face Constraint** | `NO_FACE` / `MULTIPLE_FACES` | Exactly one face must be visible. Multi-person frames are strictly rejected. |
-| **Minimum Face Size** | `FACE_TOO_SMALL` | Face bounding box must be at least 80x80 px and occupy at least 12% of frame dimensions. |
-| **Central Positioning** | `FACE_OFF_CENTER` | Face centroid must be located within the central 75% capture region. |
-| **Focus & Sharpness** | `TOO_BLURRY` | Laplacian variance of the face crop must be $\ge 50.0$. |
-| **Illumination** | `TOO_DARK` / `TOO_BRIGHT` | Mean luminance must be between 40 and 220 (out of 255). |
-| **Detection Confidence** | `LOW_DETECTION_CONFIDENCE` | YuNet detection confidence score must be $\ge 0.65$. |
+| **Minimum Face Size** | `FACE_TOO_SMALL` | Recognition rejects faces smaller than the configured minimum; enrollment also checks relative face size. |
+| **Central Positioning** | `FACE_OFF_CENTER` | Enrollment verifies that the face remains within the configured capture region. |
+| **Focus & Sharpness** | `TOO_BLURRY` | Laplacian variance is used to reject heavily blurred face crops. |
+| **Illumination** | `TOO_DARK` / `TOO_BRIGHT` | Mean face-crop luminance is checked against configured bounds. |
+| **Detection Confidence** | `LOW_DETECTION_CONFIDENCE` | The active detector score must satisfy the configured confidence threshold. |
 
 ---
 
 ## 5. Multi-Sample Accumulation & Consistency Verification
 
-- **Sample Pacing**: The automated capture loop spaces accepted frames by at least 400ms to capture natural micro-variations rather than duplicate frames.
-- **Required Samples**: Between 5 and 10 accepted frames (default: 7) are required to complete enrollment.
+- **Sample Pacing**: Accepted manual enrollment samples are spaced by at least 200ms.
+- **Required Samples**: Five accepted samples are required: FRONT, LEFT, RIGHT, UP, and DOWN.
 - **Outlier Detection & Consistency Check**:
   Prior to committing the template, pairwise cosine similarities between all accepted sample vectors and their centroid are computed:
   $$\text{sim}(\mathbf{u}, \mathbf{v}) = \frac{\mathbf{u} \cdot \mathbf{v}}{||\mathbf{u}||_2 ||\mathbf{v}||_2}$$
-  - Samples falling below the consistency threshold ($0.65$) are rejected as outliers.
+  - Samples falling below the active engine's consistency threshold are rejected as outliers (legacy SFace currently 0.40; AdaFace currently 0.35 pending field calibration).
   - If more than 40% of captured samples are inconsistent, enrollment fails with `BIOMETRIC_INCONSISTENT_SAMPLES`, requiring recapture.
 - **Template Synthesis**: The final resident template is the element-wise mean of valid samples, subsequently L2-normalized:
   $$\mathbf{T} = \frac{\sum_{i=1}^N \mathbf{v}_i}{||\sum_{i=1}^N \mathbf{v}_i||_2}$$
