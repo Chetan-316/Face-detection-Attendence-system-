@@ -368,6 +368,30 @@ export class EnrollmentService {
     const consistencyScore = aggResult.consistency_score || 1.0;
     const samplesCount = aggResult.samples_count || session.samplesAccepted;
 
+    const modelHealth = await this.workerClient.health();
+    if (
+      modelHealth.status !== 'UP' ||
+      !modelHealth.detectorLoaded ||
+      !modelHealth.embedderLoaded
+    ) {
+      session.status = 'FAILED';
+      throw new ValidationError(
+        modelHealth.error || 'Biometric model worker is not ready'
+      );
+    }
+
+    if (templateVector.length !== modelHealth.embeddingDimension) {
+      session.status = 'FAILED';
+      throw new ValidationError(
+        `Biometric template dimension mismatch: worker reported ${modelHealth.embeddingDimension}, aggregation produced ${templateVector.length}`
+      );
+    }
+
+    const modelName = modelHealth.modelName;
+    const modelVersion = modelHealth.modelVersion;
+    const embeddingDimension = modelHealth.embeddingDimension;
+    const templateVersion = modelHealth.templateVersion || '1.0.0';
+
     // Atomic commit to PostgreSQL
     const result = await this.db.$transaction(async (tx) => {
       // Check existing profile
@@ -393,15 +417,18 @@ export class EnrollmentService {
         data: {
           residentId: resident.id,
           enrollmentStatus: FaceEnrollmentStatus.ENROLLED,
-          modelName: 'SFace',
-          modelVersion: '2021dec',
+          modelName,
+          modelVersion,
           templateReference: `fptpl_${randomUUID().replace(/-/g, '')}`,
           metadata: {
             template: templateVector,
-            embeddingDimension: 128,
-            templateVersion: '1.0.0',
-            modelName: 'SFace',
-            modelVersion: '2021dec',
+            embeddingDimension,
+            templateVersion,
+            modelName,
+            modelVersion,
+            biometricEngine: modelHealth.engine || null,
+            detectorName: modelHealth.detectorName,
+            detectorVersion: modelHealth.detectorVersion,
             samplesCount,
             consistencyScore,
             posesCompleted: session.completedPoses.join(','),

@@ -4,7 +4,7 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: (python3 -m pip install --break-system-packages -r src/modules/biometrics/workers/requirements.txt || pip3 install -r src/modules/biometrics/workers/requirements.txt || true) && (python3 src/modules/biometrics/workers/download_models.py || true) && npm install && npx prisma generate && npx prisma db push --accept-data-loss && npm run build:server && npm run seed:safe
+    buildCommand: (python3 -m pip install --break-system-packages -r src/modules/biometrics/workers/requirements.txt || pip3 install -r src/modules/biometrics/workers/requirements.txt) && python3 src/modules/biometrics/workers/download_models.py && npm install && npx prisma generate && npx prisma db push --accept-data-loss && npm run build:server && npm run seed:safe
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
@@ -24,6 +24,10 @@ services:
       - key: CORS_ORIGIN
         value: https://face-detection-attendence-system-steel.vercel.app,http://localhost:5173
       - key: BIOMETRIC_MOCK
+        value: "false"
+      - key: BIOMETRIC_ENGINE
+        value: legacy
+      - key: BIOMETRIC_ALLOW_MOCK_FALLBACK
         value: "false"
       - key: PYTHON_BIN
         value: python3

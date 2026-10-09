@@ -67,9 +67,13 @@ export function createBiometricRouter(
         cwd: rootDir,
         env: {
           NODE_ENV: process.env.NODE_ENV,
+          BIOMETRIC_ENGINE: process.env.BIOMETRIC_ENGINE || 'legacy',
           BIOMETRIC_MOCK: process.env.BIOMETRIC_MOCK,
+          BIOMETRIC_ALLOW_MOCK_FALLBACK: process.env.BIOMETRIC_ALLOW_MOCK_FALLBACK,
           PYTHON_BIN: process.env.PYTHON_BIN,
           MODELS_DIR: process.env.MODELS_DIR,
+          SCRFD_MODEL_PATH: process.env.SCRFD_MODEL_PATH ? '[configured]' : '[not configured]',
+          ADAFACE_MODEL_PATH: process.env.ADAFACE_MODEL_PATH ? '[configured]' : '[not configured]',
         },
         models,
         pythonVersion: run('python3 --version'),

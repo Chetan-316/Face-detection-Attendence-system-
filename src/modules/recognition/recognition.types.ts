@@ -10,7 +10,7 @@ export interface CachedTemplate {
   fullName: string;
   hostelId: string;
   organizationId: string;
-  template: number[]; // 128-d L2 normalized
+  template: number[]; // Active-engine L2-normalized vector (128-D legacy, 512-D AdaFace)
   modelName: string;
   modelVersion: string;
   templateVersion: string;

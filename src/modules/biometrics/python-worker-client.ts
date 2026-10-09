@@ -9,6 +9,7 @@ import {
   ExtractFacesResult,
 } from './biometric.types';
 import { BiometricWorkerError } from './biometric.errors';
+import { config } from '../../config';
 
 interface PendingRequest {
   resolve: (value: any) => void;
@@ -151,7 +152,7 @@ export class PythonWorkerClient {
         });
       }
 
-      // Timeout for worker startup (10 seconds)
+      // SCRFD + AdaFace may take longer to map ONNX weights on low-end CPUs.
       const initTimer = setTimeout(() => {
         if (!this.isReady) {
           const timeoutMsg = `Timed out waiting for biometric worker initialization. Last stderr: ${this.lastStderr || 'none'}`;
@@ -159,7 +160,7 @@ export class PythonWorkerClient {
           this.cleanup();
           reject(new BiometricWorkerError(timeoutMsg));
         }
-      }, 10000);
+      }, config.biometric.engine === 'scrfd_adaface' ? 30000 : 10000);
       initTimer.unref();
     });
 
@@ -200,15 +201,18 @@ export class PythonWorkerClient {
       return {
         status: 'UP',
         workerReady: true,
+        engine: config.biometric.engine,
         detectorLoaded: true,
         embedderLoaded: true,
-        detectorName: 'YuNet (Mock)',
-        detectorVersion: '2023mar',
-        modelName: 'SFace',
-        modelVersion: '2021dec',
-        embeddingDimension: 128,
+        detectorName: `${config.biometric.detectorName} (Mock)`,
+        detectorVersion: config.biometric.detectorVersion,
+        detectorLicense: 'Mock / test only',
+        modelName: config.biometric.modelName,
+        modelVersion: config.biometric.modelVersion,
+        embeddingDimension: config.biometric.embeddingDimension,
+        templateVersion: config.biometric.templateVersion,
         runtime: 'In-Memory Mock',
-        license: 'Apache-2.0',
+        license: 'Mock / test only',
         mock: true,
       };
     }
@@ -218,30 +222,37 @@ export class PythonWorkerClient {
       return {
         status: res.status || 'UP',
         workerReady: !!res.workerReady,
+        engine: res.engine || config.biometric.engine,
         detectorLoaded: !!res.detectorLoaded,
         embedderLoaded: !!res.embedderLoaded,
-        detectorName: res.detectorName || 'YuNet',
-        detectorVersion: res.detectorVersion || '2023mar',
-        modelName: res.modelName || 'SFace',
-        modelVersion: res.modelVersion || '2021dec',
-        embeddingDimension: res.embeddingDimension || 128,
-        runtime: res.runtime || 'OpenCV DNN (CPU)',
-        license: res.license || 'Apache-2.0',
+        detectorName: res.detectorName || config.biometric.detectorName,
+        detectorVersion: res.detectorVersion || config.biometric.detectorVersion,
+        detectorLicense: res.detectorLicense,
+        modelName: res.modelName || config.biometric.modelName,
+        modelVersion: res.modelVersion || config.biometric.modelVersion,
+        embeddingDimension:
+          res.embeddingDimension || config.biometric.embeddingDimension,
+        templateVersion:
+          res.templateVersion || config.biometric.templateVersion,
+        runtime: res.runtime || 'ONNX / OpenCV CPU',
+        license: res.license || 'Unknown model license',
         mock: !!res.mock,
       };
     } catch (err: any) {
       return {
         status: 'DOWN',
         workerReady: false,
+        engine: config.biometric.engine,
         detectorLoaded: false,
         embedderLoaded: false,
-        detectorName: 'YuNet',
-        detectorVersion: '2023mar',
-        modelName: 'SFace',
-        modelVersion: '2021dec',
-        embeddingDimension: 128,
+        detectorName: config.biometric.detectorName,
+        detectorVersion: config.biometric.detectorVersion,
+        modelName: config.biometric.modelName,
+        modelVersion: config.biometric.modelVersion,
+        embeddingDimension: config.biometric.embeddingDimension,
+        templateVersion: config.biometric.templateVersion,
         runtime: 'Unavailable',
-        license: 'Apache-2.0',
+        license: 'Unavailable',
         mock: this.mockMode,
         error: `${err.message || 'Worker unavailable'}${this.lastStderr ? ` | Stderr: ${this.lastStderr}` : ''}`,
       };
@@ -253,7 +264,10 @@ export class PythonWorkerClient {
     options?: { expectedPose?: string; mockPose?: string }
   ): Promise<FrameProcessingResult> {
     if (this.mockMode) {
-      const mockEmbedding = Array.from({ length: 128 }, (_, i) => Math.round(Math.sin(i + 0.1) * 1000000) / 1000000);
+      const mockEmbedding = Array.from(
+        { length: config.biometric.embeddingDimension },
+        (_, i) => Math.round(Math.sin(i + 0.1) * 1000000) / 1000000
+      );
       return {
         success: true,
         quality: {
@@ -285,7 +299,10 @@ export class PythonWorkerClient {
       if (options?.mockFaces) {
         return { success: true, faces: options.mockFaces };
       }
-      const mockEmbedding = Array.from({ length: 128 }, (_, i) => Math.round(Math.sin(i + 0.1) * 1000000) / 1000000);
+      const mockEmbedding = Array.from(
+        { length: config.biometric.embeddingDimension },
+        (_, i) => Math.round(Math.sin(i + 0.1) * 1000000) / 1000000
+      );
       return {
         success: true,
         faces: [

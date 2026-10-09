@@ -2,6 +2,7 @@ import { PrismaClient, ResidentStatus, FaceEnrollmentStatus } from '@prisma/clie
 import { prisma as defaultPrisma } from '../../database/client';
 import { CachedTemplate } from './recognition.types';
 import { TemplateMatcher } from './template-matcher';
+import { config } from '../../config';
 
 interface CacheBucket {
   templates: CachedTemplate[];
@@ -79,17 +80,18 @@ export class TemplateCache {
 
       const activeProfile = resident.faceProfiles[0];
 
-      // Compatibility checks: SFace 2021dec
-      if (activeProfile.modelName !== 'SFace') {
+      const expected = config.biometric;
+
+      if (activeProfile.modelName !== expected.modelName) {
         console.warn(
-          `[Recognition TemplateCache] Incompatible modelName '${activeProfile.modelName}' for resident ${resident.id}. Expected 'SFace'.`
+          `[Recognition TemplateCache] Incompatible modelName '${activeProfile.modelName}' for resident ${resident.id}. Expected '${expected.modelName}'. Re-enrollment is required.`
         );
         continue;
       }
 
-      if (activeProfile.modelVersion !== '2021dec') {
+      if (activeProfile.modelVersion !== expected.modelVersion) {
         console.warn(
-          `[Recognition TemplateCache] Incompatible modelVersion '${activeProfile.modelVersion}' for resident ${resident.id}. Expected '2021dec'.`
+          `[Recognition TemplateCache] Incompatible modelVersion '${activeProfile.modelVersion}' for resident ${resident.id}. Expected '${expected.modelVersion}'. Re-enrollment is required.`
         );
         continue;
       }
@@ -97,23 +99,28 @@ export class TemplateCache {
       const metadata = (activeProfile.metadata as Record<string, any>) || {};
       const templateVector = metadata.template;
 
-      // Compatibility check: embeddingDimension & templateVersion (Req 23)
-      if (metadata.embeddingDimension !== undefined && metadata.embeddingDimension !== 128) {
+      if (
+        metadata.embeddingDimension !== undefined &&
+        metadata.embeddingDimension !== expected.embeddingDimension
+      ) {
         console.warn(
-          `[Recognition TemplateCache] Incompatible embeddingDimension '${metadata.embeddingDimension}' for resident ${resident.id}. Expected 128.`
+          `[Recognition TemplateCache] Incompatible embeddingDimension '${metadata.embeddingDimension}' for resident ${resident.id}. Expected ${expected.embeddingDimension}.`
         );
         continue;
       }
 
-      if (metadata.templateVersion !== undefined && metadata.templateVersion !== '1.0.0') {
+      if (
+        metadata.templateVersion !== undefined &&
+        metadata.templateVersion !== expected.templateVersion
+      ) {
         console.warn(
-          `[Recognition TemplateCache] Incompatible templateVersion '${metadata.templateVersion}' for resident ${resident.id}. Expected '1.0.0'.`
+          `[Recognition TemplateCache] Incompatible templateVersion '${metadata.templateVersion}' for resident ${resident.id}. Expected '${expected.templateVersion}'.`
         );
         continue;
       }
 
       // Dimension, finite numbers, non-zero norm check (Req 22)
-      if (!TemplateMatcher.isValidVector(templateVector)) {
+      if (!TemplateMatcher.isValidVector(templateVector, config.biometric.embeddingDimension)) {
         console.warn(`[Recognition TemplateCache] Invalid biometric template for resident ${resident.id}`);
         continue;
       }
@@ -128,7 +135,7 @@ export class TemplateCache {
         template: templateVector,
         modelName: activeProfile.modelName,
         modelVersion: activeProfile.modelVersion,
-        templateVersion: metadata.templateVersion || '1.0.0',
+        templateVersion: metadata.templateVersion || config.biometric.templateVersion,
         enrolledAt: activeProfile.enrolledAt,
       });
     }

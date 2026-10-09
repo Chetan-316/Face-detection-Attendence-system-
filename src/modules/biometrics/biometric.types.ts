@@ -110,13 +110,16 @@ export interface EnrollmentStatusResponse {
 export interface BiometricHealthStatus {
   status: 'UP' | 'DOWN';
   workerReady: boolean;
+  engine?: string;
   detectorLoaded: boolean;
   embedderLoaded: boolean;
   detectorName: string;
   detectorVersion: string;
+  detectorLicense?: string;
   modelName: string;
   modelVersion: string;
   embeddingDimension: number;
+  templateVersion?: string;
   runtime: string;
   license: string;
   mock: boolean;

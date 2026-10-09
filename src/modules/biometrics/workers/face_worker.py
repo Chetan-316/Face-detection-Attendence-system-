@@ -17,7 +17,7 @@ import numpy as np
 # Ensure worker directory is on sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from model_loader import ensure_models_downloaded, DETECTOR_INFO, EMBEDDER_INFO
+from model_loader import ensure_models_downloaded, DETECTOR_INFO, EMBEDDER_INFO, ACTIVE_ENGINE
 from detector import FaceDetector
 from quality import QualityChecker
 from embedder import FaceEmbedder
@@ -44,22 +44,32 @@ def main():
     if not is_mock:
         try:
             import cv2
-            yunet_path, sface_path = ensure_models_downloaded()
-            detector = FaceDetector(yunet_path)
-            embedder = FaceEmbedder(sface_path)
-            log_event("ready", mode="real", detector=DETECTOR_INFO["name"], embedder=EMBEDDER_INFO["name"])
+            detector_path, embedder_path = ensure_models_downloaded()
+            detector = FaceDetector(detector_path)
+            embedder = FaceEmbedder(embedder_path)
+            log_event(
+                "ready",
+                mode="real",
+                engine=ACTIVE_ENGINE,
+                detector=DETECTOR_INFO["name"],
+                embedder=EMBEDDER_INFO["name"],
+                embedding_dimension=EMBEDDER_INFO["embedding_dimension"],
+            )
         except Exception as e:
             log_event("error", error="INIT_FAILED", message=str(e), trace=traceback.format_exc())
-            # If real initialization fails, fallback to mock to allow process to stay alive
-            is_mock = True
+            if os.environ.get("BIOMETRIC_ALLOW_MOCK_FALLBACK", "false").lower() == "true":
+                is_mock = True
+            else:
+                raise
 
     if is_mock:
-        log_event("ready", mode="mock")
+        log_event("ready", mode="mock", engine=ACTIVE_ENGINE)
 
     # Notify ready on stdout as well
     send_response({
         "event": "started",
         "mock": is_mock,
+        "engine": ACTIVE_ENGINE,
         "detectorLoaded": not is_mock and detector is not None,
         "embedderLoaded": not is_mock and embedder is not None
     })
@@ -86,13 +96,16 @@ def main():
                 "status": "UP",
                 "workerReady": True,
                 "mock": is_mock,
+                "engine": ACTIVE_ENGINE,
                 "detectorLoaded": not is_mock and detector is not None,
                 "embedderLoaded": not is_mock and embedder is not None,
                 "detectorName": DETECTOR_INFO["name"],
                 "detectorVersion": DETECTOR_INFO["version"],
+                "detectorLicense": DETECTOR_INFO["license"],
                 "modelName": EMBEDDER_INFO["name"],
                 "modelVersion": EMBEDDER_INFO["version"],
                 "embeddingDimension": EMBEDDER_INFO["embedding_dimension"],
+                "templateVersion": EMBEDDER_INFO.get("template_version", "1.0.0"),
                 "runtime": EMBEDDER_INFO["runtime"],
                 "license": EMBEDDER_INFO["license"]
             })
@@ -131,7 +144,7 @@ def main():
                                 "frame_height": 480
                             }
                         },
-                        "embedding": [round(float(np.sin(i + 0.1)), 6) for i in range(128)]
+                        "embedding": [round(float(np.sin(i + 0.1)), 6) for i in range(EMBEDDER_INFO["embedding_dimension"])]
                     })
                     continue
 
@@ -179,8 +192,7 @@ def main():
                 embedding = None
                 if quality_res["is_valid"] and len(faces) >= 1:
                     primary_face = faces[0] if len(faces) == 1 else sorted(faces, key=lambda f: f["bbox"]["width"] * f["bbox"]["height"], reverse=True)[0]
-                    raw_face = primary_face["raw_face"]
-                    feat = embedder.align_and_extract(img, raw_face)
+                    feat = embedder.align_and_extract(img, primary_face)
                     embedding = [round(float(x), 6) for x in feat.tolist()]
 
                 # Clear frame from memory immediately
@@ -223,7 +235,7 @@ def main():
                         continue
 
                     # Synthetic mock face for testing without camera
-                    mock_embedding = [round(float(np.sin(i + 0.1)), 6) for i in range(128)]
+                    mock_embedding = [round(float(np.sin(i + 0.1)), 6) for i in range(EMBEDDER_INFO["embedding_dimension"])]
                     send_response({
                         "success": True,
                         "faces": [
@@ -272,7 +284,6 @@ def main():
                 extracted = []
 
                 for idx, face in enumerate(detected_faces):
-                    raw_face = face["raw_face"]
                     bbox = face["bbox"]
                     score = face["score"]
 
@@ -310,7 +321,7 @@ def main():
 
                     if usable and embedder:
                         try:
-                            feat = embedder.align_and_extract(img, raw_face)
+                            feat = embedder.align_and_extract(img, face)
                             emb = [round(float(x), 6) for x in feat.tolist()]
                         except Exception as align_err:
                             usable = False

@@ -15,8 +15,10 @@ The PRAVAHAx Biometric Subsystem provides localized, zero-cloud face enrollment 
              ↓ (JSON Lines over stdin / stdout)
      Python Face Worker
              ↓ (CPU Inference)
-  Detector (YuNet) + Embedder (SFace)
-             ↓ (128-d L2 Normalized Vector)
+  Detector + Embedder selected by BIOMETRIC_ENGINE
+             ↓
+  legacy: YuNet + SFace → 128-D
+  scrfd_adaface: SCRFD 2.5G KPS + AdaFace IR50 → 512-D
    PostgreSQL FaceProfile + Resident
   ```
 
@@ -24,15 +26,35 @@ The PRAVAHAx Biometric Subsystem provides localized, zero-cloud face enrollment 
 
 ## 2. Model Stack & Specifications
 
-| Component | Model Name | Version | Source | License | Input Shape | Output / Dimension | Runtime |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Face Detector** | YuNet | `2023mar` | OpenCV Zoo / libfacedetection | **Apache-2.0** | Dynamic `[1, 3, H, W]` | Bounding box, confidence score, 5 facial landmarks | OpenCV DNN using ONNX model files |
-| **Face Embedder** | SFace | `2021dec` | OpenCV Zoo (SphereFace2) | **Apache-2.0** | `[1, 3, 112, 112]` | 128-d L2-normalized float vector | OpenCV DNN using ONNX model files |
+The biometric worker is versioned by `BIOMETRIC_ENGINE`.
 
-### Landmark Alignment & Preprocessing
-1. Five facial landmarks are extracted: right eye, left eye, nose tip, right mouth corner, left mouth corner.
-2. The face region is aligned to a canonical 112x112 frontal crop via similarity transformation (`FaceRecognizerSF.alignCrop`).
-3. Embeddings are extracted and explicitly L2-normalized ($||\mathbf{v}||_2 = 1$).
+| Engine | Detector | Recognizer | Embedding | Runtime | Intended state |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `legacy` | YuNet `2023mar` | SFace `2021dec` | 128-D | OpenCV DNN | Stable rollback / existing profiles |
+| `scrfd_adaface` | SCRFD `2.5G-KPS` | AdaFace `IR50` | 512-D | ONNX Runtime | New production-target architecture |
+
+### SCRFD + AdaFace processing contract
+
+1. SCRFD receives a padded 640×640 frame and returns face boxes plus five facial landmarks.
+2. The five landmarks are transformed to the canonical 112×112 face geometry.
+3. The aligned crop is normalized for the approved AdaFace IR50 export.
+4. AdaFace produces a 512-D vector.
+5. The vector is L2-normalized before enrollment aggregation or cosine matching.
+6. Matching remains three-state: `MATCH`, `UNCERTAIN`, or `UNKNOWN`.
+7. Movement/attendance business logic remains outside the biometric worker.
+
+### Model-artifact licensing boundary
+
+Source code and model weights are treated separately. The repository does **not** automatically bundle SCRFD/AdaFace research checkpoints. Operators must supply model paths or approved download URLs and may optionally pin SHA-256 checksums. The worker fails closed when the selected real engine cannot load its model artifacts; mock fallback is allowed only when explicitly enabled.
+
+### Template migration rule
+
+SFace 128-D templates and AdaFace 512-D templates are different embedding spaces and are never mixed. When `scrfd_adaface` is activated:
+
+- the recognition cache only loads AdaFace profiles matching the configured model/version/dimension/template contract;
+- legacy SFace profiles remain stored for audit/history but are not eligible for AdaFace matching;
+- each resident must be re-enrolled with the new engine before AdaFace recognition can identify them;
+- threshold values must be calibrated on the actual gate/camera environment before final acceptance.
 
 ---
 

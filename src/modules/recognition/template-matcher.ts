@@ -23,10 +23,13 @@ export class TemplateMatcher {
   }
 
   /**
-   * Validates vector integrity: exactly 128 dimensions, finite numbers, non-zero norm.
+   * Validates vector integrity against the active biometric model contract.
    */
-  public static isValidVector(vector: number[] | null | undefined): boolean {
-    if (!vector || !Array.isArray(vector) || vector.length !== 128) {
+  public static isValidVector(
+    vector: number[] | null | undefined,
+    expectedDimension = config.biometric.embeddingDimension
+  ): boolean {
+    if (!vector || !Array.isArray(vector) || vector.length !== expectedDimension) {
       return false;
     }
 
@@ -44,7 +47,7 @@ export class TemplateMatcher {
   }
 
   /**
-   * L2 normalizes a 128-dimensional vector
+   * L2 normalizes an embedding vector.
    */
   public static normalizeVector(vector: number[]): number[] {
     let sumSq = 0;
@@ -59,12 +62,15 @@ export class TemplateMatcher {
   }
 
   /**
-   * Computes cosine similarity between two normalized 128-d vectors (dot product).
+   * Computes cosine similarity between two normalized embeddings (dot product).
    */
   public static cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length || a.length !== config.biometric.embeddingDimension) {
+      return -1;
+    }
+
     let dot = 0;
-    const len = Math.min(a.length, b.length);
-    for (let i = 0; i < len; i++) {
+    for (let i = 0; i < a.length; i++) {
       dot += a[i] * b[i];
     }
     // Clamp to [-1, 1] to guard against tiny float precision errors
