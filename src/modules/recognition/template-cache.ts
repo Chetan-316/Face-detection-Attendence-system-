@@ -66,65 +66,48 @@ export class TemplateCache {
     });
 
     const eligibleTemplates: CachedTemplate[] = [];
+    const expected = config.biometric;
 
     for (const resident of residents) {
       if (!resident.faceProfiles || resident.faceProfiles.length === 0) {
         continue;
       }
 
-      if (resident.faceProfiles.length > 1) {
-        console.warn(
-          `[Recognition TemplateCache] Resident ${resident.id} has ${resident.faceProfiles.length} active ENROLLED profiles. Selecting newest.`
+      // Multiple model generations may remain ENROLLED so a biometric-engine
+      // rollback does not destroy the previous working template. Select the
+      // newest profile compatible with the currently active engine.
+      const compatibleProfiles = resident.faceProfiles.filter((profile) => {
+        const metadata = (profile.metadata as Record<string, any>) || {};
+        return (
+          profile.modelName === expected.modelName &&
+          profile.modelVersion === expected.modelVersion &&
+          (metadata.embeddingDimension === undefined ||
+            metadata.embeddingDimension === expected.embeddingDimension) &&
+          (metadata.templateVersion === undefined ||
+            metadata.templateVersion === expected.templateVersion) &&
+          TemplateMatcher.isValidVector(
+            metadata.template,
+            expected.embeddingDimension
+          )
         );
-      }
+      });
 
-      const activeProfile = resident.faceProfiles[0];
-
-      const expected = config.biometric;
-
-      if (activeProfile.modelName !== expected.modelName) {
+      if (compatibleProfiles.length === 0) {
         console.warn(
-          `[Recognition TemplateCache] Incompatible modelName '${activeProfile.modelName}' for resident ${resident.id}. Expected '${expected.modelName}'. Re-enrollment is required.`
+          `[Recognition TemplateCache] Resident ${resident.id} has no compatible ${expected.modelName} ${expected.modelVersion} / ${expected.embeddingDimension}-D profile. Re-enrollment is required for engine '${expected.engine}'.`
         );
         continue;
       }
 
-      if (activeProfile.modelVersion !== expected.modelVersion) {
+      if (compatibleProfiles.length > 1) {
         console.warn(
-          `[Recognition TemplateCache] Incompatible modelVersion '${activeProfile.modelVersion}' for resident ${resident.id}. Expected '${expected.modelVersion}'. Re-enrollment is required.`
+          `[Recognition TemplateCache] Resident ${resident.id} has ${compatibleProfiles.length} compatible active profiles. Selecting newest.`
         );
-        continue;
       }
 
+      const activeProfile = compatibleProfiles[0];
       const metadata = (activeProfile.metadata as Record<string, any>) || {};
       const templateVector = metadata.template;
-
-      if (
-        metadata.embeddingDimension !== undefined &&
-        metadata.embeddingDimension !== expected.embeddingDimension
-      ) {
-        console.warn(
-          `[Recognition TemplateCache] Incompatible embeddingDimension '${metadata.embeddingDimension}' for resident ${resident.id}. Expected ${expected.embeddingDimension}.`
-        );
-        continue;
-      }
-
-      if (
-        metadata.templateVersion !== undefined &&
-        metadata.templateVersion !== expected.templateVersion
-      ) {
-        console.warn(
-          `[Recognition TemplateCache] Incompatible templateVersion '${metadata.templateVersion}' for resident ${resident.id}. Expected '${expected.templateVersion}'.`
-        );
-        continue;
-      }
-
-      // Dimension, finite numbers, non-zero norm check (Req 22)
-      if (!TemplateMatcher.isValidVector(templateVector, config.biometric.embeddingDimension)) {
-        console.warn(`[Recognition TemplateCache] Invalid biometric template for resident ${resident.id}`);
-        continue;
-      }
-
 
       eligibleTemplates.push({
         residentId: resident.id,

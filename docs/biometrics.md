@@ -52,8 +52,9 @@ Source code and model weights are treated separately. The repository does **not*
 SFace 128-D templates and AdaFace 512-D templates are different embedding spaces and are never mixed. When `scrfd_adaface` is activated:
 
 - the recognition cache only loads AdaFace profiles matching the configured model/version/dimension/template contract;
-- legacy SFace profiles remain stored for audit/history but are not eligible for AdaFace matching;
-- each resident must be re-enrolled with the new engine before AdaFace recognition can identify them;
+- legacy SFace profiles remain enrolled as rollback-compatible profiles, but are not eligible while AdaFace is active;
+- the cache selects the newest profile compatible with the currently active engine, so switching back to the legacy engine can reuse preserved SFace profiles;
+- each resident must still be enrolled once with the new engine before AdaFace recognition can identify them;
 - threshold values must be calibrated on the actual gate/camera environment before final acceptance.
 
 ---

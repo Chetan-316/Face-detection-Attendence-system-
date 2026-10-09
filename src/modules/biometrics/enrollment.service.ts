@@ -394,15 +394,31 @@ export class EnrollmentService {
 
     // Atomic commit to PostgreSQL
     const result = await this.db.$transaction(async (tx) => {
-      // Check existing profile
-      const existingProfile = await tx.faceProfile.findFirst({
-        where: { residentId: resident.id, enrollmentStatus: FaceEnrollmentStatus.ENROLLED },
+      // Keep profiles from other biometric engines active for rollback.
+      // Only supersede an existing profile from the exact same model contract.
+      const existingProfiles = await tx.faceProfile.findMany({
+        where: {
+          residentId: resident.id,
+          enrollmentStatus: FaceEnrollmentStatus.ENROLLED,
+        },
         orderBy: { enrolledAt: 'desc' },
       });
 
-      const isReenrollment = !!existingProfile;
+      const existingProfile = existingProfiles.find((candidate) => {
+        const metadata = (candidate.metadata as Record<string, any>) || {};
+        return (
+          candidate.modelName === modelName &&
+          candidate.modelVersion === modelVersion &&
+          (metadata.embeddingDimension === undefined ||
+            metadata.embeddingDimension === embeddingDimension) &&
+          (metadata.templateVersion === undefined ||
+            metadata.templateVersion === templateVersion)
+        );
+      });
 
-      // Invalidate existing enrolled profile if re-enrolling
+      const isReenrollment = !!existingProfile;
+      const isEngineMigration = !isReenrollment && existingProfiles.length > 0;
+
       if (existingProfile) {
         await tx.faceProfile.update({
           where: { id: existingProfile.id },
@@ -457,7 +473,11 @@ export class EnrollmentService {
           action: isReenrollment ? 'UPDATE' : 'CREATE',
           performedByUserId: actor.id,
           performedByRole: actor.role,
-          reason: isReenrollment ? 'Face re-enrollment completed' : 'Initial face enrollment completed',
+          reason: isReenrollment
+            ? 'Face re-enrollment completed'
+            : isEngineMigration
+              ? `Biometric engine migration enrollment completed (${modelName} ${modelVersion})`
+              : 'Initial face enrollment completed',
           newValues: {
             residentId: resident.id,
             modelName: profile.modelName,
