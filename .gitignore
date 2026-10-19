@@ -22,6 +22,7 @@ src/modules/biometrics/models/*.onnx
 *.dump
 *.sql
 !prisma/migrations/**/*.sql
+!deploy/**/*.sql
 *.csv
 
 .vercel

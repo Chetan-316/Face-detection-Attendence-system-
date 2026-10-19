@@ -13,7 +13,7 @@ import { AttendanceRecognitionBridge } from '../src/modules/attendance-decision/
 import { PythonWorkerClient } from '../src/modules/biometrics/python-worker-client';
 import { tokenService } from '../src/api/auth/token.service';
 import { config } from '../src/config';
-import { createTestPrismaClient } from './helpers/test-db';
+import { createTestPrismaClient, resetTestDatabase } from './helpers/test-db';
 
 describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', () => {
   let db: PrismaClient;
@@ -80,18 +80,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
 
 
   afterAll(async () => {
-    try {
-      await db.faceProfile.deleteMany({ where: { resident: { organizationId: testOrg.id } } });
-      await db.attendanceRecord.deleteMany({ where: { resident: { organizationId: testOrg.id } } });
-      await db.attendanceSession.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.residentPresence.deleteMany({ where: { hostelId: testHostel.id } });
-      await db.movementEvent.deleteMany({ where: { hostelId: testHostel.id } });
-      await db.camera.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.resident.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.user.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.hostel.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.organization.deleteMany({ where: { id: testOrg.id } });
-    } catch {}
+    await resetTestDatabase();
     await db.$disconnect();
   });
 

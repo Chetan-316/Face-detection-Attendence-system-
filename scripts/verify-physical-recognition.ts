@@ -9,14 +9,15 @@
  * E. Revoked resident no longer matches (cache invalidation)
  */
 
-import { PrismaClient, CameraSourceType, CameraRole, ResidentStatus, FaceEnrollmentStatus } from '@prisma/client';
+import { CameraSourceType, CameraRole, ResidentStatus, FaceEnrollmentStatus } from '@prisma/client';
 import { PythonWorkerClient } from '../src/modules/biometrics/python-worker-client';
 import { TemplateMatcher } from '../src/modules/recognition/template-matcher';
 import { TemplateCache } from '../src/modules/recognition/template-cache';
 import { TemporalStabilizer } from '../src/modules/recognition/temporal-stabilizer';
 import { config } from '../src/config';
+import { createTestPrismaClient, resetTestDatabase } from '../tests/helpers/test-db';
 
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const workerClient = new PythonWorkerClient();
 const templateCache = new TemplateCache(prisma, 60000);
 const matcher = new TemplateMatcher({
@@ -48,6 +49,17 @@ async function run() {
     if (health.status !== 'UP') {
       throw new Error('Biometric worker is not healthy');
     }
+    if (
+      health.embeddingDimension !== config.biometric.embeddingDimension ||
+      health.modelName !== config.biometric.modelName ||
+      health.modelVersion !== config.biometric.modelVersion
+    ) {
+      throw new Error(
+        `Worker reports ${health.modelName} ${health.modelVersion}/${health.embeddingDimension}-D but config expects ${config.biometric.modelName} ${config.biometric.modelVersion}/${config.biometric.embeddingDimension}-D`
+      );
+    }
+    const unitVector = () =>
+      Array.from({ length: config.biometric.embeddingDimension }, (_, i) => (i === 0 ? 1 : 0));
 
     // 2. Setup Test Database Context
     console.log('\n[2/7] Preparing database context...');
@@ -104,17 +116,17 @@ async function run() {
         });
         if (detectedFace.quality.usable && detectedFace.embedding) {
           residentAVector = detectedFace.embedding;
-          console.log('Successfully extracted 128-d SFace embedding from live camera face!');
+          console.log(`Successfully extracted ${config.biometric.embeddingDimension}-d ${config.biometric.modelName} embedding from live camera face!`);
         } else {
-          console.log(`Face detected but marked unusable (${detectedFace.quality.rejectionReason}). Generating 128-d unit vector for test Resident A.`);
-          residentAVector = new Array(128).fill(0).map((_, i) => (i === 0 ? 1 : 0));
+          console.log(`Face detected but marked unusable (${detectedFace.quality.rejectionReason}). Generating unit vector for test Resident A.`);
+          residentAVector = unitVector();
         }
       } else {
-        console.log('No face detected in live frame, generating 128-d unit vector for Resident A');
-        residentAVector = new Array(128).fill(0).map((_, i) => (i === 0 ? 1 : 0));
+        console.log('No face detected in live frame, generating unit vector for Resident A');
+        residentAVector = unitVector();
       }
     } else {
-      residentAVector = new Array(128).fill(0).map((_, i) => (i === 0 ? 1 : 0));
+      residentAVector = unitVector();
     }
 
     // Normalize vector
@@ -127,16 +139,16 @@ async function run() {
       data: {
         residentId: residentA.id,
         enrollmentStatus: FaceEnrollmentStatus.ENROLLED,
-        modelName: 'SFace',
-        modelVersion: '2021dec',
+        modelName: config.biometric.modelName,
+        modelVersion: config.biometric.modelVersion,
         templateReference: 'internal_template_v1',
         enrolledByUserId: null,
         enrolledAt: new Date(),
         metadata: {
-          modelName: 'SFace',
-          modelVersion: '2021dec',
-          templateVersion: 1,
-          embeddingDimension: 128,
+          modelName: config.biometric.modelName,
+          modelVersion: config.biometric.modelVersion,
+          templateVersion: config.biometric.templateVersion,
+          embeddingDimension: config.biometric.embeddingDimension,
           template: residentAVector,
         },
       },
@@ -180,8 +192,16 @@ async function run() {
 
     // TEST C: Ambiguous / Poor View Test (UNCERTAIN)
     console.log('\n--- TEST C: Ambiguous / Poor View Test ---');
-    // Vector with cosine similarity ~ 0.50 (between 0.40 and 0.60)
-    const uncertainVector = residentAVector.map((v, i) => (i === 0 ? 0.5 : i === 1 ? 0.866 : 0));
+    // Unit vector whose cosine with the enrolled template sits midway in the UNCERTAIN band
+    const uncertainTarget = (config.recognition.uncertainThreshold + config.recognition.matchThreshold) / 2;
+    const orthoAxis = residentAVector.reduce((best, _, i) => (Math.abs(residentAVector[i]) < Math.abs(residentAVector[best]) ? i : best), 0);
+    const orthoRaw: number[] = residentAVector.map((_, i) => (i === orthoAxis ? 1 : 0));
+    const orthoProj = orthoRaw.reduce((s, v, i) => s + v * residentAVector[i], 0);
+    const orthoRes = orthoRaw.map((v, i) => v - orthoProj * residentAVector[i]);
+    const orthoNorm = Math.sqrt(orthoRes.reduce((s, v) => s + v * v, 0));
+    const uncertainVector = residentAVector.map(
+      (v, i) => uncertainTarget * v + Math.sqrt(1 - uncertainTarget * uncertainTarget) * (orthoRes[i] / orthoNorm)
+    );
     const matchResC = matcher.match(uncertainVector, cachedTemplates);
     console.log(`Classification: ${matchResC.classification}`);
     console.log(`Resident identity: ${matchResC.resident ? matchResC.resident.fullName : 'null (Identity Kept Private)'}`);
@@ -221,10 +241,7 @@ async function run() {
     }
 
     // Cleanup verification data
-    await prisma.faceProfile.deleteMany({ where: { residentId: residentA.id } });
-    await prisma.resident.deleteMany({ where: { organizationId: org.id } });
-    await prisma.hostel.deleteMany({ where: { organizationId: org.id } });
-    await prisma.organization.deleteMany({ where: { id: org.id } });
+    await resetTestDatabase();
 
     console.log('\n================================================================');
     console.log('ALL PHYSICAL RECOGNITION VERIFICATION SCENARIOS PASSED (A-E)!');

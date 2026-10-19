@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient, StaffRole, ResidentStatus, FaceEnrollmentStatus, AttendanceSessionType, AttendanceMarkMethod, MovementType, MovementSource } from '@prisma/client';
-import { createTestPrismaClient } from './helpers/test-db';
+import { createTestPrismaClient, resetTestDatabase } from './helpers/test-db';
 import { TemplateCache } from '../src/modules/recognition/template-cache';
 import { AttendanceService } from '../src/modules/attendance/attendance.service';
 import { ReportService } from '../src/modules/reports/report.service';
@@ -45,25 +45,13 @@ describe('Step 11 Scale & Performance Benchmarks', () => {
   });
 
   afterAll(async () => {
-    try {
-      console.log('\n========================================');
-      console.log('       SCALE BENCHMARK RESULTS          ');
-      console.log('========================================');
-      console.table(timings);
-      console.log('========================================\n');
+    console.log('\n========================================');
+    console.log('       SCALE BENCHMARK RESULTS          ');
+    console.log('========================================');
+    console.table(timings);
+    console.log('========================================\n');
 
-      await db.attendanceRecord.deleteMany({ where: { resident: { organizationId: testOrg.id } } });
-      await db.attendanceSession.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.movementEvent.deleteMany({ where: { hostelId: testHostel.id } });
-      await db.residentPresence.deleteMany({ where: { hostelId: testHostel.id } });
-      await db.faceProfile.deleteMany({ where: { resident: { organizationId: testOrg.id } } });
-      await db.resident.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.user.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.hostel.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.organization.deleteMany({ where: { id: testOrg.id } });
-    } catch (e) {
-      console.error('Error during cleanup:', e);
-    }
+    await resetTestDatabase();
     await db.$disconnect();
   });
 

@@ -13,9 +13,20 @@ import {
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
+const defaultClient = new PrismaClient();
 
-export async function runSeed() {
+const LOCAL_DB_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+export interface SeedTarget {
+  db?: PrismaClient;
+  databaseUrl?: string;
+  allowDestructive?: boolean;
+}
+
+export async function runSeed(target: SeedTarget = {}) {
+  const prisma = target.db ?? defaultClient;
+  const databaseUrl = target.databaseUrl ?? process.env.DATABASE_URL;
+  const allowDestructive = target.allowDestructive ?? process.env.ALLOW_DESTRUCTIVE_SEED === 'true';
   const env = process.env.APP_ENV || 'development';
 
   // Seed safety guards against accidental production destruction
@@ -23,9 +34,21 @@ export async function runSeed() {
     throw new Error('SAFETY ERROR: Destructive database seed is prohibited in production environment.');
   }
 
-  if (env !== 'development' && env !== 'test' && process.env.ALLOW_DESTRUCTIVE_SEED !== 'true') {
+  if (env !== 'development' && env !== 'test' && !allowDestructive) {
     throw new Error(
       `SAFETY ERROR: Destructive seed in '${env}' requires explicit ALLOW_DESTRUCTIVE_SEED=true.`
+    );
+  }
+
+  let dbHost = '';
+  try {
+    dbHost = new URL(databaseUrl ?? '').hostname;
+  } catch {
+    dbHost = '';
+  }
+  if (!LOCAL_DB_HOSTS.includes(dbHost) && !allowDestructive) {
+    throw new Error(
+      'SAFETY ERROR: Destructive seed refuses a non-local DATABASE_URL without explicit ALLOW_DESTRUCTIVE_SEED=true.'
     );
   }
 
@@ -229,6 +252,6 @@ if (require.main === module) {
       process.exit(1);
     })
     .finally(async () => {
-      await prisma.$disconnect();
+      await defaultClient.$disconnect();
     });
 }

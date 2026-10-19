@@ -5,6 +5,10 @@ const ALLOWED_TEST_DB_NAMES = ['pravahax_test_db'];
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 
 export function verifyTestDatabaseSafety(testUrl: string | undefined, devUrl?: string): void {
+  if (process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production') {
+    throw new Error('SAFETY ERROR: Test database helpers cannot run in a production environment.');
+  }
+
   if (!testUrl) {
     throw new Error('SAFETY ERROR: TEST_DATABASE_URL is not set.');
   }
@@ -77,5 +81,13 @@ export async function resetTestDatabase(): Promise<void> {
     throw new Error('SAFETY ERROR: test database has no application tables; run migrations first.');
   }
   const tableList = tables.map((t) => `"public"."${t.tablename.replace(/"/g, '""')}"`).join(', ');
-  await testPrisma.$executeRawUnsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
+  // The no-TRUNCATE guard on audit_logs is lifted only inside this transaction; a failure rolls it back.
+  await testPrisma.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe('ALTER TABLE "public"."audit_logs" DISABLE TRIGGER audit_logs_no_truncate');
+      await tx.$executeRawUnsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
+      await tx.$executeRawUnsafe('ALTER TABLE "public"."audit_logs" ENABLE TRIGGER audit_logs_no_truncate');
+    },
+    { timeout: 60000 }
+  );
 }

@@ -5,15 +5,16 @@
  * and semantic classification (QUALITY_INSUFFICIENT vs UNKNOWN vs MATCH).
  */
 
-import { PrismaClient, CameraSourceType, CameraRole, ResidentStatus, FaceEnrollmentStatus } from '@prisma/client';
+import { CameraSourceType, CameraRole, ResidentStatus, FaceEnrollmentStatus } from '@prisma/client';
 import { PythonWorkerClient } from '../src/modules/biometrics/python-worker-client';
 import { RecognitionService } from '../src/modules/recognition/recognition.service';
 import { TemplateCache } from '../src/modules/recognition/template-cache';
 import { TemplateMatcher } from '../src/modules/recognition/template-matcher';
 import { CameraService } from '../src/modules/cameras/camera.service';
 import { config } from '../src/config';
+import { createTestPrismaClient } from '../tests/helpers/test-db';
 
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const workerClient = new PythonWorkerClient();
 const templateCache = new TemplateCache(prisma, 60000);
 const cameraService = new CameraService(prisma);

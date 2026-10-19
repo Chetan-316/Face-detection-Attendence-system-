@@ -11,7 +11,6 @@
  */
 
 import {
-  PrismaClient,
   CameraSourceType,
   CameraRole,
   ResidentStatus,
@@ -28,12 +27,13 @@ import { TemplateCache } from '../src/modules/recognition/template-cache';
 import { TemporalStabilizer } from '../src/modules/recognition/temporal-stabilizer';
 import { AttendanceDecisionService } from '../src/modules/attendance-decision/attendance-decision.service';
 import { AttendanceService } from '../src/modules/attendance/attendance.service';
+import { createTestPrismaClient } from '../tests/helpers/test-db';
 import { RecognitionObservation } from '../src/modules/recognition/recognition.types';
 import { config } from '../src/config';
 import { execSync } from 'child_process';
 import crypto from 'crypto';
 
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const workerClient = new PythonWorkerClient();
 const templateCache = new TemplateCache(prisma, 60000);
 const attendanceDecisionService = new AttendanceDecisionService(prisma);
@@ -58,6 +58,15 @@ async function run() {
     console.log(`Worker Status: ${health.status} (Mock: ${health.mock})`);
     console.log(`Detector: ${health.detectorName} (${health.detectorVersion})`);
     console.log(`Embedder: ${health.modelName} (${health.modelVersion}, Dim: ${health.embeddingDimension})`);
+    if (
+      health.embeddingDimension !== config.biometric.embeddingDimension ||
+      health.modelName !== config.biometric.modelName ||
+      health.modelVersion !== config.biometric.modelVersion
+    ) {
+      throw new Error(
+        `Worker reports ${health.modelName} ${health.modelVersion}/${health.embeddingDimension}-D but config expects ${config.biometric.modelName} ${config.biometric.modelVersion}/${config.biometric.embeddingDimension}-D`
+      );
+    }
 
     if (health.status !== 'UP') {
       throw new Error('Biometric worker is not healthy');
@@ -160,16 +169,16 @@ async function run() {
         console.log(`Detected face in webcam: bbox=[${detectedFace.bbox.x},${detectedFace.bbox.y},${detectedFace.bbox.width},${detectedFace.bbox.height}], usable=${detectedFace.quality.usable}`);
         if (detectedFace.quality.usable && detectedFace.embedding) {
           residentAVector = detectedFace.embedding;
-          console.log('Successfully computed 128-d SFace embedding from live webcam feed!');
+          console.log(`Successfully computed ${config.biometric.embeddingDimension}-d ${config.biometric.modelName} embedding from live webcam feed!`);
         } else {
-          residentAVector = new Array(128).fill(0).map((_, i) => Math.cos(i * 0.1));
+          residentAVector = Array.from({ length: config.biometric.embeddingDimension }, (_, i) => Math.cos(i * 0.1));
         }
       } else {
-        residentAVector = new Array(128).fill(0).map((_, i) => Math.cos(i * 0.1));
+        residentAVector = Array.from({ length: config.biometric.embeddingDimension }, (_, i) => Math.cos(i * 0.1));
       }
     } else {
-      console.log('Using calibrated 128-d unit vector for test subject A');
-      residentAVector = new Array(128).fill(0).map((_, i) => Math.cos(i * 0.1));
+      console.log('Using calibrated unit vector for test subject A');
+      residentAVector = Array.from({ length: config.biometric.embeddingDimension }, (_, i) => Math.cos(i * 0.1));
     }
 
     // Normalize
@@ -182,10 +191,14 @@ async function run() {
       data: {
         residentId: residentA.id,
         enrollmentStatus: FaceEnrollmentStatus.ENROLLED,
-        modelName: 'SFace',
-        modelVersion: '2021dec',
+        modelName: config.biometric.modelName,
+        modelVersion: config.biometric.modelVersion,
         templateReference: 'internal_template_att_001',
         metadata: {
+          modelName: config.biometric.modelName,
+          modelVersion: config.biometric.modelVersion,
+          templateVersion: config.biometric.templateVersion,
+          embeddingDimension: config.biometric.embeddingDimension,
           template: residentAVector,
         },
       },
@@ -335,7 +348,7 @@ async function run() {
     // -------------------------------------------------------------
     console.log('\n--- SCENARIO 9: Unknown Person Physical Test ---');
     // Generate an orthogonal, non-enrolled embedding
-    const unknownVector = new Array(128).fill(0).map((_, i) => (i === 64 ? 1 : 0));
+    const unknownVector = Array.from({ length: config.biometric.embeddingDimension }, (_, i) => (i === 64 ? 1 : 0));
     const matchResUnknown = matcher.match(unknownVector, cachedTemplates);
     console.log(`Classification for Non-Enrolled: ${matchResUnknown.classification}`);
     console.log(`Similarity: ${matchResUnknown.similarity.toFixed(4)} (< ${config.recognition.uncertainThreshold})`);
