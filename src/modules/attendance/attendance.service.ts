@@ -199,29 +199,35 @@ export class AttendanceService {
     }
     assertUserCanOperateInHostel(staffUser, session.organizationId, session.hostelId);
 
-    // Rule 58: Prevent ambiguous multiple active sessions of the same type for this hostel
-    const existingActive = await this.db.attendanceSession.findFirst({
-      where: {
-        hostelId: session.hostelId,
-        sessionType: session.sessionType,
-        status: AttendanceSessionStatus.ACTIVE,
-        id: { not: sessionId },
-      },
-    });
-    if (existingActive) {
-      throw new ConflictError(
-        `An active ${session.sessionType} attendance session ('${existingActive.title}') already exists for this hostel`
-      );
-    }
-
     return this.db.$transaction(async (tx) => {
-      const updated = await tx.attendanceSession.update({
-        where: { id: sessionId },
+      // Serializes concurrent starts for the same hostel and session type (Rule 58).
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${session.hostelId}:${session.sessionType}`}::text, 0))`;
+
+      const existingActive = await tx.attendanceSession.findFirst({
+        where: {
+          hostelId: session.hostelId,
+          sessionType: session.sessionType,
+          status: AttendanceSessionStatus.ACTIVE,
+          id: { not: sessionId },
+        },
+      });
+      if (existingActive) {
+        throw new ConflictError(
+          `An active ${session.sessionType} attendance session ('${existingActive.title}') already exists for this hostel`
+        );
+      }
+
+      const transitioned = await tx.attendanceSession.updateMany({
+        where: { id: sessionId, status: AttendanceSessionStatus.DRAFT },
         data: {
           status: AttendanceSessionStatus.ACTIVE,
           startedByUserId,
         },
       });
+      if (transitioned.count === 0) {
+        throw new ConflictError('Attendance session changed concurrently; reload and retry');
+      }
+      const updated = await tx.attendanceSession.findUniqueOrThrow({ where: { id: sessionId } });
 
       await this.auditService.record(
         {

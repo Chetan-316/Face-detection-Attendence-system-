@@ -101,6 +101,7 @@ export class PythonWorkerClient {
       // Handlers below act only while this child is the current process, so a stale
       // child's events cannot reset or reject state that belongs to a newer start.
       this.process = child;
+      child.stdin?.on('error', () => {});
 
       child.on('error', (err) => {
         if (this.process !== child) return;

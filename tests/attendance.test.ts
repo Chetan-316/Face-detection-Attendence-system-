@@ -120,4 +120,39 @@ describe('Attendance Session & Record Domain Tests', () => {
       })
     ).rejects.toThrow(ConflictError);
   });
+
+  it('allows only one ACTIVE session per hostel and type under concurrent starts', async () => {
+    const first = await attendanceService.createSession({
+      organizationId: orgId,
+      hostelId,
+      sessionType: AttendanceSessionType.GENERAL,
+      title: 'Race A',
+      createdByUserId: staffUserId,
+      createdByRole: StaffRole.WARDEN,
+    });
+    const second = await attendanceService.createSession({
+      organizationId: orgId,
+      hostelId,
+      sessionType: AttendanceSessionType.GENERAL,
+      title: 'Race B',
+      createdByUserId: staffUserId,
+      createdByRole: StaffRole.WARDEN,
+    });
+
+    const outcomes = await Promise.allSettled([
+      attendanceService.startSession(first.id, staffUserId, StaffRole.WARDEN),
+      attendanceService.startSession(second.id, staffUserId, StaffRole.WARDEN),
+    ]);
+
+    const fulfilled = outcomes.filter((o) => o.status === 'fulfilled');
+    const rejected = outcomes.filter((o): o is PromiseRejectedResult => o.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0].reason).toBeInstanceOf(ConflictError);
+
+    const activeCount = await testPrisma.attendanceSession.count({
+      where: { hostelId, sessionType: AttendanceSessionType.GENERAL, status: AttendanceSessionStatus.ACTIVE },
+    });
+    expect(activeCount).toBe(1);
+  });
 });

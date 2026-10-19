@@ -1,0 +1,150 @@
+# PRAVAHAx isolated InstaBox STAGING stack.
+# Run with an operator-owned env file (never committed):
+#   docker compose --env-file .env.staging -f docker-compose.staging.yml up -d --build
+# Variables are interpolated from --env-file. Each container receives only the variables listed
+# in its own `environment:` block; there is no env_file, so owner credentials never reach the API.
+# See docs/instabox-staging-runbook.md for the migration / role-bootstrap order.
+
+name: pravahax-staging
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_USER: ${STAGING_DB_OWNER_USER:?set STAGING_DB_OWNER_USER in .env.staging}
+      POSTGRES_PASSWORD: ${STAGING_DB_OWNER_PASSWORD:?set STAGING_DB_OWNER_PASSWORD in .env.staging}
+      POSTGRES_DB: pravahax_staging
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  # Operator-triggered only (profile "ops"). Never started by `up`.
+  migrate:
+    profiles: ["ops"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: pravahax-api:staging
+    restart: "no"
+    command: ["sh", "deploy/staging/migrate.sh"]
+    environment:
+      NODE_ENV: production
+      APP_ENV: staging
+      DATABASE_URL: ${MIGRATION_DATABASE_URL:?set MIGRATION_DATABASE_URL in .env.staging}
+      MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?set MIGRATION_DATABASE_URL in .env.staging}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: pravahax-api:staging
+    restart: unless-stopped
+    stop_grace_period: 40s
+    environment:
+      NODE_ENV: production
+      APP_ENV: staging
+      PORT: "3000"
+      TIMEZONE: Asia/Kolkata
+      DATABASE_URL: ${RUNTIME_DATABASE_URL:?set RUNTIME_DATABASE_URL in .env.staging}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env.staging}
+      CORS_ORIGIN: ${CORS_ORIGIN:?set CORS_ORIGIN in .env.staging}
+      BIOMETRIC_MOCK: "false"
+      BIOMETRIC_ALLOW_MOCK_FALLBACK: "false"
+      BIOMETRIC_ENGINE: scrfd_adaface
+      PYTHON_BIN: /opt/pravahax-venv/bin/python
+      MODELS_DIR: /models
+      SCRFD_MODEL_PATH: /models/scrfd_2.5g_kps.onnx
+      SCRFD_MODEL_VERSION: 2.5G-KPS
+      SCRFD_MODEL_SHA256: ${SCRFD_MODEL_SHA256:?set SCRFD_MODEL_SHA256 in .env.staging}
+      SCRFD_SCORE_THRESHOLD: ${SCRFD_SCORE_THRESHOLD:-0.5}
+      SCRFD_NMS_THRESHOLD: ${SCRFD_NMS_THRESHOLD:-0.4}
+      ADAFACE_MODEL_PATH: /models/adaface_ir50.onnx
+      ADAFACE_MODEL_VERSION: IR50-MS1MV2
+      ADAFACE_MODEL_SHA256: ${ADAFACE_MODEL_SHA256:?set ADAFACE_MODEL_SHA256 in .env.staging}
+      ADAFACE_COLOR_SPACE: ${ADAFACE_COLOR_SPACE:?set ADAFACE_COLOR_SPACE (RGB or BGR) in .env.staging}
+      RECOGNITION_MATCH_THRESHOLD: ${RECOGNITION_MATCH_THRESHOLD:-0.45}
+      RECOGNITION_UNCERTAIN_THRESHOLD: ${RECOGNITION_UNCERTAIN_THRESHOLD:-0.30}
+      RECOGNITION_MIN_MARGIN: ${RECOGNITION_MIN_MARGIN:-0.06}
+      RECOGNITION_MAX_FPS: ${RECOGNITION_MAX_FPS:-5}
+      RECOGNITION_COOLDOWN_MS: ${RECOGNITION_COOLDOWN_MS:-8000}
+      MOVEMENT_AUTOMATION_ENABLED: ${MOVEMENT_AUTOMATION_ENABLED:-true}
+    volumes:
+      - type: bind
+        source: ${MODELS_HOST_DIR:?set MODELS_HOST_DIR in .env.staging}
+        target: /models
+        read_only: true
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - edge
+      - data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web/Dockerfile
+    image: pravahax-web:staging
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${PUBLIC_HTTP_PORT:-8080}:8080"
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+networks:
+  edge: {}
+  data:
+    internal: true
+
+volumes:
+  pg_data:
+    name: pravahax-staging-pg-data

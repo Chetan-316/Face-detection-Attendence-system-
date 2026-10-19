@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { EnrollmentService, AuthenticatedActor } from './enrollment.service';
 import { PythonWorkerClient, defaultPythonWorkerClient } from './python-worker-client';
 import { BiometricHealthStatus } from './biometric.types';
+import { defaultTemplateCache } from '../recognition/template-cache';
 
 export interface EnrollFaceProfileInput {
   residentId: string;
@@ -48,7 +49,7 @@ export class BiometricService {
       throw new NotFoundError('Resident', input.residentId);
     }
 
-    return this.db.$transaction(async (tx) => {
+    const profile = await this.db.$transaction(async (tx) => {
       // Invalidate old enrolled profile if any
       const existing = await tx.faceProfile.findFirst({
         where: { residentId: input.residentId, enrollmentStatus: FaceEnrollmentStatus.ENROLLED },
@@ -103,6 +104,9 @@ export class BiometricService {
 
       return profile;
     });
+
+    defaultTemplateCache.invalidate(resident.hostelId);
+    return profile;
   }
 
   public async revokeFaceProfile(
@@ -122,9 +126,9 @@ export class BiometricService {
       throw new NotFoundError('FaceProfile', profileId);
     }
 
-    return this.db.$transaction(async (tx) => {
+    const updated = await this.db.$transaction(async (tx) => {
       const existingMeta = (profile.metadata as Record<string, any>) || {};
-      const updated = await tx.faceProfile.update({
+      const result = await tx.faceProfile.update({
         where: { id: profileId },
         data: {
           enrollmentStatus: FaceEnrollmentStatus.REVOKED,
@@ -155,8 +159,11 @@ export class BiometricService {
         tx
       );
 
-      return updated;
+      return result;
     });
+
+    defaultTemplateCache.invalidate(profile.resident.hostelId);
+    return updated;
   }
 
   public async getActiveProfile(residentId: string): Promise<FaceProfile | null> {

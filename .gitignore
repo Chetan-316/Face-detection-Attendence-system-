@@ -28,6 +28,7 @@ src/modules/biometrics/models/*.onnx
 .vercel
 .env*
 !.env.example
+!.env.staging.example
 
 # Local documents
 PRAVAHAx_Hostel_Face_Recognition_PRD_v2.pdf

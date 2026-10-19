@@ -671,6 +671,8 @@ export class EnrollmentService {
       });
     });
 
+    this.templateCache.invalidate(resident.hostelId);
+
     return {
       residentId: resident.id,
       status: FaceEnrollmentStatus.NEEDS_REENROLLMENT,

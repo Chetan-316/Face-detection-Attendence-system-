@@ -218,6 +218,26 @@ export function createAttendanceRouter(
         throw new ValidationError('residentId is required');
       }
 
+      const resolvedMarkMethod = (markMethod as AttendanceMarkMethod | undefined) ?? AttendanceMarkMethod.FACE_RECOGNITION;
+      if (
+        resolvedMarkMethod !== AttendanceMarkMethod.FACE_RECOGNITION &&
+        resolvedMarkMethod !== AttendanceMarkMethod.MANUAL_STAFF
+      ) {
+        throw new ValidationError('markMethod must be FACE_RECOGNITION or MANUAL_STAFF');
+      }
+
+      const targetSession = await db.attendanceSession.findUnique({
+        where: { id: sessionId },
+        select: { organizationId: true, hostelId: true },
+      });
+      if (
+        !targetSession ||
+        targetSession.organizationId !== actor.organizationId ||
+        !isWithinHostelScope(actor, targetSession.hostelId)
+      ) {
+        throw new NotFoundError('AttendanceSession', sessionId);
+      }
+
       // Check if already marked (duplicate prevention)
       const existing = await db.attendanceRecord.findUnique({
         where: {
@@ -237,7 +257,7 @@ export function createAttendanceRouter(
         sessionId,
         residentId,
         status: AttendanceRecordStatus.PRESENT,
-        markMethod: (markMethod as AttendanceMarkMethod) || AttendanceMarkMethod.FACE_RECOGNITION,
+        markMethod: resolvedMarkMethod,
         markedByUserId: actor.id,
         markedByRole: actor.role,
       });
