@@ -5,13 +5,14 @@ import { createAuthMiddleware } from '../middleware/auth.middleware';
 import { tokenService } from '../auth/token.service';
 import { RecognitionService, defaultRecognitionService } from '../../modules/recognition/recognition.service';
 import { AuthenticationError, ForbiddenError } from '../../common/errors';
+import { intQuery } from '../../common/utils/query-params';
 
 export function createRecognitionRouter(
   db: PrismaClient = defaultPrisma,
   recognitionService: RecognitionService = defaultRecognitionService
 ): Router {
   const router = Router({ mergeParams: true });
-  const { requireAuth, requireStreamAuth } = createAuthMiddleware(db);
+  const { requireAuth, requireStreamAuth, watchSessionRevocation } = createAuthMiddleware(db);
 
   /**
    * Helper to extract authenticated actor from req.user
@@ -85,7 +86,7 @@ export function createRecognitionRouter(
     try {
       const actor = getActor(req);
       const cameraId = req.params.cameraId as string;
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      const limit = intQuery(req.query.limit, 'limit', 50);
       const results = await recognitionService.getRecentObservations(cameraId, actor, limit);
       res.status(200).json({ results });
     } catch (err) {
@@ -155,6 +156,7 @@ export function createRecognitionRouter(
           organizationId: camera.organizationId,
           hostelId: camera.hostelId,
           role: actor.role,
+          tokenVersion: req.user!.tokenVersion,
         },
         60
       );
@@ -200,11 +202,22 @@ export function createRecognitionRouter(
         res.write(': ping\n\n');
       }, 15000);
 
-      // Clean up when client disconnects
-      req.on('close', () => {
-        clearInterval(pingInterval);
-        unsubscribe();
+      let closed = false;
+      const stopRevocationWatch = watchSessionRevocation(req.user!, () => {
+        if (closed) return;
+        res.write('event: revoked\ndata: {}\n\n');
+        cleanup();
+        res.end();
       });
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(pingInterval);
+        stopRevocationWatch();
+        unsubscribe();
+      };
+
+      req.on('close', cleanup);
     } catch (err) {
       next(err);
     }

@@ -1,4 +1,4 @@
-import { apiClient, API_BASE_URL, getStoredToken } from './client';
+import { apiClient, API_BASE_URL } from './client';
 import {
   CameraEntity,
   CameraDiagnostics,
@@ -53,8 +53,8 @@ export const camerasApi = {
     });
   },
 
-  async getCameraHealth(id: string): Promise<{ data: any }> {
-    return apiClient<{ data: any }>(`/cameras/${id}/health`);
+  async getCameraHealth(id: string, signal?: AbortSignal): Promise<{ data: any }> {
+    return apiClient<{ data: any }>(`/cameras/${id}/health`, { signal });
   },
 
   async captureSnapshot(id: string): Promise<{ data: any }> {
@@ -81,9 +81,15 @@ export const camerasApi = {
     });
   },
 
-  getPreviewStreamUrl(id: string): string {
-    const token = getStoredToken();
-    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
-    return `${API_BASE_URL}/cameras/${id}/preview${tokenParam}`;
+  async getStreamToken(id: string): Promise<{ streamToken: string; expiresIn: number }> {
+    return apiClient<{ streamToken: string; expiresIn: number }>(`/cameras/${id}/stream-token`, {
+      method: 'POST',
+    });
+  },
+
+  // Session token never goes in the URL; the preview uses a 60-second camera-scoped token.
+  async getPreviewStreamUrl(id: string): Promise<string> {
+    const { streamToken } = await camerasApi.getStreamToken(id);
+    return `${API_BASE_URL}/cameras/${id}/preview?streamToken=${encodeURIComponent(streamToken)}`;
   },
 };

@@ -23,6 +23,8 @@ export interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  /** Set when the session could not be verified for a non-auth reason (network, 5xx, timeout). Session is kept. */
+  sessionError: string | null;
   login: (token: string, user: StaffUser) => void;
   logout: () => void;
   refreshUser: () => Promise<void>;

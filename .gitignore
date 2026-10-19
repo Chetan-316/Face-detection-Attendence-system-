@@ -21,7 +21,12 @@ src/modules/biometrics/models/*.onnx
 # Backups & Data Dumps
 *.dump
 *.sql
+!prisma/migrations/**/*.sql
 *.csv
 
 .vercel
 .env*
+!.env.example
+
+# Local documents
+PRAVAHAx_Hostel_Face_Recognition_PRD_v2.pdf

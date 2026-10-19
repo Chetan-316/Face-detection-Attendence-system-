@@ -20,21 +20,35 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from model_loader import ensure_models_downloaded, DETECTOR_INFO, EMBEDDER_INFO, ACTIVE_ENGINE
 from detector import FaceDetector
 from quality import QualityChecker
-from embedder import FaceEmbedder
+from embedder import FaceEmbedder, coerce_embedding_batch
 
 def log_event(event_type, **kwargs):
     payload = {"type": event_type, "timestamp": time.time(), **kwargs}
     sys.stderr.write(json.dumps(payload) + "\n")
     sys.stderr.flush()
 
+current_request_id = None
+
 def send_response(data: dict):
+    if current_request_id is not None:
+        data.setdefault("request_id", current_request_id)
     sys.stdout.write(json.dumps(data) + "\n")
     sys.stdout.flush()
 
+def is_production_env() -> bool:
+    return any(
+        os.environ.get(key, "").strip().lower() == "production"
+        for key in ("APP_ENV", "NODE_ENV")
+    )
+
 def main():
+    global current_request_id
     parser = argparse.ArgumentParser(description="PRAVAHAx Face Biometric Worker")
     parser.add_argument("--mock", action="store_true", help="Run in synthetic mock mode for tests without models")
     args = parser.parse_args()
+
+    if args.mock and is_production_env():
+        raise RuntimeError("Mock biometric mode is refused when APP_ENV or NODE_ENV is production")
 
     detector = None
     embedder = None
@@ -57,7 +71,7 @@ def main():
             )
         except Exception as e:
             log_event("error", error="INIT_FAILED", message=str(e), trace=traceback.format_exc())
-            if os.environ.get("BIOMETRIC_ALLOW_MOCK_FALLBACK", "false").lower() == "true":
+            if os.environ.get("BIOMETRIC_ALLOW_MOCK_FALLBACK", "false").lower() == "true" and not is_production_env():
                 is_mock = True
             else:
                 raise
@@ -79,12 +93,18 @@ def main():
         if not line:
             continue
 
+        current_request_id = None
         try:
             cmd_data = json.loads(line)
         except json.JSONDecodeError as e:
             send_response({"success": False, "error": "INVALID_JSON", "message": str(e)})
             continue
 
+        if not isinstance(cmd_data, dict):
+            send_response({"success": False, "error": "INVALID_JSON", "message": "Command must be a JSON object"})
+            continue
+
+        current_request_id = cmd_data.get("request_id")
         command = cmd_data.get("command")
 
         if command == "ping":
@@ -113,7 +133,7 @@ def main():
         elif command == "process_frame":
             # Image can be passed as base64 string
             b64_data = cmd_data.get("image_base64")
-            if not b64_data:
+            if not isinstance(b64_data, str) or not b64_data:
                 send_response({"success": False, "error": "MISSING_IMAGE", "message": "image_base64 is required"})
                 continue
 
@@ -186,7 +206,7 @@ def main():
 
                 # Run detector with enrollment pose fallback
                 expected_pose = cmd_data.get("expected_pose")
-                faces = detector.detect(img, expected_pose=expected_pose)
+                faces = detector.detect(img)
                 quality_res = quality_checker.evaluate(img, faces, expected_pose=expected_pose)
 
                 embedding = None
@@ -215,15 +235,19 @@ def main():
 
         elif command == "extract_faces":
             b64_data = cmd_data.get("image_base64")
-            if not b64_data:
+            if not isinstance(b64_data, str) or not b64_data:
                 send_response({"success": False, "error": "MISSING_IMAGE", "faces": []})
                 continue
 
             if "," in b64_data:
                 b64_data = b64_data.split(",", 1)[1]
 
-            min_face_size = int(cmd_data.get("min_face_size") or 50)
-            min_confidence = float(cmd_data.get("min_confidence") or 0.6)
+            try:
+                min_face_size = int(cmd_data.get("min_face_size") or 50)
+                min_confidence = float(cmd_data.get("min_confidence") or 0.6)
+            except (TypeError, ValueError) as e:
+                send_response({"success": False, "error": "INVALID_PARAMS", "message": str(e), "faces": []})
+                continue
 
             try:
                 if is_mock:
@@ -364,7 +388,11 @@ def main():
                 if not embeddings:
                     send_response({"success": False, "error": "NO_EMBEDDINGS"})
                 else:
-                    arr = np.array(embeddings, dtype=np.float32)
+                    try:
+                        arr = coerce_embedding_batch(embeddings, EMBEDDER_INFO["embedding_dimension"])
+                    except ValueError as e:
+                        send_response({"success": False, "error": "INVALID_EMBEDDINGS", "message": str(e)})
+                        continue
                     mean_v = np.mean(arr, axis=0)
                     norm = np.linalg.norm(mean_v)
                     if norm > 1e-6:

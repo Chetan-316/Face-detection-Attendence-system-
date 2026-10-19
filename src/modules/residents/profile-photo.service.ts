@@ -1,10 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import { PrismaClient, StaffRole, AuditAction } from '@prisma/client';
+import { PrismaClient, AuditAction } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
-import { NotFoundError, ValidationError, ForbiddenError } from '../../common/errors';
+import { NotFoundError, ValidationError } from '../../common/errors';
 import { assertPermission, StaffActor } from '../auth/permissions';
 import { AuditService } from '../audit/audit.service';
+import { requireHostelScope } from '../../api/middleware/scope';
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const MIN_FILE_SIZE_BYTES = 12; // 12 B (minimum needed for WEBP header check)
@@ -78,11 +79,8 @@ export class ProfilePhotoService {
       throw new NotFoundError('Resident', residentId);
     }
 
-    if (
-      (actor.role === StaffRole.WARDEN || actor.role === StaffRole.GUARD) &&
-      actor.hostelId &&
-      resident.hostelId !== actor.hostelId
-    ) {
+    const scopeHostelId = requireHostelScope(actor);
+    if (scopeHostelId && resident.hostelId !== scopeHostelId) {
       throw new NotFoundError('Resident', residentId);
     }
 
@@ -100,23 +98,33 @@ export class ProfilePhotoService {
     const { mimeType, ext } = this.detectMimeType(buffer);
     const filename = `${resident.id}${ext}`;
     const fullPath = path.join(this.storageDir, filename);
+    const previousFilename = resident.profilePhotoPath;
+
+    // DB row first, so a failed database write leaves no file behind
+    await this.db.resident.update({
+      where: { id: resident.id },
+      data: { profilePhotoPath: filename },
+    });
+
+    try {
+      fs.writeFileSync(fullPath, buffer);
+    } catch (err) {
+      await this.db.resident.update({
+        where: { id: resident.id },
+        data: { profilePhotoPath: previousFilename },
+      });
+      throw err;
+    }
 
     // Remove existing file if extension changed
-    if (resident.profilePhotoPath && resident.profilePhotoPath !== filename) {
-      const oldPath = path.join(this.storageDir, resident.profilePhotoPath);
+    if (previousFilename && previousFilename !== filename) {
+      const oldPath = path.join(this.storageDir, previousFilename);
       if (fs.existsSync(oldPath)) {
         try {
           fs.unlinkSync(oldPath);
         } catch {}
       }
     }
-
-    fs.writeFileSync(fullPath, buffer);
-
-    await this.db.resident.update({
-      where: { id: resident.id },
-      data: { profilePhotoPath: filename },
-    });
 
     try {
       await this.auditService.record({

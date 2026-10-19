@@ -6,6 +6,7 @@ import { NotFoundError, ValidationError, ForbiddenError } from '../../common/err
 import { CameraService } from '../cameras/camera.service';
 import { CameraFrame } from '../cameras/camera.types';
 import { PythonWorkerClient, defaultPythonWorkerClient } from '../biometrics/python-worker-client';
+import { BiometricWorkerUnavailableError } from '../biometrics/biometric.errors';
 import { TemplateCache, defaultTemplateCache } from './template-cache';
 import { TemplateMatcher } from './template-matcher';
 import { TemporalStabilizer } from './temporal-stabilizer';
@@ -18,6 +19,7 @@ import {
 import { MovementRecognitionBridge } from '../movement-decision/movement-bridge';
 import { AttendanceRecognitionBridge } from '../attendance-decision/attendance-bridge';
 import { config } from '../../config';
+import { isWithinHostelScope } from '../../api/middleware/scope';
 
 export interface AuthenticatedActor {
   id: string;
@@ -36,6 +38,7 @@ export interface ActiveCameraSession {
   state: RecognitionSessionState;
   startedAt: Date;
   unsubscribeStream?: () => void;
+  detachBridge?: () => void;
   stabilizer: TemporalStabilizer;
   matcher: TemplateMatcher;
   recentObservations: RecognitionObservation[];
@@ -126,8 +129,7 @@ export class RecognitionService {
         } catch (e) {}
         session.unsubscribeStream = undefined;
       }
-      this.movementBridge?.detachSession(updatedCamera.id, session.eventEmitter);
-      this.attendanceBridge?.detachSession(updatedCamera.id, session.eventEmitter);
+      this.detachBridge(session);
       session.state = 'STOPPED';
       session.isProcessingFrame = false;
       session.stabilizer.clear();
@@ -137,40 +139,74 @@ export class RecognitionService {
       return;
     }
 
-    if (previousRole && previousRole !== updatedCamera.role) {
-      // Deterministic role change: safely detach old bridge listeners first
-      this.movementBridge?.detachSession(updatedCamera.id, session.eventEmitter);
-      this.attendanceBridge?.detachSession(updatedCamera.id, session.eventEmitter);
-
-      // Reattach to appropriate bridge according to new role
-      if ((updatedCamera.role === CameraRole.IN || updatedCamera.role === CameraRole.OUT) && this.movementBridge) {
-        this.movementBridge.attachSession(updatedCamera.id, session.eventEmitter);
-        const onMovementDecision = ({ observation, decision }: { observation: any; decision: any }) => {
-          const stored = session.recentObservations.find((o) => o.id === observation.id);
-          if (stored) {
-            stored.movementDecision = decision;
-          }
-          session.eventEmitter.emit('observation', { ...observation, movementDecision: decision });
-        };
-        this.movementBridge.on('movementDecision', onMovementDecision);
-      } else if (updatedCamera.role === CameraRole.ATTENDANCE && this.attendanceBridge) {
-        this.attendanceBridge.attachSession(updatedCamera.id, updatedCamera.role, session.eventEmitter);
-        const onAttendanceDecision = ({ observation, decision }: { observation: any; decision: any }) => {
-          const stored = session.recentObservations.find((o) => o.id === observation.id);
-          if (stored) {
-            stored.attendanceDecision = decision;
-          }
-          session.eventEmitter.emit('observation', { ...observation, attendanceDecision: decision });
-        };
-        this.attendanceBridge.on('attendanceDecision', onAttendanceDecision);
-      }
+    const roleChanged = (previousRole ?? session.cameraRole) !== updatedCamera.role;
+    session.cameraRole = updatedCamera.role;
+    if (roleChanged) {
+      // Deterministic role change: rebind bridge listeners for the new role
+      this.attachBridge(session, updatedCamera.role);
     }
+  }
+
+  /**
+   * Binds the session to the bridge matching its camera role. Any previous binding
+   * is released first so a role change never leaves the old role's listener live.
+   */
+  private attachBridge(session: ActiveCameraSession, role: CameraRole): void {
+    this.detachBridge(session);
+    const { cameraId, eventEmitter } = session;
+
+    if ((role === CameraRole.IN || role === CameraRole.OUT) && this.movementBridge) {
+      const bridge = this.movementBridge;
+      bridge.attachSession(cameraId, eventEmitter);
+      const onMovementDecision = ({ observation, decision }: { observation: any; decision: any }) => {
+        const stored = session.recentObservations.find((o) => o.id === observation.id);
+        if (stored) {
+          stored.movementDecision = decision;
+        }
+        eventEmitter.emit('observation', { ...observation, movementDecision: decision });
+      };
+      bridge.on('movementDecision', onMovementDecision);
+      session.detachBridge = () => {
+        bridge.off('movementDecision', onMovementDecision);
+        bridge.detachSession(cameraId, eventEmitter);
+      };
+    } else if (role === CameraRole.ATTENDANCE && this.attendanceBridge) {
+      const bridge = this.attendanceBridge;
+      bridge.attachSession(cameraId, role, eventEmitter);
+      const onAttendanceDecision = ({ observation, decision }: { observation: any; decision: any }) => {
+        const stored = session.recentObservations.find((o) => o.id === observation.id);
+        if (stored) {
+          stored.attendanceDecision = decision;
+        }
+        eventEmitter.emit('observation', { ...observation, attendanceDecision: decision });
+      };
+      bridge.on('attendanceDecision', onAttendanceDecision);
+      session.detachBridge = () => {
+        bridge.off('attendanceDecision', onAttendanceDecision);
+        bridge.detachSession(cameraId, eventEmitter);
+      };
+    }
+  }
+
+  private detachBridge(session: ActiveCameraSession): void {
+    const detach = session.detachBridge;
+    session.detachBridge = undefined;
+    detach?.();
+    this.movementBridge?.detachSession(session.cameraId, session.eventEmitter);
+    this.attendanceBridge?.detachSession(session.cameraId, session.eventEmitter);
   }
 
 
   /**
    * Helper to verify actor scope and permissions on a camera
    */
+  private async assertWorkerAvailable(): Promise<void> {
+    const workerHealth = await this.workerClient.health();
+    if (workerHealth.status !== 'UP' && !workerHealth.mock) {
+      throw new BiometricWorkerUnavailableError();
+    }
+  }
+
   public async verifyActorScope(
     cameraId: string,
     actor: AuthenticatedActor,
@@ -180,8 +216,8 @@ export class RecognitionService {
       throw new ForbiddenError('Guards are not authorized to start or stop face recognition sessions');
     }
 
-    const camera = await this.db.camera.findUnique({
-      where: { id: cameraId },
+    const camera = await this.db.camera.findFirst({
+      where: { id: cameraId, deletedAt: null },
     });
 
     if (!camera) {
@@ -192,15 +228,11 @@ export class RecognitionService {
       throw new NotFoundError('Camera', cameraId);
     }
 
-    if (actor.role === StaffRole.WARDEN && actor.hostelId && camera.hostelId !== actor.hostelId) {
-      throw new NotFoundError('Camera', cameraId);
-    }
-
-    if (actor.role === StaffRole.GUARD && actor.hostelId && camera.hostelId !== actor.hostelId) {
-      throw new NotFoundError('Camera', cameraId);
-    }
-
-    if (actor.role === StaffRole.ADMIN && actor.hostelId && camera.hostelId !== actor.hostelId) {
+    if (actor.role === StaffRole.ADMIN) {
+      if (actor.hostelId && camera.hostelId !== actor.hostelId) {
+        throw new NotFoundError('Camera', cameraId);
+      }
+    } else if (!isWithinHostelScope(actor, camera.hostelId)) {
       throw new NotFoundError('Camera', cameraId);
     }
 
@@ -239,11 +271,7 @@ export class RecognitionService {
         ? 'CLIENT'
         : 'STREAM';
 
-    // Verify worker health
-    const workerHealth = await this.workerClient.health();
-    if (workerHealth.status !== 'UP' && !workerHealth.mock) {
-      throw new ValidationError('Biometric inference engine is unavailable');
-    }
+    await this.assertWorkerAvailable();
 
     // Check if session already running (idempotent)
     const existing = this.activeSessions.get(cameraId);
@@ -258,8 +286,7 @@ export class RecognitionService {
         } catch (e) {}
         existing.unsubscribeStream = undefined;
       }
-      this.movementBridge?.detachSession(cameraId, existing.eventEmitter);
-      this.attendanceBridge?.detachSession(cameraId, existing.eventEmitter);
+      this.detachBridge(existing);
       existing.eventEmitter.removeAllListeners();
       this.activeSessions.delete(cameraId);
     }
@@ -323,43 +350,7 @@ export class RecognitionService {
     // ATTENDANCE camera -> AttendanceRecognitionBridge
     // IN / OUT camera -> MovementRecognitionBridge
     // GENERAL camera -> Recognition only (no business side effects)
-    if ((camera.role === CameraRole.IN || camera.role === CameraRole.OUT) && this.movementBridge) {
-      this.movementBridge.attachSession(camera.id, session.eventEmitter);
-
-      const onMovementDecision = ({ observation, decision }: { observation: any; decision: any }) => {
-        const stored = session.recentObservations.find((o) => o.id === observation.id);
-        if (stored) {
-          stored.movementDecision = decision;
-        }
-        session.eventEmitter.emit('observation', { ...observation, movementDecision: decision });
-      };
-      this.movementBridge.on('movementDecision', onMovementDecision);
-
-      const originalUnsubscribe = session.unsubscribeStream;
-      session.unsubscribeStream = () => {
-        if (originalUnsubscribe) originalUnsubscribe();
-        this.movementBridge?.off('movementDecision', onMovementDecision);
-        this.movementBridge?.detachSession(camera.id, session.eventEmitter);
-      };
-    } else if (camera.role === CameraRole.ATTENDANCE && this.attendanceBridge) {
-      this.attendanceBridge.attachSession(camera.id, camera.role, session.eventEmitter);
-
-      const onAttendanceDecision = ({ observation, decision }: { observation: any; decision: any }) => {
-        const stored = session.recentObservations.find((o) => o.id === observation.id);
-        if (stored) {
-          stored.attendanceDecision = decision;
-        }
-        session.eventEmitter.emit('observation', { ...observation, attendanceDecision: decision });
-      };
-      this.attendanceBridge.on('attendanceDecision', onAttendanceDecision);
-
-      const originalUnsubscribe = session.unsubscribeStream;
-      session.unsubscribeStream = () => {
-        if (originalUnsubscribe) originalUnsubscribe();
-        this.attendanceBridge?.off('attendanceDecision', onAttendanceDecision);
-        this.attendanceBridge?.detachSession(camera.id, session.eventEmitter);
-      };
-    }
+    this.attachBridge(session, camera.role);
 
     return this.buildSessionStatus(session);
   }
@@ -375,7 +366,7 @@ export class RecognitionService {
 
     const session = this.activeSessions.get(cameraId);
     if (!session) {
-      const camera = await this.db.camera.findUnique({ where: { id: cameraId } });
+      const camera = await this.db.camera.findUnique({ where: { id: cameraId, deletedAt: null } });
       return {
         sessionId: 'none',
         cameraId,
@@ -403,15 +394,7 @@ export class RecognitionService {
       session.unsubscribeStream = undefined;
     }
 
-    // Detach movement bridge
-    if (this.movementBridge) {
-      this.movementBridge.detachSession(cameraId, session.eventEmitter);
-    }
-
-    // Detach attendance bridge
-    if (this.attendanceBridge) {
-      this.attendanceBridge.detachSession(cameraId, session.eventEmitter);
-    }
+    this.detachBridge(session);
 
     session.state = 'STOPPED';
     session.isProcessingFrame = false;
@@ -431,6 +414,7 @@ export class RecognitionService {
     actor: AuthenticatedActor
   ): Promise<RecognitionSessionStatus> {
     const camera = await this.verifyActorScope(cameraId, actor, 'VIEW');
+    await this.assertWorkerAvailable();
 
     const session = this.activeSessions.get(cameraId);
     if (!session) {
@@ -521,10 +505,6 @@ export class RecognitionService {
     if (!session) {
       return null;
     }
-
-    // Reset processing flag so client frame is processed immediately
-    session.isProcessingFrame = false;
-    session.lastFrameProcessedTimestamp = 0;
 
     await this.handleCameraFrame(cameraId, {
       cameraId,

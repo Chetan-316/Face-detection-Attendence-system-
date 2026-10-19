@@ -1,18 +1,29 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from '../../src/config';
 
-export function verifyTestDatabaseSafety(testUrl: string, devUrl?: string): void {
+const ALLOWED_TEST_DB_NAMES = ['pravahax_test_db'];
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+export function verifyTestDatabaseSafety(testUrl: string | undefined, devUrl?: string): void {
   if (!testUrl) {
     throw new Error('SAFETY ERROR: TEST_DATABASE_URL is not set.');
   }
 
-  const normalized = testUrl.toLowerCase();
-  const isSafe = normalized.includes('test') || normalized.includes('pravahax_test_db');
+  let parsed: URL;
+  try {
+    parsed = new URL(testUrl);
+  } catch {
+    throw new Error('SAFETY ERROR: TEST_DATABASE_URL is not a valid URL.');
+  }
+
+  // Credentials are never echoed into error messages
+  const dbName = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+  const isSafe = ALLOWED_TEST_DB_NAMES.includes(dbName) && LOCAL_HOSTS.includes(parsed.hostname);
 
   if (!isSafe) {
     throw new Error(
-      `SAFETY ERROR: Refusing to connect tests to unsafe database URL '${testUrl}'. ` +
-      `URL must explicitly contain 'test' or 'pravahax_test_db'.`
+      'SAFETY ERROR: Refusing to connect tests to unsafe database. ' +
+      `Database must be one of [${ALLOWED_TEST_DB_NAMES.join(', ')}] on a localhost host.`
     );
   }
 
@@ -36,22 +47,35 @@ export const testPrisma = new PrismaClient({
   log: ['error'],
 });
 
+// Tests that open their own client must go through the same safety check
+export function createTestPrismaClient(): PrismaClient {
+  verifyTestDatabaseSafety(config.testDatabaseUrl, config.databaseUrl);
+  return new PrismaClient({
+    datasources: {
+      db: {
+        url: config.testDatabaseUrl,
+      },
+    },
+  });
+}
+
+/**
+ * Empties every application table of the dedicated test database in one statement.
+ * TRUNCATE is used instead of row deletes because audit_logs is append-only (row-level
+ * BEFORE UPDATE OR DELETE trigger) and RESTRICTs deletes of the users/hostels it references.
+ * TRUNCATE does not fire that row trigger, and this only ever runs against the allowlisted
+ * local test database (verified above).
+ */
 export async function resetTestDatabase(): Promise<void> {
-  // Second safety check before any deletion
   verifyTestDatabaseSafety(config.testDatabaseUrl, config.databaseUrl);
 
-  // Truncate/delete all tables in test database in reverse dependency order
-  await testPrisma.auditLog.deleteMany();
-  await testPrisma.attendanceRecord.deleteMany();
-  await testPrisma.attendanceSession.deleteMany();
-  await testPrisma.movementCorrection.deleteMany();
-  await testPrisma.residentPresence.deleteMany();
-  await testPrisma.movementEvent.deleteMany();
-  await testPrisma.faceProfile.deleteMany();
-  await testPrisma.resident.deleteMany();
-  await testPrisma.camera.deleteMany();
-  await testPrisma.location.deleteMany();
-  await testPrisma.user.deleteMany();
-  await testPrisma.hostel.deleteMany();
-  await testPrisma.organization.deleteMany();
+  const tables = await testPrisma.$queryRaw<Array<{ tablename: string }>>`
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
+  `;
+  if (tables.length === 0) {
+    throw new Error('SAFETY ERROR: test database has no application tables; run migrations first.');
+  }
+  const tableList = tables.map((t) => `"public"."${t.tablename.replace(/"/g, '""')}"`).join(', ');
+  await testPrisma.$executeRawUnsafe(`TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE`);
 }

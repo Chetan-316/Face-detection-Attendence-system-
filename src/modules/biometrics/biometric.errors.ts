@@ -16,6 +16,12 @@ export class BiometricWorkerError extends AppError {
   }
 }
 
+export class BiometricWorkerUnavailableError extends AppError {
+  constructor(details: Record<string, any> = {}) {
+    super('Biometric inference engine is unavailable', 503, 'BIOMETRIC_WORKER_UNAVAILABLE', details);
+  }
+}
+
 export class EnrollmentSessionError extends AppError {
   constructor(message: string, statusCode: number = 400, details: Record<string, any> = {}) {
     super(message, statusCode, 'ENROLLMENT_SESSION_ERROR', details);

@@ -4,6 +4,9 @@ import { useToast } from '../components/ToastContext';
 import { Modal } from '../components/Modal';
 import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
+import { AuthenticatedImage } from '../components/AuthenticatedImage';
+import { usePreviewStreamUrl } from '../hooks/usePreviewStreamUrl';
+import { businessDateKey, businessInstant } from '../utils/businessDate';
 import {
   AttendanceSession,
   AttendanceRosterItem,
@@ -73,7 +76,7 @@ export const AttendancePage: React.FC = () => {
   const [newSessionTitle, setNewSessionTitle] = useState('Night Attendance');
   const [newSessionType, setNewSessionType] = useState('NIGHT');
   const [newSessionCameraId, setNewSessionCameraId] = useState('');
-  const [newSessionDate, setNewSessionDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [newSessionDate, setNewSessionDate] = useState(() => businessDateKey());
   const [newSessionStartTime, setNewSessionStartTime] = useState('21:00');
   const [newSessionEndTime, setNewSessionEndTime] = useState('22:00');
 
@@ -378,15 +381,13 @@ export const AttendancePage: React.FC = () => {
     try {
       setIsSubmitting(true);
       const dateStr = newSessionDate;
-      const startDateTime = new Date(`${dateStr}T${newSessionStartTime}:00Z`).toISOString();
-      const endDateTime = newSessionEndTime
-        ? new Date(`${dateStr}T${newSessionEndTime}:00Z`).toISOString()
-        : undefined;
+      const startDateTime = businessInstant(dateStr, newSessionStartTime);
+      const endDateTime = newSessionEndTime ? businessInstant(dateStr, newSessionEndTime) : undefined;
 
       const res = await createAttendanceSession({
         title: newSessionTitle.trim(),
         sessionType: newSessionType,
-        attendanceDate: new Date(dateStr).toISOString(),
+        attendanceDate: businessInstant(dateStr),
         startTime: startDateTime,
         endTime: endDateTime,
         cameraId: newSessionCameraId || undefined,
@@ -509,15 +510,9 @@ export const AttendancePage: React.FC = () => {
 
   const activeLiveCameraId = selectedLiveCameraId || activeSessionData?.camera?.id || (cameras.length > 0 ? cameras[0].id : '');
   const activeCameraObj = cameras.find((c) => c.id === activeLiveCameraId) || activeSessionData?.camera;
+  const activeSourceType = activeCameraObj && 'sourceType' in activeCameraObj && typeof activeCameraObj.sourceType === 'string' ? activeCameraObj.sourceType : undefined;
 
-  const basePreviewUrl = activeLiveCameraId
-    ? typeof (camerasApi as any)?.getPreviewStreamUrl === 'function'
-      ? (camerasApi as any).getPreviewStreamUrl(activeLiveCameraId)
-      : `/api/v1/cameras/${activeLiveCameraId}/preview`
-    : '';
-  const streamUrl = basePreviewUrl
-    ? `${basePreviewUrl}${basePreviewUrl.includes('?') ? '&' : '?'}_k=${streamRetryKey}`
-    : '';
+  const streamUrl = usePreviewStreamUrl(activeLiveCameraId || null, streamRetryKey);
 
   return (
     <div className="attendance-page max-w-7xl mx-auto space-y-6">
@@ -850,7 +845,7 @@ export const AttendancePage: React.FC = () => {
                           /* Backend MJPEG Preview Stream */
                           <>
                             <img
-                              src={streamUrl}
+                              src={streamUrl || undefined}
                               alt="Live Attendance Camera Feed"
                               className="w-full h-full object-cover"
                               onLoad={() => setStreamStatus('CONNECTED')}
@@ -908,7 +903,7 @@ export const AttendancePage: React.FC = () => {
                         {/* Stream Watermark / Live Badge */}
                         <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-md text-[11px] font-mono text-slate-200 border border-white/10 flex items-center gap-2 pointer-events-none">
                           <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                          <span>{cameraMode === 'DEVICE' ? 'WEBCAM 720p' : (activeCameraObj as any)?.sourceType || 'STREAM'}</span>
+                          <span>{cameraMode === 'DEVICE' ? 'WEBCAM 720p' : activeSourceType || 'STREAM'}</span>
                           <span>•</span>
                           <span>{activeSessionData.title}</span>
                         </div>
@@ -926,7 +921,7 @@ export const AttendancePage: React.FC = () => {
                           <div className="flex flex-col gap-4">
                             <div className="flex items-center gap-4">
                               <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center shadow-sm">
-                                <img
+                                <AuthenticatedImage
                                   src={residentsApi.getProfilePhotoUrl(currentResident.id)}
                                   alt={currentResident.fullName}
                                   className="w-full h-full object-cover"
@@ -1056,8 +1051,8 @@ export const AttendancePage: React.FC = () => {
                               <td className="px-6 py-3.5">
                                 <div className="flex items-center gap-3">
                                   <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
-                                    <img
-                                      src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(item.residentId) : `/api/v1/residents/${item.residentId}/profile-photo`}
+                                    <AuthenticatedImage
+                                      src={residentsApi.getProfilePhotoUrl(item.residentId)}
                                       alt=""
                                       className="w-full h-full object-cover"
                                       onError={(e) => {
@@ -1326,7 +1321,7 @@ export const AttendancePage: React.FC = () => {
               <select
                 id="attendance-correction-status"
                 value={targetCorrectionStatus}
-                onChange={(e) => setTargetCorrectionStatus(e.target.value as any)}
+                onChange={(e) => setTargetCorrectionStatus(e.target.value as typeof targetCorrectionStatus)}
                 className="form-select"
               >
                 <option value="PRESENT">Present</option>

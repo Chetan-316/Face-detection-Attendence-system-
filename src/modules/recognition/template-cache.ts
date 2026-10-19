@@ -13,6 +13,8 @@ interface CacheBucket {
 export class TemplateCache {
   private cache: Map<string, CacheBucket> = new Map(); // hostelId -> CacheBucket
   private ttlMs: number;
+  // Bumped by every invalidation so a load that started before it cannot repopulate the cache.
+  private version = 0;
 
   constructor(
     private readonly db: PrismaClient = defaultPrisma,
@@ -34,12 +36,15 @@ export class TemplateCache {
     }
 
     // Refresh from PostgreSQL
+    const loadVersion = this.version;
     const freshTemplates = await this.loadFromDatabase(hostelId, organizationId);
-    this.cache.set(hostelId, {
-      templates: freshTemplates,
-      loadedAt: now,
-      isDirty: false,
-    });
+    if (loadVersion === this.version) {
+      this.cache.set(hostelId, {
+        templates: freshTemplates,
+        loadedAt: now,
+        isDirty: false,
+      });
+    }
 
     return freshTemplates;
   }
@@ -131,6 +136,7 @@ export class TemplateCache {
    * Called on enrollment lifecycle events: enrollment complete, revocation, reactivation/deactivation.
    */
   public invalidate(hostelId?: string): void {
+    this.version++;
     if (hostelId) {
       const bucket = this.cache.get(hostelId);
       if (bucket) {
@@ -147,6 +153,7 @@ export class TemplateCache {
    * Clear all cached data
    */
   public clear(): void {
+    this.version++;
     this.cache.clear();
   }
 

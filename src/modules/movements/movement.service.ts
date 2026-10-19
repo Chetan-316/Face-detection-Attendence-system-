@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import {
+  ConflictError,
   DomainIntegrityError,
   InvalidStateTransitionError,
   NotFoundError,
@@ -90,15 +91,28 @@ export class MovementService {
         const resident = await tx.resident.findUnique({ where: { id: input.residentId } });
         if (!resident) throw new NotFoundError('Resident', input.residentId);
 
-        await tx.residentPresence.create({
-          data: {
-            residentId: input.residentId,
-            hostelId: resident.hostelId,
-            currentState: PresenceState.OUT,
-          },
+        // skipDuplicates: a concurrent first IN may have created the row; re-lock it below instead of failing
+        await tx.residentPresence.createMany({
+          data: [
+            {
+              residentId: input.residentId,
+              hostelId: resident.hostelId,
+              currentState: PresenceState.OUT,
+            },
+          ],
+          skipDuplicates: true,
         });
 
-        currentPresence = { currentState: PresenceState.OUT, hostelId: resident.hostelId };
+        const relockedPresence = await tx.$queryRaw<Array<{ currentState: PresenceState; hostelId: string }>>`
+          SELECT "currentState", "hostelId"
+          FROM "resident_presences"
+          WHERE "residentId" = ${input.residentId}
+          FOR UPDATE
+        `;
+        if (!relockedPresence || relockedPresence.length === 0) {
+          throw new NotFoundError('ResidentPresence', input.residentId);
+        }
+        currentPresence = relockedPresence[0];
       }
 
       // 2. Cross-Hostel Movement Integrity
@@ -123,7 +137,7 @@ export class MovementService {
 
       // 4. Camera Integrity (if provided)
       if (input.cameraId) {
-        const camera = await tx.camera.findUnique({ where: { id: input.cameraId } });
+        const camera = await tx.camera.findUnique({ where: { id: input.cameraId, deletedAt: null } });
         if (!camera) {
           throw new NotFoundError('Camera', input.cameraId);
         }
@@ -227,10 +241,14 @@ export class MovementService {
       return movementEvent;
     };
 
-    if (externalTx) {
-      return executeOperation(externalTx);
+    try {
+      if (externalTx) {
+        return await executeOperation(externalTx);
+      }
+      return await this.db.$transaction(executeOperation);
+    } catch (err) {
+      throw this.mapUniqueViolation(err);
     }
-    return this.db.$transaction(executeOperation);
   }
 
   /**
@@ -415,5 +433,16 @@ export class MovementService {
         correction: true,
       },
     });
+  }
+
+  // recognitionReference collisions stay as P2002 because movement-decision handles them as duplicates
+  private mapUniqueViolation(err: unknown): unknown {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const target = JSON.stringify(err.meta?.target ?? '');
+      if (!target.includes('recognitionReference')) {
+        return new ConflictError('Movement conflicts with a concurrent update, retry the request');
+      }
+    }
+    return err;
   }
 }

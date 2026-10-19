@@ -10,6 +10,7 @@ export function formatDate(dateString?: string | null): string {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
+      timeZone: 'Asia/Kolkata',
     });
   } catch {
     return '—';
@@ -27,10 +28,22 @@ export function formatDateTime(dateString?: string | null): string {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
     });
   } catch {
     return '—';
   }
+}
+
+export function formatTime(dateString?: string | null): string {
+  if (!dateString) return '—';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
 }
 
 export function formatRole(role: StaffRole): string {

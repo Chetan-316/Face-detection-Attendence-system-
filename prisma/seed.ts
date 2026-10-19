@@ -29,10 +29,14 @@ export async function runSeed() {
     );
   }
 
+  const defaultPassword = process.env.SEED_DEFAULT_PASSWORD;
+  if (!defaultPassword || defaultPassword.length < 12) {
+    throw new Error('SEED_DEFAULT_PASSWORD must be set to at least 12 characters before seeding.');
+  }
+
   console.log(`[PRAVAHAx] Seeding database in '${env}' mode...`);
 
   // Clean existing data for deterministic seed
-  await prisma.auditLog.deleteMany();
   await prisma.attendanceRecord.deleteMany();
   await prisma.attendanceSession.deleteMany();
   await prisma.movementCorrection.deleteMany();
@@ -87,7 +91,7 @@ export async function runSeed() {
       locationId: location.id,
       name: 'Laptop Webcam',
       sourceType: CameraSourceType.WEBCAM,
-      role: CameraRole.GENERAL,
+      role: CameraRole.IN,
       isEnabled: true,
       configMetadata: {
         deviceIndex: 0,
@@ -99,7 +103,6 @@ export async function runSeed() {
 
   // 5. Staff Users (Admin, Warden, Guard)
   // [LOCAL DEVELOPMENT / DEMO ONLY] credentials
-  const defaultPassword = process.env.SEED_DEFAULT_PASSWORD || 'Password123!';
   const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
   const admin = await prisma.user.create({

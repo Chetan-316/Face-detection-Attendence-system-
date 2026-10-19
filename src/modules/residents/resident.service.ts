@@ -5,6 +5,8 @@ import {
   FaceEnrollmentStatus,
   PresenceState,
   StaffRole,
+  MovementType,
+  MovementSource,
   Prisma,
 } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
@@ -141,6 +143,7 @@ export class ResidentService {
     category: string;
     contactPhone?: string | null;
     initialPresence?: PresenceState;
+    markInNow?: boolean;
     performedByUserId?: string;
     performedByRole?: StaffRole;
   }): Promise<Resident> {
@@ -190,12 +193,34 @@ export class ResidentService {
         },
       });
 
+      // Event and presence commit with the resident, so a failed event leaves no half-registered comer
+      const movementEvent = input.markInNow
+        ? await tx.movementEvent.create({
+            data: {
+              residentId: resident.id,
+              hostelId: resident.hostelId,
+              movementType: MovementType.IN,
+              source: MovementSource.GUARD_CONFIRMATION,
+              effectiveTimestamp: new Date(),
+              confirmedByUserId: input.performedByUserId || null,
+              notes: `Quick-registered regular comer (${input.category.trim()}) marked IN at gate`,
+            },
+          })
+        : null;
+
       await tx.residentPresence.create({
         data: {
           residentId: resident.id,
           hostelId: resident.hostelId,
           currentState: input.initialPresence || PresenceState.IN,
           lastUpdatedByUserId: input.performedByUserId || null,
+          ...(movementEvent
+            ? {
+                lastMovementEventId: movementEvent.id,
+                lastMovementType: MovementType.IN,
+                lastMovementTime: movementEvent.effectiveTimestamp,
+              }
+            : {}),
         },
       });
 
@@ -534,7 +559,12 @@ export class ResidentService {
     });
   }
 
-  public async listResidents(hostelId: string, status?: ResidentStatus) {
+  public async listResidents(
+    hostelId: string,
+    status?: ResidentStatus,
+    options: { take?: number; cursor?: string } = {}
+  ) {
+    const take = Math.min(Math.max(options.take ?? 100, 1), 500);
     return this.db.resident.findMany({
       where: {
         hostelId,
@@ -543,7 +573,9 @@ export class ResidentService {
       include: {
         presence: true,
       },
-      orderBy: { residentCode: 'asc' },
+      orderBy: [{ residentCode: 'asc' }, { id: 'asc' }],
+      take,
+      ...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
     });
   }
 

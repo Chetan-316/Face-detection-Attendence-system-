@@ -6,6 +6,7 @@ import { AttendancePage } from '../pages/AttendancePage';
 import { ToastProvider } from '../components/ToastContext';
 import * as attendanceApi from '../api/attendance.api';
 import { camerasApi } from '../api/cameras.api';
+import { businessDateKey, businessInstant } from '../utils/businessDate';
 
 let currentUser = {
   id: 'user-warden-1',
@@ -207,6 +208,8 @@ describe('Step 08: Frontend Hostel Attendance Interface Tests', () => {
         expect.objectContaining({
           title: 'Night Attendance',
           sessionType: 'NIGHT',
+          attendanceDate: businessInstant(businessDateKey()),
+          startTime: businessInstant(businessDateKey(), '21:00'),
         })
       );
     });

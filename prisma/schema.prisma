@@ -148,14 +148,14 @@ model Organization {
 }
 
 model Hostel {
-  id             String   @id @default(uuid())
-  organizationId String
-  code           String
+  id                    String   @id @default(uuid())
+  organizationId        String
+  code                  String
   name                  String
   returnDeadlineMinutes Int      @default(1260)
   isActive              Boolean  @default(true)
   createdAt             DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  updatedAt             DateTime @updatedAt
 
   organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   locations           Location[]
@@ -202,6 +202,7 @@ model User {
   passwordHash   String
   role           StaffRole
   status         UserStatus @default(ACTIVE)
+  tokenVersion   Int        @default(0)
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
@@ -265,9 +266,10 @@ model FaceProfile {
   updatedAt         DateTime             @updatedAt
 
   resident   Resident @relation(fields: [residentId], references: [id], onDelete: Restrict)
-  enrolledBy User?    @relation(fields: [enrolledByUserId], references: [id], onDelete: SetNull)
+  enrolledBy User?    @relation(fields: [enrolledByUserId], references: [id], onDelete: Restrict)
 
   @@index([residentId, enrollmentStatus])
+  @@index([enrolledByUserId])
   @@map("face_profiles")
 }
 
@@ -283,14 +285,15 @@ model Camera {
   healthStatus   CameraHealthStatus @default(UNKNOWN)
   lastSeenAt     DateTime?
   configMetadata Json?
+  deletedAt      DateTime?
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
 
-  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  hostel              Hostel              @relation(fields: [hostelId], references: [id], onDelete: Restrict)
-  location            Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  movementEvents      MovementEvent[]
-  attendanceSessions  AttendanceSession[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  hostel             Hostel              @relation(fields: [hostelId], references: [id], onDelete: Restrict)
+  location           Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  movementEvents     MovementEvent[]
+  attendanceSessions AttendanceSession[]
 
   @@index([hostelId, isEnabled])
   @@index([role])
@@ -311,21 +314,25 @@ model MovementEvent {
   notes                String?
   isCorrection         Boolean        @default(false)
   correctionId         String?
-  recognitionReference String?  @unique
+  recognitionReference String?        @unique
   createdAt            DateTime       @default(now())
 
   resident           Resident            @relation(fields: [residentId], references: [id], onDelete: Restrict)
   hostel             Hostel              @relation(fields: [hostelId], references: [id], onDelete: Restrict)
   location           Location?           @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  camera             Camera?             @relation(fields: [cameraId], references: [id], onDelete: SetNull)
-  confirmedBy        User?               @relation(fields: [confirmedByUserId], references: [id], onDelete: SetNull)
-  correction         MovementCorrection? @relation(fields: [correctionId], references: [id], onDelete: SetNull)
+  camera             Camera?             @relation(fields: [cameraId], references: [id], onDelete: Restrict)
+  confirmedBy        User?               @relation(fields: [confirmedByUserId], references: [id], onDelete: Restrict)
+  correction         MovementCorrection? @relation(fields: [correctionId], references: [id], onDelete: Restrict)
   presencesLastEvent ResidentPresence[]  @relation("LastMovementEvent")
 
   @@index([residentId, effectiveTimestamp(sort: Desc)])
   @@index([hostelId, effectiveTimestamp(sort: Desc)])
   @@index([movementType, effectiveTimestamp(sort: Desc)])
   @@index([effectiveTimestamp(sort: Desc)])
+  @@index([locationId])
+  @@index([confirmedByUserId])
+  @@index([correctionId])
+  @@index([cameraId, effectiveTimestamp(sort: Desc)])
   @@map("movement_events")
 }
 
@@ -342,10 +349,12 @@ model ResidentPresence {
   resident          Resident       @relation(fields: [residentId], references: [id], onDelete: Restrict)
   hostel            Hostel         @relation(fields: [hostelId], references: [id], onDelete: Restrict)
   lastMovementEvent MovementEvent? @relation("LastMovementEvent", fields: [lastMovementEventId], references: [id], onDelete: SetNull)
-  lastUpdatedBy     User?          @relation(fields: [lastUpdatedByUserId], references: [id], onDelete: SetNull)
+  lastUpdatedBy     User?          @relation(fields: [lastUpdatedByUserId], references: [id], onDelete: Restrict)
 
   @@index([hostelId, currentState])
   @@index([currentState])
+  @@index([lastMovementEventId])
+  @@index([lastUpdatedByUserId])
   @@map("resident_presences")
 }
 
@@ -367,6 +376,7 @@ model MovementCorrection {
 
   @@index([residentId, createdAt(sort: Desc)])
   @@index([hostelId, createdAt(sort: Desc)])
+  @@index([authorizedByUserId])
   @@map("movement_corrections")
 }
 
@@ -393,13 +403,20 @@ model AttendanceSession {
   location     Location?          @relation(fields: [locationId], references: [id], onDelete: SetNull)
   camera       Camera?            @relation(fields: [cameraId], references: [id], onDelete: SetNull)
   createdBy    User               @relation("SessionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  startedBy    User?              @relation("SessionStartedBy", fields: [startedByUserId], references: [id], onDelete: SetNull)
-  closedBy     User?              @relation("SessionClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  startedBy    User?              @relation("SessionStartedBy", fields: [startedByUserId], references: [id], onDelete: Restrict)
+  closedBy     User?              @relation("SessionClosedBy", fields: [closedByUserId], references: [id], onDelete: Restrict)
   records      AttendanceRecord[]
 
   @@index([hostelId, sessionType, status])
+  @@index([hostelId, attendanceDate])
   @@index([attendanceDate(sort: Desc)])
   @@index([startTime(sort: Desc)])
+  @@index([organizationId])
+  @@index([locationId])
+  @@index([cameraId])
+  @@index([createdByUserId])
+  @@index([startedByUserId])
+  @@index([closedByUserId])
   @@map("attendance_sessions")
 }
 
@@ -411,7 +428,7 @@ model AttendanceRecord {
   markedAt             DateTime               @default(now())
   markMethod           AttendanceMarkMethod
   markedByUserId       String?
-  recognitionReference String?
+  recognitionReference String?                @unique
   notes                String?
   correctionReason     String?
   correctedByUserId    String?
@@ -420,12 +437,14 @@ model AttendanceRecord {
 
   session     AttendanceSession @relation(fields: [attendanceSessionId], references: [id], onDelete: Restrict)
   resident    Resident          @relation(fields: [residentId], references: [id], onDelete: Restrict)
-  markedBy    User?             @relation("RecordMarkedBy", fields: [markedByUserId], references: [id], onDelete: SetNull)
-  correctedBy User?             @relation("RecordCorrectedBy", fields: [correctedByUserId], references: [id], onDelete: SetNull)
+  markedBy    User?             @relation("RecordMarkedBy", fields: [markedByUserId], references: [id], onDelete: Restrict)
+  correctedBy User?             @relation("RecordCorrectedBy", fields: [correctedByUserId], references: [id], onDelete: Restrict)
 
   @@unique([attendanceSessionId, residentId])
   @@index([residentId, status])
   @@index([status])
+  @@index([markedByUserId])
+  @@index([correctedByUserId])
   @@map("attendance_records")
 }
 
@@ -446,10 +465,13 @@ model AuditLog {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   hostel       Hostel?      @relation(fields: [hostelId], references: [id], onDelete: SetNull)
-  performedBy  User?        @relation(fields: [performedByUserId], references: [id], onDelete: SetNull)
+  performedBy  User?        @relation(fields: [performedByUserId], references: [id], onDelete: Restrict)
 
   @@index([entityType, entityId])
+  @@index([entityType, entityId, timestamp(sort: Desc)])
   @@index([performedByUserId, timestamp(sort: Desc)])
   @@index([timestamp(sort: Desc)])
+  @@index([organizationId])
+  @@index([hostelId])
   @@map("audit_logs")
 }

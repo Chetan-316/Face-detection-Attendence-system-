@@ -13,7 +13,23 @@ import os
 import cv2
 import numpy as np
 
-from model_loader import ACTIVE_ENGINE
+from model_loader import ACTIVE_ENGINE, EMBEDDER_INFO
+
+MAX_TEMPLATE_SAMPLES = 100
+
+
+def coerce_embedding_batch(embeddings: Any, dim: int) -> np.ndarray:
+    if not isinstance(embeddings, list) or not (1 <= len(embeddings) <= MAX_TEMPLATE_SAMPLES):
+        raise ValueError(f"Embeddings must be a list of 1 to {MAX_TEMPLATE_SAMPLES} vectors")
+    try:
+        mat = np.array(embeddings, dtype=np.float32)
+    except (TypeError, ValueError) as e:
+        raise ValueError("Embedding samples must be numeric vectors of equal length") from e
+    if mat.ndim != 2 or mat.shape[1] != dim:
+        raise ValueError(f"Each embedding must have {dim} values")
+    if not np.all(np.isfinite(mat)):
+        raise ValueError("Embeddings must contain only finite values")
+    return mat
 
 
 class _BaseAggregator:
@@ -28,12 +44,13 @@ class _BaseAggregator:
                 "message": "At least one accepted embedding is required",
             }
 
-        mat = np.array(embeddings, dtype=np.float32)
-        if mat.ndim != 2:
+        try:
+            mat = coerce_embedding_batch(embeddings, EMBEDDER_INFO["embedding_dimension"])
+        except ValueError as e:
             return {
                 "success": False,
                 "error": "INVALID_EMBEDDINGS",
-                "message": "Embedding samples must have a consistent vector dimension",
+                "message": str(e),
             }
 
         norms = np.linalg.norm(mat, axis=1, keepdims=True)
@@ -94,6 +111,10 @@ class _SFaceEmbedder(_BaseAggregator):
         super().__init__(consistency_threshold)
         self.model_path = model_path
         self.recognizer = cv2.FaceRecognizerSF.create(model_path, "")
+
+    def probe_dimension(self) -> int:
+        feature = self.recognizer.feature(np.zeros((112, 112, 3), dtype=np.uint8))
+        return int(np.asarray(feature).size)
 
     def align_and_extract(self, img: np.ndarray, face: Dict[str, Any]) -> np.ndarray:
         raw_face = face.get("raw_face")
@@ -235,6 +256,11 @@ class _AdaFaceEmbedder(_BaseAggregator):
             raise RuntimeError("AdaFace produced a zero-norm embedding")
         return feat / norm
 
+    def probe_dimension(self) -> int:
+        tensor = self._preprocess(np.zeros((112, 112, 3), dtype=np.uint8))
+        outputs = self.session.run(None, {self.input_name: tensor})
+        return int(self._select_embedding_output(outputs).size)
+
 
 class FaceEmbedder:
     def __init__(self, model_path: str, consistency_threshold: Optional[float] = None):
@@ -252,6 +278,14 @@ class FaceEmbedder:
                 else 0.40
             )
             self.impl = _SFaceEmbedder(model_path, threshold)
+
+        probed_dim = self.impl.probe_dimension()
+        expected_dim = EMBEDDER_INFO["embedding_dimension"]
+        if probed_dim != expected_dim:
+            raise RuntimeError(
+                f"{EMBEDDER_INFO['name']} outputs {probed_dim}-D embeddings, "
+                f"but EMBEDDER_INFO declares {expected_dim}-D"
+            )
 
     def align_and_extract(self, img: np.ndarray, face: Dict[str, Any]) -> np.ndarray:
         return self.impl.align_and_extract(img, face)

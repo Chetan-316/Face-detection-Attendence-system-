@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient, StaffRole, ResidentStatus, FaceEnrollmentStatus, AttendanceSessionType, AttendanceMarkMethod, MovementType, MovementSource } from '@prisma/client';
-import { config } from '../src/config';
+import { createTestPrismaClient } from './helpers/test-db';
 import { TemplateCache } from '../src/modules/recognition/template-cache';
 import { AttendanceService } from '../src/modules/attendance/attendance.service';
 import { ReportService } from '../src/modules/reports/report.service';
@@ -15,9 +15,7 @@ describe('Step 11 Scale & Performance Benchmarks', () => {
   const timings: Record<string, number | string> = {};
 
   beforeAll(async () => {
-    db = new PrismaClient({
-      datasources: { db: { url: config.testDatabaseUrl } },
-    });
+    db = createTestPrismaClient();
     await db.$connect();
 
     testOrg = await db.organization.create({
@@ -60,7 +58,6 @@ describe('Step 11 Scale & Performance Benchmarks', () => {
       await db.residentPresence.deleteMany({ where: { hostelId: testHostel.id } });
       await db.faceProfile.deleteMany({ where: { resident: { organizationId: testOrg.id } } });
       await db.resident.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.auditLog.deleteMany({ where: { organizationId: testOrg.id } });
       await db.user.deleteMany({ where: { organizationId: testOrg.id } });
       await db.hostel.deleteMany({ where: { organizationId: testOrg.id } });
       await db.organization.deleteMany({ where: { id: testOrg.id } });

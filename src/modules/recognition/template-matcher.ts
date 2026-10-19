@@ -121,7 +121,10 @@ export class TemplateMatcher {
 
     const bestSimilarity = Math.round(best.similarity * 1000) / 1000;
     const secondBestSimilarity = second ? Math.round(second.similarity * 1000) / 1000 : 0;
-    const margin = Math.round((bestSimilarity - secondBestSimilarity) * 1000) / 1000;
+    // With a single candidate there is no second score to separate from. Measure against the
+    // uncertain floor rather than the candidate's own score, so the margin gate is never vacuous.
+    const separationReference = second ? secondBestSimilarity : this.thresholds.uncertainThreshold;
+    const margin = Math.round((bestSimilarity - separationReference) * 1000) / 1000;
 
     // Check thresholds:
     // 1. MATCH: best >= matchThreshold AND margin >= minMargin

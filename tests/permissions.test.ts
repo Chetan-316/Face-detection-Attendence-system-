@@ -281,6 +281,43 @@ describe('Backend Role Enforcement: Camera Infrastructure vs Operations', () => 
     expect(guardRes.status).toBe(403);
   });
 
+  it('soft-deletes camera on DELETE: row retained with deletedAt, audit recorded, hidden from reads', async () => {
+    // Warden cannot delete -> 403
+    const wardenRes = await request(app)
+      .delete(`/api/v1/cameras/${testCamera.id}`)
+      .set('Authorization', `Bearer ${wardenToken}`);
+    expect(wardenRes.status).toBe(403);
+
+    // Admin soft-deletes -> 200
+    const adminRes = await request(app)
+      .delete(`/api/v1/cameras/${testCamera.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(adminRes.status).toBe(200);
+
+    // Row is retained (movement/audit history references it) but disabled and tombstoned
+    const row = await testPrisma.camera.findUnique({ where: { id: testCamera.id } });
+    expect(row).not.toBeNull();
+    expect(row!.deletedAt).not.toBeNull();
+    expect(row!.isEnabled).toBe(false);
+
+    const audit = await testPrisma.auditLog.findFirst({
+      where: { entityType: 'CAMERA', entityId: testCamera.id, action: 'DELETE' },
+    });
+    expect(audit).not.toBeNull();
+
+    // Deleted camera is no longer readable or listed
+    const detail = await request(app)
+      .get(`/api/v1/cameras/${testCamera.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(detail.status).toBe(404);
+
+    const list = await request(app)
+      .get('/api/v1/cameras')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(list.status).toBe(200);
+    expect(list.body.data.some((c: any) => c.id === testCamera.id)).toBe(false);
+  });
+
   it('allows Admin to test camera connection and forbids Warden and Guard (403)', async () => {
     // Warden test connection -> 403 Forbidden
     const wardenRes = await request(app)

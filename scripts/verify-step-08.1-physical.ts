@@ -192,7 +192,7 @@ async function run() {
     });
 
     templateCache.invalidate(hostel.id);
-    const cachedTemplates = await templateCache.getTemplatesForHostel(hostel.id);
+    const cachedTemplates = await templateCache.getTemplatesForHostel(hostel.id, hostel.organizationId);
     console.log(`Loaded ${cachedTemplates.length} eligible template(s) in cache for Hostel ${hostel.code}`);
 
     const wardenUser = await prisma.user.upsert({
@@ -246,7 +246,7 @@ async function run() {
     }
 
     // Temporal stabilizer confirmation (3 consecutive frames)
-    const stabilizer = new TemporalStabilizer({ minConsistentObservations: 3, observationWindowSize: 5 });
+    const stabilizer = new TemporalStabilizer({ minConsistentFrames: 3, windowSize: 5 });
     stabilizer.update({ x: 100, y: 100, width: 120, height: 120 }, matchResA, 1000);
     stabilizer.update({ x: 101, y: 101, width: 120, height: 120 }, matchResA, 1200);
     const stableMatch = stabilizer.update({ x: 102, y: 100, width: 120, height: 120 }, matchResA, 1400);
@@ -259,15 +259,17 @@ async function run() {
     const obs7: RecognitionObservation = {
       id: observationId7,
       cameraId: attCamera.id,
-      timestamp: new Date().toISOString(),
+      faceId: `face_${observationId7}`,
+      bbox: { x: 100, y: 100, width: 120, height: 120 },
+      detectedAt: new Date().toISOString(),
       classification: 'MATCH',
       resident: {
         id: residentA.id,
-        code: residentA.residentCode,
+        residentCode: residentA.residentCode,
         fullName: residentA.fullName,
       },
-      confidence: matchResA.similarity,
-      qualityScore: 0.92,
+      similarity: matchResA.similarity,
+      qualityUsable: true,
     };
 
     // Pre-check movement counts for Scenario 11 baseline
@@ -310,7 +312,7 @@ async function run() {
     const obs8: RecognitionObservation = {
       ...obs7,
       id: observationId8,
-      timestamp: new Date().toISOString(),
+      detectedAt: new Date().toISOString(),
     };
 
     const decision8 = await attendanceDecisionService.evaluateObservation(obs8);
@@ -338,14 +340,17 @@ async function run() {
     console.log(`Classification for Non-Enrolled: ${matchResUnknown.classification}`);
     console.log(`Similarity: ${matchResUnknown.similarity.toFixed(4)} (< ${config.recognition.uncertainThreshold})`);
 
+    const observationId9 = `rec_obs_unknown_${crypto.randomUUID().substring(0, 8)}`;
     const obs9: RecognitionObservation = {
-      id: `rec_obs_unknown_${crypto.randomUUID().substring(0, 8)}`,
+      id: observationId9,
       cameraId: attCamera.id,
-      timestamp: new Date().toISOString(),
+      faceId: `face_${observationId9}`,
+      bbox: { x: 100, y: 100, width: 120, height: 120 },
+      detectedAt: new Date().toISOString(),
       classification: matchResUnknown.classification,
       resident: undefined,
-      confidence: matchResUnknown.similarity,
-      qualityScore: 0.88,
+      similarity: matchResUnknown.similarity,
+      qualityUsable: true,
     };
 
     const decision9 = await attendanceDecisionService.evaluateObservation(obs9);
@@ -367,14 +372,17 @@ async function run() {
     // SCENARIO 10: POOR QUALITY PHYSICAL TEST
     // -------------------------------------------------------------
     console.log('\n--- SCENARIO 10: Poor Quality Physical Test ---');
+    const observationId10 = `rec_obs_quality_${crypto.randomUUID().substring(0, 8)}`;
     const obs10: RecognitionObservation = {
-      id: `rec_obs_quality_${crypto.randomUUID().substring(0, 8)}`,
+      id: observationId10,
       cameraId: attCamera.id,
-      timestamp: new Date().toISOString(),
+      faceId: `face_${observationId10}`,
+      bbox: { x: 100, y: 100, width: 120, height: 120 },
+      detectedAt: new Date().toISOString(),
       classification: 'QUALITY_INSUFFICIENT',
       resident: undefined,
-      confidence: 0.15,
-      qualityScore: 0.22,
+      similarity: 0.15,
+      qualityUsable: false,
     };
 
     const decision10 = await attendanceDecisionService.evaluateObservation(obs10);
@@ -456,7 +464,7 @@ async function run() {
     const obs12: RecognitionObservation = {
       ...obs7,
       id: `rec_obs_postclose_${crypto.randomUUID().substring(0, 8)}`,
-      timestamp: new Date().toISOString(),
+      detectedAt: new Date().toISOString(),
     };
 
     const decision12 = await attendanceDecisionService.evaluateObservation(obs12);

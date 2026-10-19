@@ -75,11 +75,11 @@ export const movementsApi = {
   },
 
   getResidentMovements: async (residentId: string): Promise<{ data: MovementEventEntity[] }> => {
-    return apiClient<{ data: MovementEventEntity[] }>(`/residents/${residentId}/movements`);
+    return apiClient<{ data: MovementEventEntity[] }>(`/residents/${encodeURIComponent(residentId)}/movements`);
   },
 
   getResidentPresence: async (residentId: string): Promise<any> => {
-    return apiClient<any>(`/residents/${residentId}/presence`);
+    return apiClient<any>(`/residents/${encodeURIComponent(residentId)}/presence`);
   },
 
   confirmMovement: async (payload: {

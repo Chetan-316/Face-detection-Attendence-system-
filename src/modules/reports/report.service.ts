@@ -9,12 +9,16 @@ import {
 } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { StaffActor } from '../auth/permissions';
+import { isWithinHostelScope } from '../../api/middleware/scope';
 import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
 } from '../../common/errors';
 import { formatInAppTimezone } from '../../common/utils/timezone';
+import { buildBusinessDayRange, istDayRange } from '../../common/utils/business-day';
+import { config } from '../../config';
+import { DateTime } from 'luxon';
 import {
   AttendanceReportQuery,
   AttendanceSessionReportItem,
@@ -110,16 +114,10 @@ export class ReportService {
     }
 
     if (query.date) {
-      const targetDate = new Date(query.date);
-      const startOfDay = new Date(targetDate);
-      startOfDay.setUTCHours(0, 0, 0, 0);
-      const endOfDay = new Date(targetDate);
-      endOfDay.setUTCHours(23, 59, 59, 999);
-      where.attendanceDate = { gte: startOfDay, lte: endOfDay };
+      // Single business day in Asia/Kolkata: [IST midnight, next IST midnight)
+      where.attendanceDate = istDayRange(query.date, 'date');
     } else if (query.dateFrom || query.dateTo) {
-      where.attendanceDate = {};
-      if (query.dateFrom) where.attendanceDate.gte = new Date(query.dateFrom);
-      if (query.dateTo) where.attendanceDate.lte = new Date(query.dateTo);
+      where.attendanceDate = buildBusinessDayRange(query.dateFrom, query.dateTo);
     }
 
     const [total, sessions, closedSessions] = await Promise.all([
@@ -490,16 +488,13 @@ export class ReportService {
     };
 
     if (query.dateFrom || query.dateTo) {
-      where.attendanceDate = {};
-      if (query.dateFrom) where.attendanceDate.gte = new Date(query.dateFrom);
-      if (query.dateTo) where.attendanceDate.lte = new Date(query.dateTo);
+      where.attendanceDate = buildBusinessDayRange(query.dateFrom, query.dateTo);
     } else {
-      // Default to last 30 days
+      // Default to last 30 days in the app timezone
       const pastDays = query.days || 30;
-      const sinceDate = new Date();
-      sinceDate.setUTCDate(sinceDate.getUTCDate() - pastDays);
-      sinceDate.setUTCHours(0, 0, 0, 0);
-      where.attendanceDate = { gte: sinceDate };
+      where.attendanceDate = {
+        gte: DateTime.now().setZone(config.timezone).startOf('day').minus({ days: pastDays }).toJSDate(),
+      };
     }
 
     const sessions = await this.db.attendanceSession.findMany({
@@ -561,7 +556,7 @@ export class ReportService {
     >();
 
     for (const s of sessions) {
-      const dateStr = s.attendanceDate.toISOString().split('T')[0];
+      const dateStr = formatInAppTimezone(s.attendanceDate, 'yyyy-MM-dd');
       const stats = sessionStatsMap.get(s.id) || { present: 0, total: 0 };
 
       const expected =
@@ -627,7 +622,7 @@ export class ReportService {
       throw new NotFoundError('Resident', residentId);
     }
 
-    if (actor.role === StaffRole.WARDEN && actor.hostelId !== resident.hostelId) {
+    if (!isWithinHostelScope(actor, resident.hostelId)) {
       throw new NotFoundError('Resident', residentId);
     }
 
@@ -751,9 +746,7 @@ export class ReportService {
     }
 
     if (query.dateFrom || query.dateTo) {
-      where.effectiveTimestamp = {};
-      if (query.dateFrom) where.effectiveTimestamp.gte = new Date(query.dateFrom);
-      if (query.dateTo) where.effectiveTimestamp.lte = new Date(query.dateTo);
+      where.effectiveTimestamp = buildBusinessDayRange(query.dateFrom, query.dateTo);
     }
 
     if (query.search) {
@@ -831,7 +824,7 @@ export class ReportService {
       throw new NotFoundError('Resident', residentId);
     }
 
-    if (actor.role === StaffRole.WARDEN && actor.hostelId !== resident.hostelId) {
+    if (!isWithinHostelScope(actor, resident.hostelId)) {
       throw new NotFoundError('Resident', residentId);
     }
 
@@ -997,6 +990,10 @@ export class ReportService {
     residentId: string,
     actor: StaffActor
   ): Promise<ResidentSummaryReport> {
+    if (actor.role === StaffRole.GUARD) {
+      throw new ForbiddenError('Guards are not authorized to access resident operational summaries');
+    }
+
     const resident = await this.db.resident.findUnique({
       where: { id: residentId },
       include: {
@@ -1018,7 +1015,7 @@ export class ReportService {
       throw new NotFoundError('Resident', residentId);
     }
 
-    if (actor.role === StaffRole.WARDEN && actor.hostelId !== resident.hostelId) {
+    if (!isWithinHostelScope(actor, resident.hostelId)) {
       throw new NotFoundError('Resident', residentId);
     }
 
@@ -1125,27 +1122,27 @@ export class ReportService {
     }
 
     if (query.dateFrom || query.dateTo) {
-      where.attendanceDate = {};
-      if (query.dateFrom) where.attendanceDate.gte = new Date(query.dateFrom);
-      if (query.dateTo) where.attendanceDate.lte = new Date(query.dateTo);
+      where.attendanceDate = buildBusinessDayRange(query.dateFrom, query.dateTo);
     }
 
-    const sessions = await this.db.attendanceSession.findMany({
-      where,
+    const records = await this.db.attendanceRecord.findMany({
+      where: { session: where },
       include: {
-        records: {
-          include: {
-            resident: {
-              select: {
-                residentCode: true,
-                fullName: true,
-                roomGroup: true,
-              },
-            },
+        session: { select: { title: true, attendanceDate: true } },
+        resident: {
+          select: {
+            residentCode: true,
+            fullName: true,
+            roomGroup: true,
           },
         },
       },
-      orderBy: [{ attendanceDate: 'desc' }, { startTime: 'desc' }],
+      orderBy: [
+        { session: { attendanceDate: 'desc' } },
+        { session: { startTime: 'desc' } },
+        { id: 'asc' },
+      ],
+      take: 5000, // Safe maximum for export
     });
 
     const headers = [
@@ -1162,31 +1159,28 @@ export class ReportService {
 
     const rows: (unknown[])[] = [];
 
-    for (const session of sessions) {
-      const sessionDateFormatted = formatInAppTimezone(session.attendanceDate, 'yyyy-MM-dd');
+    for (const record of records) {
+      const sessionDateFormatted = formatInAppTimezone(record.session.attendanceDate, 'yyyy-MM-dd');
+      const markedAtFormatted = record.markedAt
+        ? formatInAppTimezone(record.markedAt, 'yyyy-MM-dd HH:mm:ss')
+        : '';
 
-      for (const record of session.records) {
-        const markedAtFormatted = record.markedAt
-          ? formatInAppTimezone(record.markedAt, 'yyyy-MM-dd HH:mm:ss')
-          : '';
+      const isCorrection =
+        record.markMethod === 'WARDEN_OVERRIDE' ||
+        Boolean(record.correctionReason) ||
+        record.status === AttendanceRecordStatus.CORRECTED_PRESENT;
 
-        const isCorrection =
-          record.markMethod === 'WARDEN_OVERRIDE' ||
-          Boolean(record.correctionReason) ||
-          record.status === AttendanceRecordStatus.CORRECTED_PRESENT;
-
-        rows.push([
-          sessionDateFormatted,
-          session.title,
-          record.resident.residentCode,
-          record.resident.fullName,
-          record.resident.roomGroup,
-          record.status,
-          markedAtFormatted,
-          record.markMethod,
-          isCorrection ? `Corrected: ${record.correctionReason || 'Manual override'}` : 'Normal',
-        ]);
-      }
+      rows.push([
+        sessionDateFormatted,
+        record.session.title,
+        record.resident.residentCode,
+        record.resident.fullName,
+        record.resident.roomGroup,
+        record.status,
+        markedAtFormatted,
+        record.markMethod,
+        isCorrection ? `Corrected: ${record.correctionReason || 'Manual override'}` : 'Normal',
+      ]);
     }
 
     return buildCsv(headers, rows);
@@ -1222,9 +1216,7 @@ export class ReportService {
     }
 
     if (query.dateFrom || query.dateTo) {
-      where.effectiveTimestamp = {};
-      if (query.dateFrom) where.effectiveTimestamp.gte = new Date(query.dateFrom);
-      if (query.dateTo) where.effectiveTimestamp.lte = new Date(query.dateTo);
+      where.effectiveTimestamp = buildBusinessDayRange(query.dateFrom, query.dateTo);
     }
 
     const events = await this.db.movementEvent.findMany({

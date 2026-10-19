@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { residentsApi } from '../api/residents.api';
+import { AuthenticatedImage } from '../components/AuthenticatedImage';
 import { reportsApi } from '../api/reports.api';
 import { movementsApi } from '../api/movements.api';
 import { MovementReportItem } from '../types/reports.types';
@@ -281,7 +282,7 @@ export const ResidentDetailPage: React.FC = () => {
         <Card title="Resident Information" subtitle="Primary identity and hostel assignment">
           <div className="flex items-start gap-4 mb-4">
             <div className="w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center">
-              <img
+              <AuthenticatedImage
                 src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
                 alt={resident.fullName}
                 className="w-full h-full object-cover"

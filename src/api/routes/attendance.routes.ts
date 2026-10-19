@@ -9,6 +9,9 @@ import {
 } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
+import { validateRequest } from '../middleware/validation.middleware';
+import { isWithinHostelScope } from '../middleware/scope';
+import { createAttendanceSessionSchema } from '../../modules/attendance/attendance.schemas';
 import { AttendanceService } from '../../modules/attendance/attendance.service';
 import { AttendanceDecisionService } from '../../modules/attendance-decision/attendance-decision.service';
 import {
@@ -74,8 +77,7 @@ export function createAttendanceRouter(
         throw new ValidationError('hostelId is required');
       }
 
-      // Non-admins can only query their own hostel
-      if (actor.role !== StaffRole.ADMIN && actor.hostelId && actor.hostelId !== targetHostelId) {
+      if (!isWithinHostelScope(actor, targetHostelId)) {
         throw new NotFoundError('Hostel', targetHostelId);
       }
 
@@ -105,7 +107,7 @@ export function createAttendanceRouter(
    * POST /api/v1/attendance/sessions
    * Create a new attendance session (Admin/Warden only; Guard receives 403)
    */
-  router.post('/sessions', async (req: Request, res: Response, next: NextFunction) => {
+  router.post('/sessions', validateRequest({ body: createAttendanceSessionSchema }), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const actor = getActor(req);
       if (actor.role === StaffRole.GUARD) {
@@ -158,10 +160,9 @@ export function createAttendanceRouter(
       const sessionId = req.params.id as string;
       const data = await service.getAttendanceRoster(sessionId);
 
-      // Verify scope
       if (
         data.session.organizationId !== actor.organizationId ||
-        (actor.role !== StaffRole.ADMIN && actor.hostelId && data.session.hostelId !== actor.hostelId)
+        !isWithinHostelScope(actor, data.session.hostelId)
       ) {
         throw new NotFoundError('AttendanceSession', sessionId);
       }
@@ -185,10 +186,9 @@ export function createAttendanceRouter(
       const sessionId = req.params.id as string;
       const data = await service.getAttendanceRoster(sessionId);
 
-      // Verify scope
       if (
         data.session.organizationId !== actor.organizationId ||
-        (actor.role !== StaffRole.ADMIN && actor.hostelId && data.session.hostelId !== actor.hostelId)
+        !isWithinHostelScope(actor, data.session.hostelId)
       ) {
         throw new NotFoundError('AttendanceSession', sessionId);
       }

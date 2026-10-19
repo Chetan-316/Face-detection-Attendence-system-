@@ -81,23 +81,29 @@ def main():
         while not stop_requested.is_set():
             try:
                 line = sys.stdin.readline()
-                if not line:
-                    # stdin closed by parent process -> release and exit immediately
-                    stop_requested.set()
-                    try:
-                        cap.release()
-                    except Exception:
-                        pass
-                    os._exit(0)
-                cmd_data = json.loads(line.strip())
-                if cmd_data.get("command") == "stop":
-                    stop_requested.set()
-                    try:
-                        cap.release()
-                    except Exception:
-                        pass
-                    os._exit(0)
             except Exception:
+                line = ""
+            if not line:
+                # stdin closed by parent process -> release and exit immediately
+                stop_requested.set()
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+                os._exit(0)
+            if not line.strip():
+                continue
+            try:
+                cmd_data = json.loads(line.strip())
+                if not isinstance(cmd_data, dict):
+                    raise ValueError("command must be a JSON object")
+                command = cmd_data.get("command")
+            except Exception as e:
+                # stdout carries binary frames, so the error response goes to stderr
+                log_event("error", error="INVALID_COMMAND", message=str(e))
+                continue
+            if command == "stop":
+                stop_requested.set()
                 try:
                     cap.release()
                 except Exception:

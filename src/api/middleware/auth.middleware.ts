@@ -14,7 +14,10 @@ export interface AuthenticatedUser {
   organizationId: string;
   hostelId: string | null;
   status: UserStatus;
+  tokenVersion: number;
 }
+
+export const SESSION_REVALIDATE_INTERVAL_MS = 15_000;
 
 declare global {
   namespace Express {
@@ -38,30 +41,86 @@ export function createAuthMiddleware(db = defaultPrisma) {
       }
 
       const payload = tokenService.verifyToken(token);
+      req.user = await loadActiveUser(payload.sub, payload.tokenVersion ?? 0);
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
 
-      // Verify user in database
-      const user = await db.user.findUnique({
-        where: { id: payload.sub },
+  const loadActiveUser = async (userId: string, tokenVersion: number): Promise<AuthenticatedUser> => {
+    const user = await db.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new AuthenticationError('Authenticated user no longer exists');
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new AuthenticationError('User account is inactive or suspended');
+    }
+
+    if (tokenVersion !== user.tokenVersion) {
+      throw new AuthenticationError('Session has been revoked. Please sign in again');
+    }
+
+    return {
+      id: user.id,
+      username: user.username,
+      fullName: user.fullName,
+      email: user.email,
+      role: user.role,
+      organizationId: user.organizationId,
+      hostelId: user.hostelId,
+      status: user.status,
+      tokenVersion: user.tokenVersion,
+    };
+  };
+
+  /**
+   * Re-checks an authenticated long-lived connection (SSE, MJPEG) against the database.
+   * Calls onRevoked once if the user is deactivated, the token version changes, or the
+   * check fails. Returns a function that stops the watch.
+   */
+  const watchSessionRevocation = (user: AuthenticatedUser, onRevoked: () => void): (() => void) => {
+    let stopped = false;
+    const timer = setInterval(() => {
+      loadActiveUser(user.id, user.tokenVersion).catch(() => {
+        if (stopped) return;
+        stop();
+        onRevoked();
       });
+    }, SESSION_REVALIDATE_INTERVAL_MS);
+    const stop = () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+    return stop;
+  };
 
-      if (!user) {
-        throw new AuthenticationError('Authenticated user no longer exists');
+  /**
+   * Dedicated middleware for Server-Sent Events (SSE) recognition event streams.
+   * Accepts a recognition stream token only as ?streamToken= on the route whose
+   * :cameraId matches the token, or a standard Bearer header.
+   */
+  const requireStreamAuth = async (req: Request, _res: Response, next: NextFunction) => {
+    try {
+      const cameraId = req.params.cameraId as string;
+      if (!cameraId) {
+        throw new AuthenticationError('Camera ID is required for stream authentication');
       }
 
-      if (user.status !== UserStatus.ACTIVE) {
-        throw new AuthenticationError('User account is inactive or suspended');
+      if (typeof req.query.streamToken === 'string') {
+        // Must be a valid stream token issued specifically for this camera
+        const streamPayload = tokenService.verifyStreamToken(req.query.streamToken.trim(), cameraId);
+        req.user = await loadActiveUser(streamPayload.sub, streamPayload.tokenVersion ?? 0);
+      } else if (req.headers.authorization?.startsWith('Bearer ')) {
+        const standardPayload = tokenService.verifyToken(req.headers.authorization.substring(7).trim());
+        req.user = await loadActiveUser(standardPayload.sub, standardPayload.tokenVersion ?? 0);
+      } else {
+        throw new AuthenticationError('Stream authentication token is required');
       }
-
-      req.user = {
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-        hostelId: user.hostelId,
-        status: user.status,
-      };
 
       next();
     } catch (error) {
@@ -70,65 +129,26 @@ export function createAuthMiddleware(db = defaultPrisma) {
   };
 
   /**
-   * Dedicated middleware for Server-Sent Events (SSE) recognition event streams.
-   * Accepts camera-scoped, short-lived stream token via ?streamToken= query param
-   * or standard Bearer header.
+   * Camera preview (MJPEG) authentication. Accepts a camera-scoped stream token
+   * via ?streamToken= (purpose 'camera_stream', matched to :id) or a Bearer header.
+   * The session token is never accepted in the query string.
    */
-  const requireStreamAuth = async (req: Request, _res: Response, next: NextFunction) => {
+  const requireCameraPreviewAuth = async (req: Request, _res: Response, next: NextFunction) => {
     try {
-      const cameraId = (req.params.cameraId || req.query.cameraId) as string;
+      const cameraId = req.params.id as string;
       if (!cameraId) {
         throw new AuthenticationError('Camera ID is required for stream authentication');
       }
 
-      let token: string | undefined;
-      let isStreamToken = false;
-
       if (typeof req.query.streamToken === 'string') {
-        token = req.query.streamToken.trim();
-        isStreamToken = true;
+        const streamPayload = tokenService.verifyCameraStreamToken(req.query.streamToken.trim(), cameraId);
+        req.user = await loadActiveUser(streamPayload.sub, streamPayload.tokenVersion ?? 0);
       } else if (req.headers.authorization?.startsWith('Bearer ')) {
-        token = req.headers.authorization.substring(7).trim();
-      }
-
-      if (!token) {
-        throw new AuthenticationError('Stream authentication token is required');
-      }
-
-      let userId: string;
-
-      if (isStreamToken) {
-        // Must be a valid stream token issued specifically for this camera
-        const streamPayload = tokenService.verifyStreamToken(token, cameraId);
-        userId = streamPayload.sub;
+        const standardPayload = tokenService.verifyToken(req.headers.authorization.substring(7).trim());
+        req.user = await loadActiveUser(standardPayload.sub, standardPayload.tokenVersion ?? 0);
       } else {
-        // Fallback: standard JWT Bearer header
-        const standardPayload = tokenService.verifyToken(token);
-        userId = standardPayload.sub;
+        throw new AuthenticationError('Authentication token is required for camera stream');
       }
-
-      const user = await db.user.findUnique({
-        where: { id: userId },
-      });
-
-      if (!user) {
-        throw new AuthenticationError('Authenticated user no longer exists');
-      }
-
-      if (user.status !== UserStatus.ACTIVE) {
-        throw new AuthenticationError('User account is inactive or suspended');
-      }
-
-      req.user = {
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-        hostelId: user.hostelId,
-        status: user.status,
-      };
 
       next();
     } catch (error) {
@@ -164,9 +184,11 @@ export function createAuthMiddleware(db = defaultPrisma) {
   return {
     requireAuth,
     requireStreamAuth,
+    requireCameraPreviewAuth,
     requireRole,
     requirePermission,
+    watchSessionRevocation,
   };
 }
 
-export const { requireAuth, requireStreamAuth, requireRole, requirePermission } = createAuthMiddleware();
+export const { requireAuth, requireStreamAuth, requireCameraPreviewAuth, requireRole, requirePermission } = createAuthMiddleware();

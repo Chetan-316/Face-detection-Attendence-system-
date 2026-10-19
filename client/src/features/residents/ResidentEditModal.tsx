@@ -27,7 +27,7 @@ export const ResidentEditModal: React.FC<ResidentEditModalProps> = ({
   const [contactPhone, setContactPhone] = useState('');
   const [contactEmail, setContactEmail] = useState('');
 
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | undefined>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -127,7 +127,7 @@ export const ResidentEditModal: React.FC<ResidentEditModalProps> = ({
             onChange={(e) => {
               setResidentCode(e.target.value);
               if (fieldErrors.residentCode) {
-                setFieldErrors((prev) => ({ ...prev, residentCode: undefined as any }));
+                setFieldErrors((prev) => ({ ...prev, residentCode: undefined }));
               }
             }}
             error={fieldErrors.residentCode}
@@ -142,7 +142,7 @@ export const ResidentEditModal: React.FC<ResidentEditModalProps> = ({
             onChange={(e) => {
               setRoomGroup(e.target.value);
               if (fieldErrors.roomGroup) {
-                setFieldErrors((prev) => ({ ...prev, roomGroup: undefined as any }));
+                setFieldErrors((prev) => ({ ...prev, roomGroup: undefined }));
               }
             }}
             error={fieldErrors.roomGroup}
@@ -158,7 +158,7 @@ export const ResidentEditModal: React.FC<ResidentEditModalProps> = ({
           onChange={(e) => {
             setFullName(e.target.value);
             if (fieldErrors.fullName) {
-              setFieldErrors((prev) => ({ ...prev, fullName: undefined as any }));
+              setFieldErrors((prev) => ({ ...prev, fullName: undefined }));
             }
           }}
           error={fieldErrors.fullName}
@@ -183,7 +183,7 @@ export const ResidentEditModal: React.FC<ResidentEditModalProps> = ({
             onChange={(e) => {
               setContactEmail(e.target.value);
               if (fieldErrors.contactEmail) {
-                setFieldErrors((prev) => ({ ...prev, contactEmail: undefined as any }));
+                setFieldErrors((prev) => ({ ...prev, contactEmail: undefined }));
               }
             }}
             error={fieldErrors.contactEmail}

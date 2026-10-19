@@ -451,6 +451,7 @@ describe('Step 06.1: Hardening Regression Tests', () => {
           organizationId: org.id,
           hostelId: hostel1.id,
           role: wardenUser.role,
+          tokenVersion: wardenUser.tokenVersion,
         },
         -1
       ).streamToken;

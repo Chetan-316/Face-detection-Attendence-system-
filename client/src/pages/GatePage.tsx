@@ -1,16 +1,20 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ApiError } from '../api/client';
 import { camerasApi } from '../api/cameras.api';
 import { movementsApi } from '../api/movements.api';
 import { recognitionApi } from '../api/recognition.api';
 import { residentsApi } from '../api/residents.api';
 import { CameraEntity } from '../types/camera.types';
-import { RecognitionObservation } from '../types/recognition.types';
+import { RecognitionObservation, RecognitionResident, RecognitionSessionStatus } from '../types/recognition.types';
 import { MovementEventEntity, PresenceCounts } from '../types/movement.types';
 import { RegisterRegularComerModal } from '../features/gate/RegisterRegularComerModal';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
 import { Button } from '../components/Button';
+import { AuthenticatedImage } from '../components/AuthenticatedImage';
+import { usePreviewStreamUrl } from '../hooks/usePreviewStreamUrl';
+import { formatTime } from '../utils/formatters';
 import {
   Camera as CameraIcon,
   AlertTriangle,
@@ -25,40 +29,142 @@ import {
   Users,
 } from 'lucide-react';
 
+type Direction = 'IN' | 'OUT';
+type ActivePresence = Direction | 'UNKNOWN' | null;
+
+interface ManualRecord {
+  residentName: string;
+  direction: Direction;
+  at: string;
+}
+
+interface SeenObservation {
+  key: string;
+  decided: boolean;
+}
+
+const MATCH_HOLD_MS = 4000;
+const OTHER_HOLD_MS = 2500;
+const POLL_INTERVAL_MS = 2500;
+const POLL_MAX_AGE_MS = 6000;
+const MOVEMENT_REFRESH_MS = 5000;
+const RECOGNITION_STATUS_REFRESH_MS = 5000;
+
+type GateRecognitionState = RecognitionSessionStatus['state'] | 'WORKER_UNAVAILABLE';
+const WEBCAM_SCAN_MS = 700;
+const SEEN_OBSERVATION_LIMIT = 50;
+const FEED_ERROR_MESSAGE = 'Recognition is unavailable right now. Retrying automatically.';
+const MOVEMENT_REFRESH_ERROR = 'Could not refresh gate activity. Showing the last loaded data.';
+
+const ASSISTANCE_STATUSES = new Set<string>([
+  'AUTOMATION_DISABLED',
+  'CAMERA_NOT_MOVEMENT_CAPABLE',
+  'INITIAL_PRESENCE_MISSING',
+  'RESIDENT_INACTIVE',
+  'RESIDENT_NOT_ENROLLED',
+  'CROSS_HOSTEL_MISMATCH',
+  'TRANSITION_SUPPRESSED',
+  'ERROR',
+]);
+
+const NO_DUPLICATE_STATUSES = new Set<string>([
+  'ALREADY_IN',
+  'ALREADY_OUT',
+  'DUPLICATE_OBSERVATION_SUPPRESSED',
+]);
+
+function observationKey(observation: RecognitionObservation): string {
+  const decision = observation.movementDecision;
+  return [
+    observation.classification,
+    observation.resident?.id ?? '',
+    observation.isStable ?? '',
+    observation.shouldEmitEvent ?? '',
+    decision?.status ?? '',
+    decision?.direction ?? '',
+    decision?.currentPresence ?? '',
+  ].join('|');
+}
+
+function rememberObservation(seen: Map<string, SeenObservation>, id: string, entry: SeenObservation) {
+  seen.delete(id);
+  seen.set(id, entry);
+  if (seen.size > SEEN_OBSERVATION_LIMIT) {
+    const oldest = seen.keys().next().value;
+    if (oldest !== undefined) seen.delete(oldest);
+  }
+}
+
+function describeCameraError(err: unknown): string {
+  const name = (err as { name?: string } | null)?.name;
+  switch (name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'Camera access was blocked. Allow camera access in the browser address bar, then select Start laptop camera.';
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'No camera was found on this device.';
+    case 'NotReadableError':
+      return 'The camera is in use by another application.';
+    default:
+      return err instanceof Error && err.message ? err.message : 'The laptop camera could not be started.';
+  }
+}
+
 export const GatePage: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { success, error: toastError } = useToast();
+  const { error: toastError } = useToast();
 
   const [cameras, setCameras] = useState<CameraEntity[]>([]);
+  const [camerasLoaded, setCamerasLoaded] = useState<boolean>(false);
+  const [camerasError, setCamerasError] = useState<string | null>(null);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [selectedCamera, setSelectedCamera] = useState<CameraEntity | null>(null);
+  const selectedCameraIdRef = useRef<string>(selectedCameraId);
+  const selectedCamera = useMemo(
+    () => cameras.find((camera) => camera.id === selectedCameraId) ?? null,
+    [cameras, selectedCameraId]
+  );
+  const selectedSourceType = selectedCamera?.sourceType;
+  // IP/RTSP cameras are server-driven and must never be replaced by the browser camera.
+  const isBrowserCamera = !selectedCamera || selectedSourceType === 'WEBCAM';
 
   const [presenceCounts, setPresenceCounts] = useState<PresenceCounts | null>(null);
   const [recentMovements, setRecentMovements] = useState<MovementEventEntity[]>([]);
+  const [movementsError, setMovementsError] = useState<string | null>(null);
 
-  // Current session observation state
   const [activeObservation, setActiveObservation] = useState<RecognitionObservation | null>(null);
-  const [activeResidentPresence, setActiveResidentPresence] = useState<'IN' | 'OUT' | null>(null);
+  const [activePresence, setActivePresence] = useState<ActivePresence>(null);
+  const [manualRecord, setManualRecord] = useState<ManualRecord | null>(null);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
-  const [lastActionSuccessMsg, setLastActionSuccessMsg] = useState<string | null>(null);
-
-  const [streamError, setStreamError] = useState<string | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [recognitionState, setRecognitionState] = useState<GateRecognitionState | null>(null);
   const [isRegisterVisitorOpen, setIsRegisterVisitorOpen] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const resetTimerRef = useRef<any>(null);
-  const actionTimerRef = useRef<any>(null);
 
-  // Direct Laptop Browser Webcam Support
+  const activeObservationIdRef = useRef<string | null>(null);
+  const seenObservationsRef = useRef<Map<string, SeenObservation>>(new Map());
+  const recordedResidentIdRef = useRef<string | null>(null);
+  const isConfirmingRef = useRef<boolean>(false);
+  const cardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const scanInFlightRef = useRef<boolean>(false);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
+  const [isStartingCamera, setIsStartingCamera] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isScanningFace, setIsScanningFace] = useState<boolean>(false);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const previewStreamUrl = usePreviewStreamUrl(isBrowserCamera ? null : selectedCameraId);
+
+  useEffect(() => {
+    selectedCameraIdRef.current = selectedCameraId;
+  }, [selectedCameraId]);
 
   const startLaptopCamera = useCallback(async () => {
+    setIsStartingCamera(true);
+    setCameraError(null);
     try {
-      setCameraError(null);
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('Camera is not supported or blocked in this browser context.');
       }
@@ -80,16 +186,18 @@ export const GatePage: React.FC = () => {
         videoRef.current.play().catch(() => {});
       }
       setIsCameraActive(true);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.warn('Webcam access error:', err);
-      setCameraError(err.message || 'Permission denied. Please allow camera access in browser address bar.');
+      setCameraError(describeCameraError(err));
       setIsCameraActive(false);
+    } finally {
+      setIsStartingCamera(false);
     }
   }, []);
 
   const stopLaptopCamera = useCallback(() => {
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
     }
     if (videoRef.current) {
@@ -99,385 +207,696 @@ export const GatePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (selectedSourceType !== 'WEBCAM') return;
+    startLaptopCamera();
+    return stopLaptopCamera;
+  }, [selectedCameraId, selectedSourceType, startLaptopCamera, stopLaptopCamera]);
+
+  useEffect(() => {
     return () => {
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((t) => t.stop());
-        localStreamRef.current = null;
-      }
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      localStreamRef.current = null;
+      if (cardTimerRef.current) clearTimeout(cardTimerRef.current);
     };
   }, []);
 
-  // Browser webcam is only used for cameras explicitly configured as WEBCAM.
-  // IP/RTSP cameras remain server-driven and must never be replaced by the laptop camera.
-  useEffect(() => {
-    if (!selectedCamera) return;
-    if (selectedCamera.sourceType === 'WEBCAM') {
-      startLaptopCamera();
-    } else {
-      stopLaptopCamera();
-    }
-  }, [selectedCamera?.id, selectedCamera?.sourceType, startLaptopCamera, stopLaptopCamera]);
+  const hostelId = user?.hostelId || undefined;
 
-  const handleRegisterVisitorSuccess = () => {
-    fetchMovementData();
-  };
-
-  // Fetch gate cameras
   const fetchCameras = useCallback(async () => {
     try {
-      const res = await camerasApi.listCameras(user?.hostelId || undefined);
-      // Gate Operations only uses cameras with an authoritative movement direction.
-      const list = (res.data || []).filter((camera) => camera.role === 'IN' || camera.role === 'OUT');
+      const res = await camerasApi.listCameras(hostelId);
+      // The server decides direction (TOGGLE); only IN/OUT cameras create automatic movements.
+      const list = (res.data || []).filter(
+        (camera) => camera.isEnabled !== false && (camera.role === 'IN' || camera.role === 'OUT')
+      );
       setCameras(list);
-
-      const activeId = selectedCameraId || (list.length > 0 ? list[0].id : '');
-      if (activeId) {
-        setSelectedCameraId(activeId);
-        const cam = list.find((c) => c.id === activeId) || list[0];
-        setSelectedCamera(cam);
-      }
-    } catch (err: any) {
-      toastError(err.message || 'Failed to load gate cameras');
+      setCamerasError(null);
+      setSelectedCameraId((previous) => (list.some((camera) => camera.id === previous) ? previous : list[0]?.id ?? ''));
+    } catch {
+      setCamerasError('The server did not return the gate camera list. Check the connection, then retry.');
+    } finally {
+      setCamerasLoaded(true);
     }
-  }, [user?.hostelId, selectedCameraId, toastError]);
+  }, [hostelId]);
+
+  const retryCameras = useCallback(() => {
+    setCamerasLoaded(false);
+    void fetchCameras();
+  }, [fetchCameras]);
 
   useEffect(() => {
     fetchCameras();
   }, [fetchCameras]);
 
-  // Fetch recent gate movements & presence counts
   const fetchMovementData = useCallback(async () => {
-    try {
-      const [counts, movs] = await Promise.all([
-        movementsApi.getPresenceCounts(user?.hostelId || undefined).catch(() => null),
-        movementsApi.getMovements({ hostelId: user?.hostelId || undefined, pageSize: 8 }).catch(() => ({ data: [] })),
-      ]);
-      if (counts) setPresenceCounts(counts);
-      if (movs?.data) setRecentMovements(movs.data);
-    } catch (e) {}
-  }, [user?.hostelId]);
+    const [counts, movements] = await Promise.allSettled([
+      movementsApi.getPresenceCounts(hostelId),
+      movementsApi.getMovements({ hostelId, pageSize: 8 }),
+    ]);
+    if (counts.status === 'fulfilled') setPresenceCounts(counts.value);
+    if (movements.status === 'fulfilled') setRecentMovements(movements.value.data ?? []);
+    setMovementsError(
+      counts.status === 'rejected' || movements.status === 'rejected' ? MOVEMENT_REFRESH_ERROR : null
+    );
+  }, [hostelId]);
 
   useEffect(() => {
     fetchMovementData();
-    const interval = setInterval(fetchMovementData, 5000);
+    const interval = setInterval(fetchMovementData, MOVEMENT_REFRESH_MS);
     return () => clearInterval(interval);
   }, [fetchMovementData]);
 
-  // Capture webcam frame from video and submit to backend recognition
-  const captureAndProcessFrame = useCallback(async () => {
-    if (
-      !videoRef.current ||
-      !selectedCameraId ||
-      selectedCamera?.sourceType !== 'WEBCAM' ||
-      isConfirming ||
-      isScanningFace
-    ) return;
-    try {
-      const video = videoRef.current;
-      if (video.videoWidth === 0 || video.videoHeight === 0) return;
+  const clearCardTimer = useCallback(() => {
+    if (cardTimerRef.current) {
+      clearTimeout(cardTimerRef.current);
+      cardTimerRef.current = null;
+    }
+  }, []);
 
-      setIsScanningFace(true);
+  const dismissObservation = useCallback(() => {
+    clearCardTimer();
+    activeObservationIdRef.current = null;
+    recordedResidentIdRef.current = null;
+    setActiveObservation(null);
+    setActivePresence(null);
+    setManualRecord(null);
+  }, [clearCardTimer]);
+
+  const holdCard = useCallback(
+    (holdMs: number) => {
+      clearCardTimer();
+      cardTimerRef.current = setTimeout(() => {
+        cardTimerRef.current = null;
+        dismissObservation();
+      }, holdMs);
+    },
+    [clearCardTimer, dismissObservation]
+  );
+
+  // Single path for every recognition source (webcam frame, SSE event, polling). The same observation id
+  // can arrive several times: identical deliveries and stale re-deliveries are ignored, while the first
+  // movement decision for an id already on screen updates that card instead of being dropped.
+  const handleObservation = useCallback(
+    (observation: RecognitionObservation) => {
+      if (isConfirmingRef.current) return;
+      const seen = seenObservationsRef.current;
+      const key = observationKey(observation);
+      const decision = observation.movementDecision;
+      const previous = seen.get(observation.id);
+
+      if (previous) {
+        if (previous.key === key || previous.decided) return;
+        rememberObservation(seen, observation.id, { key, decided: Boolean(decision) });
+
+        if (!decision) {
+          if (activeObservationIdRef.current === observation.id) setActiveObservation(observation);
+          return;
+        }
+
+        void fetchMovementData();
+        if (activeObservationIdRef.current !== observation.id) return;
+        setActiveObservation(observation);
+        if (decision.currentPresence) setActivePresence(decision.currentPresence);
+        if (observation.classification === 'MATCH' && observation.resident && decision.status === 'MOVEMENT_CREATED') {
+          recordedResidentIdRef.current = observation.resident.id;
+        }
+        holdCard(observation.classification === 'MATCH' ? MATCH_HOLD_MS : OTHER_HOLD_MS);
+        return;
+      }
+
+      rememberObservation(seen, observation.id, { key, decided: Boolean(decision) });
+
+      const heldResidentId = recordedResidentIdRef.current;
+      if (heldResidentId && observation.classification === 'MATCH' && observation.resident?.id === heldResidentId) {
+        // The same resident is still in view; keep the recorded result readable until its hold expires.
+        return;
+      }
+      recordedResidentIdRef.current = null;
+
+      activeObservationIdRef.current = observation.id;
+      setActiveObservation(observation);
+      setActivePresence(decision?.currentPresence ?? null);
+      setManualRecord(null);
+
+      if (observation.classification === 'MATCH' && observation.resident) {
+        if (decision?.status === 'MOVEMENT_CREATED') {
+          recordedResidentIdRef.current = observation.resident.id;
+          fetchMovementData();
+        }
+        if (!decision?.currentPresence) {
+          movementsApi
+            .getResidentPresence(observation.resident.id)
+            .then((presence) => {
+              if (activeObservationIdRef.current !== observation.id) return;
+              setActivePresence(presence?.currentState ?? 'UNKNOWN');
+            })
+            .catch(() => {
+              if (activeObservationIdRef.current === observation.id) setActivePresence('UNKNOWN');
+            });
+        }
+      }
+
+      holdCard(observation.classification === 'MATCH' ? MATCH_HOLD_MS : OTHER_HOLD_MS);
+    },
+    [fetchMovementData, holdCard]
+  );
+
+  const captureAndProcessFrame = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || !selectedCameraId || selectedSourceType !== 'WEBCAM') return;
+    if (isConfirmingRef.current || scanInFlightRef.current) return;
+    if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    const cameraId = selectedCameraId;
+    scanInFlightRef.current = true;
+    setIsScanningFace(true);
+    try {
       const canvas = document.createElement('canvas');
       canvas.width = Math.min(640, video.videoWidth);
       canvas.height = Math.min(480, video.videoHeight);
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const b64 = canvas.toDataURL('image/jpeg', 0.75);
-
-      const res = await recognitionApi.processFrame(selectedCameraId, b64);
-      if (res.observation) {
-        if (res.observation.classification === 'MATCH' && res.observation.resident) {
-          setActiveObservation(res.observation);
-          setActiveResidentPresence(
-            res.observation.movementDecision?.currentPresence as 'IN' | 'OUT' | null || null
-          );
-          if (res.observation.movementDecision?.status === 'MOVEMENT_CREATED') {
-            const direction = res.observation.movementDecision.direction;
-            setLastActionSuccessMsg(
-              direction === 'IN'
-                ? `${res.observation.resident.fullName} entered automatically.`
-                : `${res.observation.resident.fullName} exited automatically.`
-            );
-            if (actionTimerRef.current) clearTimeout(actionTimerRef.current);
-            actionTimerRef.current = setTimeout(() => setLastActionSuccessMsg(null), 3000);
-            fetchMovementData();
-          }
-          if (!res.observation.movementDecision?.currentPresence) {
-            const pres = await movementsApi.getResidentPresence(res.observation.resident.id).catch(() => null);
-            if (pres?.currentState) {
-              setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
-            }
-          }
-          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-          resetTimerRef.current = setTimeout(() => {
-            setActiveObservation(null);
-            setActiveResidentPresence(null);
-          }, 4000);
-        } else if (res.observation.classification === 'UNKNOWN') {
-          setActiveObservation(res.observation);
-          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-          resetTimerRef.current = setTimeout(() => {
-            setActiveObservation(null);
-          }, 2500);
-        } else if (res.observation.classification === 'UNCERTAIN') {
-          setActiveObservation(res.observation);
-          if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-          resetTimerRef.current = setTimeout(() => {
-            setActiveObservation(null);
-          }, 2500);
-        }
-      }
-    } catch (err) {
-      // background capture non-blocking
+      const imageBase64 = canvas.toDataURL('image/jpeg', 0.75);
+      const res = await recognitionApi.processFrame(cameraId, imageBase64);
+      if (selectedCameraIdRef.current !== cameraId) return;
+      setFeedError(null);
+      if (res.observation) handleObservation(res.observation);
+    } catch {
+      if (selectedCameraIdRef.current === cameraId) setFeedError(FEED_ERROR_MESSAGE);
     } finally {
+      scanInFlightRef.current = false;
       setIsScanningFace(false);
     }
-  }, [selectedCameraId, selectedCamera?.sourceType, isConfirming, isScanningFace, fetchMovementData]);
+  }, [selectedCameraId, selectedSourceType, handleObservation]);
 
-  // Continuous gate scan. Never pause the whole scanner after recognizing one resident.
-  // isScanningFace provides backpressure so requests cannot overlap.
   useEffect(() => {
-    if (selectedCamera?.sourceType !== 'WEBCAM' || !isCameraActive || isConfirming) return;
+    if (selectedSourceType !== 'WEBCAM' || !isCameraActive) return;
     const interval = setInterval(() => {
-      captureAndProcessFrame();
-    }, 700);
+      void captureAndProcessFrame();
+    }, WEBCAM_SCAN_MS);
     return () => clearInterval(interval);
-  }, [selectedCamera?.sourceType, isCameraActive, isConfirming, captureAndProcessFrame]);
+  }, [selectedSourceType, isCameraActive, captureAndProcessFrame]);
 
-  // Connect live recognition stream via SSE using short-lived stream token
   useEffect(() => {
     if (!selectedCameraId) return;
 
-    let isMounted = true;
+    let isActive = true;
+    const refreshRecognitionState = async () => {
+      try {
+        const status = await recognitionApi.getStatus(selectedCameraId);
+        if (isActive) setRecognitionState(status.state);
+      } catch (err) {
+        if (!isActive) return;
+        setRecognitionState(err instanceof ApiError && err.status === 503 ? 'WORKER_UNAVAILABLE' : null);
+      }
+    };
 
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
+    void refreshRecognitionState();
+    const interval = setInterval(refreshRecognitionState, RECOGNITION_STATUS_REFRESH_MS);
+
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
+  }, [selectedCameraId]);
+
+  // The stream and polling depend only on the selected camera. Manual actions must not reconnect them.
+  useEffect(() => {
+    if (!selectedCameraId) return;
+
+    let isActive = true;
+    let eventSource: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
     const connectStream = async () => {
       try {
-        // Requesting the stream token also ensures an authorized gate session is running.
         const { streamToken } = await recognitionApi.getStreamToken(selectedCameraId);
-        if (!isMounted) return;
-
-        const streamUrl = recognitionApi.getEventsStreamUrl(selectedCameraId, streamToken);
-        const es = new EventSource(streamUrl);
-        eventSourceRef.current = es;
-
-        es.addEventListener('observation', (event: MessageEvent) => {
+        if (!isActive) return;
+        eventSource = new EventSource(recognitionApi.getEventsStreamUrl(selectedCameraId, streamToken));
+        eventSource.addEventListener('observation', (event: MessageEvent) => {
           try {
-            const obs: RecognitionObservation = JSON.parse(event.data);
-
-            if (isConfirming) return;
-
-            setActiveObservation(obs);
-
-            if (obs.classification === 'MATCH' && obs.resident) {
-              if (obs.movementDecision?.currentPresence) {
-                setActiveResidentPresence(obs.movementDecision.currentPresence);
-              } else {
-                setActiveResidentPresence(null);
-                movementsApi.getResidentPresence(obs.resident.id).then((pres) => {
-                  if (isMounted && pres?.currentState) {
-                    setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
-                  }
-                }).catch(() => {});
-              }
-              if (obs.movementDecision?.status === 'MOVEMENT_CREATED') {
-                const direction = obs.movementDecision.direction;
-                setLastActionSuccessMsg(
-                  direction === 'IN'
-                    ? `${obs.resident.fullName} entered automatically.`
-                    : `${obs.resident.fullName} exited automatically.`
-                );
-                if (actionTimerRef.current) clearTimeout(actionTimerRef.current);
-                actionTimerRef.current = setTimeout(() => setLastActionSuccessMsg(null), 3000);
-                fetchMovementData();
-              }
-            }
-          } catch (e) {}
+            handleObservation(JSON.parse(event.data) as RecognitionObservation);
+          } catch {
+            // A malformed event is skipped; polling keeps the feed current.
+          }
         });
-
-        es.onerror = () => {
-          if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-          }
-          if (isMounted) {
-            setTimeout(connectStream, 3000);
-          }
+        eventSource.onerror = () => {
+          eventSource?.close();
+          eventSource = null;
+          if (isActive) reconnectTimer = setTimeout(connectStream, 3000);
         };
-      } catch (err) {
-        if (isMounted) {
-          setTimeout(connectStream, 4000);
-        }
+      } catch {
+        if (isActive) reconnectTimer = setTimeout(connectStream, 4000);
       }
     };
 
     connectStream();
 
-    // Fallback polling for recognition observations in environments without EventSource
     const pollInterval = setInterval(() => {
-      if (selectedCameraId && isMounted && !isConfirming) {
-        recognitionApi.getResults(selectedCameraId, 1).then((res) => {
-          if (res.results && res.results.length > 0) {
-            const latest = res.results[0];
-            const ageMs = Date.now() - new Date(latest.detectedAt).getTime();
-            // Discard observations older than 6 seconds so historical matches do not ghost on gate monitor
-            if (ageMs > 6000) return;
-
-            setActiveObservation(latest);
-            if (latest.classification === 'MATCH' && latest.resident) {
-              if (latest.movementDecision?.currentPresence) {
-                setActiveResidentPresence(latest.movementDecision.currentPresence);
-              } else {
-                setActiveResidentPresence(null);
-                movementsApi.getResidentPresence(latest.resident.id).then((pres) => {
-                  if (isMounted && pres?.currentState) {
-                    setActiveResidentPresence(pres.currentState as 'IN' | 'OUT');
-                  }
-                }).catch(() => {});
-              }
-              if (latest.movementDecision?.status === 'MOVEMENT_CREATED') {
-                const direction = latest.movementDecision.direction;
-                setLastActionSuccessMsg(
-                  direction === 'IN'
-                    ? `${latest.resident.fullName} entered automatically.`
-                    : `${latest.resident.fullName} exited automatically.`
-                );
-                if (actionTimerRef.current) clearTimeout(actionTimerRef.current);
-                actionTimerRef.current = setTimeout(() => setLastActionSuccessMsg(null), 3000);
-                fetchMovementData();
-              }
-            }
-          }
-        }).catch(() => {});
-      }
-    }, 2500);
+      recognitionApi
+        .getResults(selectedCameraId, 1)
+        .then((res) => {
+          if (!isActive) return;
+          setFeedError(null);
+          const latest = res.results?.[0];
+          if (!latest) return;
+          const ageMs = Date.now() - new Date(latest.detectedAt).getTime();
+          // Older observations are historical and must not appear as live matches.
+          if (ageMs > POLL_MAX_AGE_MS) return;
+          handleObservation(latest);
+        })
+        .catch(() => {
+          if (isActive) setFeedError(FEED_ERROR_MESSAGE);
+        });
+    }, POLL_INTERVAL_MS);
 
     return () => {
-      isMounted = false;
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      isActive = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      eventSource?.close();
       clearInterval(pollInterval);
-      if (resetTimerRef.current) {
-        clearTimeout(resetTimerRef.current);
-      }
-      if (actionTimerRef.current) {
-        clearTimeout(actionTimerRef.current);
-      }
     };
-  }, [selectedCameraId, isConfirming, fetchMovementData]);
+  }, [selectedCameraId, handleObservation]);
 
-  // Execute movement action (MARK OUT or MARK IN)
-  const handleMarkMovement = async (forcedDirection?: 'IN' | 'OUT') => {
+  const handleCameraChange = (cameraId: string) => {
+    setSelectedCameraId(cameraId);
+    setStreamError(null);
+    setFeedError(null);
+    setRecognitionState(null);
+    dismissObservation();
+  };
+
+  // Manual exception path. No direction is sent: the server toggles from the resident's locked presence
+  // and returns the movement it recorded, which is the only source for the displayed result.
+  const handleManualToggle = async () => {
     const resident = activeObservation?.resident;
-    if (!resident || !selectedCamera || isConfirming || !activeResidentPresence) return;
+    if (!resident || !selectedCamera || isConfirmingRef.current) return;
+    if (activePresence !== 'IN' && activePresence !== 'OUT') return;
 
-    const targetDirection = forcedDirection || (activeResidentPresence === 'IN' ? 'OUT' : 'IN');
-
+    isConfirmingRef.current = true;
     setIsConfirming(true);
-    setLastActionSuccessMsg(null);
+    setManualRecord(null);
 
     try {
-      await movementsApi.confirmMovement({
+      const res = await movementsApi.confirmMovement({
         residentId: resident.id,
         cameraId: selectedCamera.id,
-        direction: targetDirection,
       });
-
-      const actionText = targetDirection === 'OUT' ? 'marked outside' : 'marked inside';
-      const successText = `${resident.fullName} ${actionText}.`;
-      setLastActionSuccessMsg(successText);
-      success(successText);
-
+      const { movementType, effectiveTimestamp } = res.data;
+      setActivePresence(movementType);
+      setManualRecord({
+        residentName: resident.fullName,
+        direction: movementType,
+        at: effectiveTimestamp,
+      });
+      recordedResidentIdRef.current = resident.id;
       fetchMovementData();
-      setActiveResidentPresence(targetDirection);
-
-      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
-      resetTimerRef.current = setTimeout(() => {
-        setActiveObservation(null);
-        setActiveResidentPresence(null);
-        setLastActionSuccessMsg(null);
-      }, 3500);
+      holdCard(MATCH_HOLD_MS);
     } catch (err: any) {
       toastError(err.message || 'Failed to record gate movement');
     } finally {
+      isConfirmingRef.current = false;
       setIsConfirming(false);
     }
   };
 
-  const isMatch = activeObservation?.classification === 'MATCH' && !!activeObservation.resident;
-  const isUnknown = activeObservation?.classification === 'UNKNOWN';
-  const isLowQuality = activeObservation?.classification === 'QUALITY_INSUFFICIENT';
-  const isUncertain = activeObservation?.classification === 'UNCERTAIN';
-  const cameraHealth = selectedCamera?.healthStatus || 'OFFLINE';
-  const isBrowserWebcam = selectedCamera?.sourceType === 'WEBCAM';
-  const cameraIsOnline = isBrowserWebcam ? isCameraActive : cameraHealth === 'ONLINE';
-  const cameraStatusLabel = isBrowserWebcam
+  const observation = activeObservation;
+  const decision = observation?.movementDecision;
+  const isMatch = observation?.classification === 'MATCH' && !!observation.resident;
+  const automaticDirection = isMatch && decision?.status === 'MOVEMENT_CREATED' ? decision.direction : undefined;
+
+  const cameraHealthy = isBrowserCamera ? isCameraActive : selectedCamera?.healthStatus === 'ONLINE';
+  const cameraStatusLabel = isBrowserCamera
     ? isCameraActive
-      ? 'Camera Active'
-      : 'Camera Not Started'
-    : cameraIsOnline
-    ? 'Camera Online'
-    : 'Camera Attention';
+      ? 'Camera active'
+      : 'Camera not started'
+    : cameraHealthy
+    ? 'Camera online'
+    : 'Camera needs attention';
+  const cameraPillTone = cameraHealthy ? 'is-ok' : isBrowserCamera ? 'is-neutral' : 'is-warn';
+
+  const renderRecorded = (name: string, direction: Direction, at: string | undefined, manual: boolean) => (
+    <div className="gate-result">
+      <div className="gate-result-icon is-success">
+        <Check size={26} />
+      </div>
+      <h2 className="gate-recorded-name">{name}</h2>
+      <p className={`gate-recorded-label ${direction === 'IN' ? 'is-in' : 'is-out'}`}>
+        {direction === 'IN' ? 'ENTRY RECORDED' : 'EXIT RECORDED'}
+      </p>
+      <p className="gate-recorded-time">{formatTime(at)}</p>
+      <p className="gate-result-text">
+        {manual
+          ? 'Recorded by the guard as a manual exception. The action is audit logged.'
+          : 'Recorded automatically. No guard action is needed.'}
+      </p>
+      <p className="gate-ready-line">Ready for next resident</p>
+    </div>
+  );
+
+  const renderPresence = () => {
+    if (activePresence === 'IN') return <span className="gate-pill is-ok">Currently inside</span>;
+    if (activePresence === 'OUT') return <span className="gate-pill is-warn">Currently outside</span>;
+    if (activePresence === 'UNKNOWN') {
+      return <span className="gate-pill is-neutral">Presence unavailable. Confirm at the desk.</span>;
+    }
+    return <span className="gate-pill is-neutral">Checking current presence…</span>;
+  };
+
+  const renderFooter = (current: RecognitionObservation) => {
+    const status = current.movementDecision?.status;
+
+    if (status && NO_DUPLICATE_STATUSES.has(status)) {
+      return (
+        <div className="gate-notice is-neutral">
+          <p className="gate-notice-title">No duplicate movement created</p>
+          <p className="gate-notice-body">
+            The resident is already recorded in the correct state. Continuous scanning remains active.
+          </p>
+        </div>
+      );
+    }
+
+    if (status && ASSISTANCE_STATUSES.has(status)) {
+      return (
+        <div className="gate-notice is-warn">
+          <p className="gate-notice-title">Automatic movement needs assistance</p>
+          <p className="gate-notice-body">
+            {current.movementDecision?.reason || 'The automatic movement could not be completed.'}
+          </p>
+          <p className="gate-notice-body">
+            Use manual confirmation only for this exception. The action is audit logged.
+          </p>
+          {(activePresence === 'IN' || activePresence === 'OUT') && (
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              className="gate-full-width"
+              onClick={handleManualToggle}
+              isLoading={isConfirming}
+              disabled={isConfirming}
+              leftIcon={<AlertTriangle size={18} />}
+            >
+              {activePresence === 'IN' ? 'Record manual exit' : 'Record manual entry'}
+            </Button>
+          )}
+        </div>
+      );
+    }
+
+    if (current.isStable && current.shouldEmitEvent === false) {
+      return (
+        <div className="gate-notice is-neutral">
+          <p className="gate-notice-title">Recognition confirmed. Scanner remains active.</p>
+          <p className="gate-notice-body">
+            This resident is still part of the same camera appearance. No duplicate movement is created until they leave and appear again.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="gate-notice is-info">
+        <p className="gate-notice-title">Confirming automatic movement...</p>
+        <p className="gate-notice-body">
+          Keep the resident in view briefly. The first confirmed appearance toggles presence automatically; continuous visibility is ignored until they leave the camera view.
+        </p>
+      </div>
+    );
+  };
+
+  const renderIdentity = (current: RecognitionObservation, resident: RecognitionResident) => (
+    <div className="gate-identity-panel">
+      <div className="gate-identity-status">
+        <span className="gate-identity-status-label">
+          <span className="gate-dot is-live" />
+          Resident identified
+        </span>
+        <button type="button" className="gate-link-button" onClick={dismissObservation}>
+          <X size={12} />
+          <span>Dismiss</span>
+        </button>
+      </div>
+
+      <div className="gate-identity">
+        <div className="gate-identity-photo">
+          <UserIcon size={30} aria-hidden="true" />
+          <AuthenticatedImage
+            src={residentsApi.getProfilePhotoUrl(resident.id)}
+            alt={resident.fullName}
+            onError={(e) => {
+              (e.target as HTMLElement).style.display = 'none';
+            }}
+          />
+        </div>
+        <div className="gate-identity-body">
+          <h2 className="gate-identity-name">{resident.fullName}</h2>
+          <p className="gate-identity-meta">
+            {resident.residentCode} · {resident.roomGroup || 'Room not assigned'}
+          </p>
+          <div className="gate-identity-presence">{renderPresence()}</div>
+        </div>
+      </div>
+
+      <div className="gate-action-footer">{renderFooter(current)}</div>
+    </div>
+  );
+
+  const renderSimpleResult = (
+    icon: React.ReactNode,
+    tone: 'danger' | 'warn' | 'ready',
+    title: string,
+    text: string,
+    action?: React.ReactNode
+  ) => (
+    <div className="gate-result">
+      <div className={`gate-result-icon is-${tone}`}>{icon}</div>
+      <h2 className="gate-result-title">{title}</h2>
+      <p className="gate-result-text">{text}</p>
+      {action}
+    </div>
+  );
+
+  const renderActionPanel = () => {
+    if (manualRecord) {
+      return renderRecorded(manualRecord.residentName, manualRecord.direction, manualRecord.at, true);
+    }
+    if (automaticDirection && observation?.resident) {
+      return renderRecorded(observation.resident.fullName, automaticDirection, decision?.timestamp, false);
+    }
+    if (isMatch && observation?.resident) {
+      return renderIdentity(observation, observation.resident);
+    }
+    if (observation?.classification === 'UNKNOWN') {
+      return renderSimpleResult(
+        <UserX size={26} />,
+        'danger',
+        'Person not recognized',
+        'The person could not be matched to an enrolled resident. Use the exception workflow if assistance is needed.',
+        <Button
+          type="button"
+          variant="primary"
+          size="sm"
+          onClick={() => setIsRegisterVisitorOpen(true)}
+          leftIcon={<UserPlus size={16} />}
+          className="gate-full-width"
+        >
+          Open exception workflow
+        </Button>
+      );
+    }
+    if (observation?.classification === 'UNCERTAIN') {
+      return renderSimpleResult(
+        <AlertTriangle size={26} />,
+        'warn',
+        'Identity needs another look',
+        'Ask the resident to look toward the camera once more. No movement has been recorded.'
+      );
+    }
+    if (observation?.classification === 'QUALITY_INSUFFICIENT') {
+      return renderSimpleResult(
+        <AlertTriangle size={26} />,
+        'warn',
+        'Camera needs a clearer view',
+        'Ask the resident to face the camera briefly and hold still. No movement has been recorded.'
+      );
+    }
+    if (!cameraHealthy || feedError || recognitionState !== 'RUNNING') {
+      return renderSimpleResult(
+        <CameraIcon size={26} />,
+        'warn',
+        'Recognition is not running',
+        recognitionState === 'WORKER_UNAVAILABLE'
+          ? 'The recognition engine is unavailable. Entries and exits are not recorded until it is back.'
+          : 'Entries and exits are not recorded until the gate camera and recognition are both running.'
+      );
+    }
+    return renderSimpleResult(
+      <Eye size={26} />,
+      'ready',
+      'Ready for next resident',
+      'The camera scans continuously. Entry or exit is recorded automatically after a stable match.'
+    );
+  };
+
+  const renderStage = () => {
+    if (!camerasLoaded) {
+      return (
+        <div className="gate-stage-message">
+          <RefreshCw size={28} className="gate-spin" />
+          <p className="gate-stage-body">Loading gate cameras...</p>
+        </div>
+      );
+    }
+
+    if (camerasError) {
+      return (
+        <div role="alert" className="gate-stage-message">
+          <CameraIcon size={44} />
+          <p className="gate-stage-title">Gate cameras could not be loaded</p>
+          <p className="gate-stage-body">{camerasError}</p>
+          <Button type="button" variant="outline" size="sm" onClick={retryCameras}>
+            Retry
+          </Button>
+        </div>
+      );
+    }
+
+    if (cameras.length === 0) {
+      return (
+        <div role="status" className="gate-stage-message">
+          <CameraIcon size={44} />
+          <p className="gate-stage-title">No gate camera available</p>
+          <p className="gate-stage-body">
+            No enabled IN or OUT camera is set up for this hostel. Assign an IN or OUT role to a camera in Cameras, then reload this page.
+          </p>
+        </div>
+      );
+    }
+
+    if (isBrowserCamera) {
+      if (isCameraActive) {
+        return (
+          <>
+            <video
+              ref={(el) => {
+                videoRef.current = el;
+                if (el && localStreamRef.current && el.srcObject !== localStreamRef.current) {
+                  el.srcObject = localStreamRef.current;
+                  el.play().catch(() => {});
+                }
+              }}
+              className="gate-stage-media"
+              autoPlay
+              playsInline
+              muted
+            />
+            <div className="gate-live-badge">
+              <span className="gate-dot is-live" />
+              <span>Live gate camera</span>
+            </div>
+            <button type="button" onClick={stopLaptopCamera} className="gate-camera-overlay-button gate-corner-button">
+              Turn off
+            </button>
+            <div className="gate-scan-bar">
+              <div className="gate-scan-status">
+                <span className="gate-dot is-live" />
+                <span>Automatic scan active</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void captureAndProcessFrame()}
+                disabled={isScanningFace || isConfirming}
+                className="gate-camera-overlay-button gate-scan-button"
+              >
+                {isScanningFace ? <RefreshCw size={13} className="gate-spin" /> : <Scan size={13} />}
+                <span>{isScanningFace ? 'Scanning...' : 'Scan now'}</span>
+              </button>
+            </div>
+          </>
+        );
+      }
+
+      if (isStartingCamera) {
+        return (
+          <div role="status" className="gate-stage-message">
+            <RefreshCw size={28} className="gate-spin" />
+            <p className="gate-stage-title">Waiting for camera permission</p>
+            <p className="gate-stage-body">Allow camera access in the browser prompt to start automatic recognition.</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="gate-stage-message">
+          <CameraIcon size={44} />
+          <p className="gate-stage-title">{cameraError ? 'Laptop camera not started' : 'Laptop camera is off'}</p>
+          <p className="gate-stage-body" role={cameraError ? 'alert' : undefined}>
+            {cameraError ?? 'Start the laptop camera to resume automatic recognition at this gate.'}
+          </p>
+          <Button type="button" variant="primary" size="sm" onClick={startLaptopCamera}>
+            Start laptop camera
+          </Button>
+        </div>
+      );
+    }
+
+    if (streamError) {
+      return (
+        <div className="gate-stage-message">
+          <CameraIcon size={44} />
+          <p className="gate-stage-title">Camera stream interrupted</p>
+          <p className="gate-stage-body">Check this camera’s status in Cameras, then retry the preview.</p>
+          <Button type="button" variant="outline" size="sm" onClick={() => setStreamError(null)}>
+            Retry preview
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <img
+        src={previewStreamUrl || undefined}
+        alt="Gate live feed"
+        className="gate-stage-media"
+        onError={() => setStreamError('Stream interrupted')}
+      />
+    );
+  };
 
   return (
-    <div className="gate-page flex flex-col gap-6 max-w-7xl mx-auto w-full">
-      {/* Top Header: Gate Name, Online Indicator, Presence Counters */}
+    <div className="gate-page">
       <div className="gate-header-card">
         <div>
           <div className="gate-header-title-row">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gate Operations</h1>
+            <h1 className="gate-title">Gate Operations</h1>
             <span className="gate-camera-name">{selectedCamera?.name || 'Main Gate'}</span>
-            {(selectedCamera?.role === 'IN' || selectedCamera?.role === 'OUT') && (
-              <span className="inline-flex items-center px-2 py-1 rounded-md text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                Automatic IN / OUT
-              </span>
-            )}
-            <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-sm font-semibold border ${
-                cameraIsOnline
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-amber-50 text-amber-800 border-amber-200'
-              }`}
-            >
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  cameraIsOnline ? 'bg-emerald-500' : 'bg-amber-500'
-                }`}
-              />
+            {selectedCamera && <span className="gate-pill is-info">Automatic IN / OUT</span>}
+            <span className={`gate-pill ${cameraPillTone}`}>
+              <span className={`gate-dot ${cameraHealthy ? 'is-live' : isBrowserCamera ? '' : 'is-warn'}`} />
               {cameraStatusLabel}
             </span>
           </div>
-          <p className="text-15px text-slate-500 mt-0.5">Live resident movement and gate exceptions</p>
+          <p className="gate-header-subtitle">Live resident movement and gate exceptions</p>
         </div>
 
         <div className="gate-header-summary">
           {cameras.length > 1 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600 font-medium">Camera:</span>
+            <div className="gate-camera-select-wrap">
+              <label htmlFor="gate-camera-select" className="gate-count-label">
+                Camera
+              </label>
               <select
+                id="gate-camera-select"
                 value={selectedCameraId}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setSelectedCameraId(id);
-                  const cam = cameras.find((c) => c.id === id) || null;
-                  setSelectedCamera(cam);
-                  setActiveObservation(null);
-                  setActiveResidentPresence(null);
-                  setLastActionSuccessMsg(null);
-                  setStreamError(null);
-                }}
-                className="bg-white border border-slate-300 text-slate-900 rounded-lg px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => handleCameraChange(e.target.value)}
+                className="gate-camera-select"
               >
-                {cameras.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
+                {cameras.map((camera) => (
+                  <option key={camera.id} value={camera.id}>
+                    {camera.name}
                   </option>
                 ))}
               </select>
@@ -485,23 +904,17 @@ export const GatePage: React.FC = () => {
           )}
 
           <div className="gate-presence-summary">
-            <div>
-              <span className="text-slate-500 block text-sm font-medium">Total</span>
-              <span className="text-2xl font-bold text-slate-900">
-                {presenceCounts?.totalResidents ?? '—'}
-              </span>
+            <div className="gate-count">
+              <span className="gate-count-label">Total</span>
+              <span className="gate-count-value">{presenceCounts?.totalResidents ?? '—'}</span>
             </div>
-            <div>
-              <span className="text-slate-500 block text-sm font-medium">Inside</span>
-              <span className="text-2xl font-bold text-emerald-700">
-                {presenceCounts?.currentlyIn ?? '—'}
-              </span>
+            <div className="gate-count">
+              <span className="gate-count-label">Inside</span>
+              <span className="gate-count-value is-in">{presenceCounts?.currentlyIn ?? '—'}</span>
             </div>
-            <div>
-              <span className="text-slate-500 block text-sm font-medium">Outside</span>
-              <span className="text-2xl font-bold text-amber-700">
-                {presenceCounts?.currentlyOut ?? '—'}
-              </span>
+            <div className="gate-count">
+              <span className="gate-count-label">Outside</span>
+              <span className="gate-count-value is-out">{presenceCounts?.currentlyOut ?? '—'}</span>
             </div>
           </div>
 
@@ -528,372 +941,79 @@ export const GatePage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2-Column Gate Operations Layout: Live Camera Stream + Recognition Action Card */}
       <div className="gate-operations-layout">
-        {/* Left Column: Live Camera Video Stream (Dominant 440-480px height) */}
-        <div className="gate-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-          <div className="relative bg-slate-900 flex items-center justify-center overflow-hidden min-h-[440px] sm:min-h-[480px] h-full">
-            {isBrowserWebcam && isCameraActive ? (
-              <div className="relative w-full h-full min-h-[440px] sm:min-h-[480px]">
-                <video
-                  ref={(el) => {
-                    videoRef.current = el;
-                    if (el && localStreamRef.current && el.srcObject !== localStreamRef.current) {
-                      el.srcObject = localStreamRef.current;
-                      el.play().catch(() => {});
-                    }
-                  }}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Live Gate Camera</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={stopLaptopCamera}
-                  className="gate-camera-overlay-button absolute top-3 right-3"
-                >
-                  Turn Off
-                </button>
+        <section className="gate-panel gate-camera-col" aria-label="Gate camera feed">
+          <div className="gate-camera-stage">{renderStage()}</div>
+        </section>
 
-                {/* Bottom Camera Action Bar */}
-                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between gap-2 bg-black/70 backdrop-blur-md px-3 py-2 rounded-xl border border-white/10 shadow-lg">
-                  <div className="flex items-center gap-2 text-white text-xs font-medium">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Automatic scan active</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={captureAndProcessFrame}
-                    disabled={isScanningFace || isConfirming}
-                    className="gate-camera-overlay-button gate-scan-button"
-                  >
-                    {isScanningFace ? <RefreshCw size={13} className="animate-spin" /> : <Scan size={13} />}
-                    <span>{isScanningFace ? 'Scanning...' : 'Scan Now'}</span>
-                  </button>
-                </div>
-              </div>
-            ) : selectedCameraId && !streamError ? (
-              <div className="relative w-full h-full">
-                <img
-                  src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
-                  alt="Gate Live Feed"
-                  className="w-full h-full object-cover"
-                  onError={() => setStreamError('Stream interrupted')}
-                />
-                <button
-                  type="button"
-                  onClick={startLaptopCamera}
-                  className="gate-camera-overlay-button absolute top-3 right-3"
-                >
-                  <CameraIcon size={12} />
-                  <span>Use Laptop Camera</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-slate-400 p-8 text-center gap-3">
-                <CameraIcon size={48} className="text-slate-500" />
-                <p className="text-base font-semibold text-slate-200">Laptop Camera Ready</p>
-                <p className="text-sm text-slate-400 max-w-xs">
-                  {cameraError
-                    ? `Camera access: ${cameraError}`
-                    : 'Click below to stream video directly from your laptop camera.'}
-                </p>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={startLaptopCamera}
-                  className="mt-2"
-                >
-                  Start Laptop Camera
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: Resident Recognition & 1-Click Action Card */}
-        <div className="gate-action-col bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between min-h-[440px] sm:min-h-[480px]">
-          {/* Action Success Confirmation */}
-          {lastActionSuccessMsg ? (
-            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200">
-                <Check size={32} />
-              </div>
-              <h3 className="text-xl font-bold text-slate-900">{lastActionSuccessMsg}</h3>
-              <p className="text-sm text-slate-500">The resident presence has been updated.</p>
-            </div>
-          ) : isMatch && activeObservation?.resident ? (
-            /* Recognized Resident Card - ONLY displayed when camera detects face */
-            <div className="flex flex-col gap-4 flex-1 justify-between animate-fadeIn">
-              <div>
-                {/* Header status */}
-                <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">
-                      Resident Identified
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveObservation(null);
-                    }}
-                    className="text-xs font-semibold text-slate-400 hover:text-slate-600 flex items-center gap-1"
-                  >
-                    <X size={12} /> Dismiss
-                  </button>
-                </div>
-
-                <div className="flex items-start gap-4">
-                  {/* Profile Photo */}
-                  <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
-                    <img
-                      src={residentsApi.getProfilePhotoUrl(activeObservation.resident.id)}
-                      alt={activeObservation.resident.fullName}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                    <UserIcon size={32} className="text-slate-400" />
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <h2 className="text-22px sm:text-24px font-bold text-slate-900 truncate leading-snug">
-                      {activeObservation.resident.fullName}
-                    </h2>
-                    <p className="text-15px text-slate-600 mt-1 font-medium">
-                      {activeObservation.resident.residentCode} • {activeObservation.resident.roomGroup || 'Room not assigned'}
-                    </p>
-                    <div className="mt-2.5">
-                      <span
-                        className={`inline-block px-3 py-1 rounded-md text-14px font-bold ${
-                          activeResidentPresence === 'IN'
-                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                            : activeResidentPresence === 'OUT'
-                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                            : 'bg-slate-50 text-slate-600 border border-slate-200'
-                        }`}
-                      >
-                        {activeResidentPresence === 'IN'
-                          ? '● Currently Inside'
-                          : activeResidentPresence === 'OUT'
-                          ? '○ Currently Outside'
-                          : 'Checking current presence...'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Automatic movement is the normal path. Manual confirmation is exception-only. */}
-              <div className="pt-4 border-t border-slate-200 flex flex-col gap-3">
-                {activeObservation.movementDecision?.status === 'MOVEMENT_CREATED' ? (
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                    <div className="flex items-center gap-2 text-emerald-800 font-bold">
-                      <Check size={18} />
-                      {activeObservation.movementDecision.direction === 'IN'
-                        ? 'Entry recorded automatically'
-                        : 'Exit recorded automatically'}
-                    </div>
-                    <p className="text-sm text-emerald-700 mt-1">
-                      No guard action is required. The resident's current presence determines the next automatic state.
-                    </p>
-                  </div>
-                ) : activeObservation.movementDecision?.status === 'ALREADY_IN' ||
-                  activeObservation.movementDecision?.status === 'ALREADY_OUT' ||
-                  activeObservation.movementDecision?.status === 'DUPLICATE_OBSERVATION_SUPPRESSED' ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="font-semibold text-slate-800">No duplicate movement created</div>
-                    <p className="text-sm text-slate-500 mt-1">
-                      The resident is already recorded in the correct state. Continuous scanning remains active.
-                    </p>
-                  </div>
-                ) : activeObservation.movementDecision &&
-                  [
-                    'AUTOMATION_DISABLED',
-                    'CAMERA_NOT_MOVEMENT_CAPABLE',
-                    'INITIAL_PRESENCE_MISSING',
-                    'RESIDENT_INACTIVE',
-                    'RESIDENT_NOT_ENROLLED',
-                    'CROSS_HOSTEL_MISMATCH',
-                    'TRANSITION_SUPPRESSED',
-                    'ERROR',
-                  ].includes(
-                    activeObservation.movementDecision.status
-                  ) ? (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <div className="font-semibold text-amber-900">Automatic movement needs assistance</div>
-                    <p className="text-sm text-amber-800 mt-1 mb-2">
-                      {activeObservation.movementDecision.reason || 'The automatic movement could not be completed.'}
-                    </p>
-                    <p className="text-sm text-amber-800 mb-3">
-                      Use manual confirmation only for this exception. The action is audit logged.
-                    </p>
-                    {activeResidentPresence && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="md"
-                        className="w-full"
-                        onClick={() => handleMarkMovement(activeResidentPresence === 'IN' ? 'OUT' : 'IN')}
-                        isLoading={isConfirming}
-                        disabled={isConfirming}
-                        leftIcon={<AlertTriangle size={18} />}
-                      >
-                        Manual fallback — mark {activeResidentPresence === 'IN' ? 'Outside' : 'Inside'}
-                      </Button>
-                    )}
-                  </div>
-                ) : activeObservation.isStable && activeObservation.shouldEmitEvent === false ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <div className="font-semibold text-slate-800">Recognition confirmed — scanner remains active</div>
-                    <p className="text-sm text-slate-600 mt-1">
-                      This resident is still part of the same camera appearance. No duplicate movement is created until they leave and appear again.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
-                    <div className="font-semibold text-blue-900">Confirming automatic movement...</div>
-                    <p className="text-sm text-blue-700 mt-1">
-                      Keep the resident in view briefly. The first confirmed appearance toggles the resident's presence automatically; continuous visibility is ignored until they leave the camera view.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : isUnknown ? (
-            /* Person not identified */
-            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center border border-red-200">
-                <UserX size={28} />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Person not recognized</h3>
-              <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                The person could not be matched to an enrolled resident. Use the exception workflow if assistance is needed.
-              </p>
-              <div className="mt-2 w-full max-w-xs">
-                <Button
-                  type="button"
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setIsRegisterVisitorOpen(true)}
-                  leftIcon={<UserPlus size={16} />}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg shadow-sm"
-                >
-                  Open Exception Workflow
-                </Button>
-              </div>
-            </div>
-          ) : isUncertain ? (
-            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
-                <AlertTriangle size={28} />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Identity needs another look</h3>
-              <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                Ask the resident to look toward the camera once more. No movement has been recorded.
-              </p>
-            </div>
-          ) : isLowQuality ? (
-            /* Face not clear enough */
-            <div className="my-auto py-8 flex flex-col items-center justify-center text-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-200">
-                <AlertTriangle size={28} />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900">Camera needs a clearer view</h3>
-              <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
-                Ask the resident to face the camera briefly and hold still. No movement has been recorded.
-              </p>
-            </div>
-          ) : (
-            /* Waiting for resident - pure camera detection flow */
-            <div className="my-auto py-12 flex flex-col items-center justify-center text-center gap-4 text-slate-400">
-              <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200 shadow-sm animate-pulse">
-                <Eye size={30} />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800">Ready for next resident</h3>
-                <p className="text-sm text-slate-500 max-w-xs leading-relaxed mt-1">
-                  The camera scans continuously. Entry or exit is recorded automatically after a stable match.
-                </p>
-              </div>
-            </div>
+        <section className="gate-panel gate-action-col" aria-label="Recognition result">
+          {feedError && (
+            <p role="alert" className="gate-inline-error">
+              {feedError}
+            </p>
           )}
-        </div>
+          <div className="gate-result-region" aria-live="polite" aria-atomic="true">
+            {renderActionPanel()}
+          </div>
+        </section>
       </div>
 
-      {/* Recent Activity Log */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-slate-900">Recent Activity</h3>
+      <section className="gate-panel" aria-labelledby="gate-activity-heading">
+        <div className="gate-panel-header">
+          <h2 id="gate-activity-heading" className="gate-panel-title">
+            Recent activity
+          </h2>
         </div>
 
-        <div className="overflow-x-auto">
-          {recentMovements.length === 0 ? (
-            <div className="p-8 text-center text-slate-500 text-sm">
-              No recent gate activity recorded.
-            </div>
-          ) : (
-            <table className="w-full text-left text-15px border-collapse">
+        {movementsError && (
+          <p role="alert" className="gate-inline-error gate-inline-error-band">
+            {movementsError}
+          </p>
+        )}
+
+        {recentMovements.length === 0 ? (
+          <p className="gate-empty">
+            {movementsError ? 'Gate activity could not be loaded.' : 'No recent gate activity recorded.'}
+          </p>
+        ) : (
+          <div className="gate-table-wrap">
+            <table className="data-table">
               <thead>
-                <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/50">
-                  <th className="py-3.5 px-6 text-sm font-semibold">Time</th>
-                  <th className="py-3.5 px-6 text-sm font-semibold">Resident</th>
-                  <th className="py-3.5 px-6 text-sm font-semibold">Room</th>
-                  <th className="py-3.5 px-6 text-sm font-semibold text-right">Movement</th>
+                <tr>
+                  <th scope="col">Time</th>
+                  <th scope="col">Resident</th>
+                  <th scope="col">Room</th>
+                  <th scope="col" className="gate-cell-right">
+                    Movement
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {recentMovements.map((mov) => {
-                  const time = new Date(mov.effectiveTimestamp).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  });
-                  const isIN = mov.movementType === 'IN';
-
+              <tbody>
+                {recentMovements.map((movement) => {
+                  const isIn = movement.movementType === 'IN';
                   return (
-                    <tr key={mov.id} className="hover:bg-slate-50/80 transition-colors h-14">
-                      <td className="py-3.5 px-6 text-slate-500 font-mono text-sm">{time}</td>
-                      <td className="py-3.5 px-6 font-semibold text-slate-900">
-                        {mov.resident?.fullName || mov.residentId}
-                      </td>
-                      <td className="py-3.5 px-6 text-slate-600 text-sm">
-                        {mov.resident?.roomGroup || '—'}
-                      </td>
-                      <td className="py-3.5 px-6 text-right">
-                        <span
-                          className={`inline-block px-3 py-1 rounded-md text-sm font-semibold ${
-                            isIN
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}
-                        >
-                          {isIN ? 'Entered' : 'Left'}
-                        </span>
+                    <tr key={movement.id}>
+                      <td className="gate-mono">{formatTime(movement.effectiveTimestamp)}</td>
+                      <td className="gate-cell-strong">{movement.resident?.fullName || movement.residentId}</td>
+                      <td>{movement.resident?.roomGroup || '—'}</td>
+                      <td className="gate-cell-right">
+                        <span className={`gate-pill ${isIn ? 'is-ok' : 'is-warn'}`}>{isIn ? 'Entered' : 'Left'}</span>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </section>
 
       <RegisterRegularComerModal
         isOpen={isRegisterVisitorOpen}
         onClose={() => setIsRegisterVisitorOpen(false)}
-        onSuccess={handleRegisterVisitorSuccess}
+        onSuccess={fetchMovementData}
         hostelId={user?.hostelId || undefined}
       />
-
     </div>
   );
 };

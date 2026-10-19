@@ -9,6 +9,11 @@ if (!['legacy', 'scrfd_adaface'].includes(biometricEngine)) {
     `Unsupported BIOMETRIC_ENGINE '${biometricEngine}'. Use 'legacy' or 'scrfd_adaface'.`
   );
 }
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret || jwtSecret.length < 32) {
+  throw new Error('JWT_SECRET must be set and at least 32 characters');
+}
+
 const isAdaFaceEngine = biometricEngine === 'scrfd_adaface';
 const biometricEmbeddingDimension = isAdaFaceEngine ? 512 : 128;
 const biometricTemplateVersion = isAdaFaceEngine ? '2.0.0' : '1.0.0';
@@ -20,10 +25,10 @@ const biometricModelVersion = isAdaFaceEngine
 export const config = {
   appEnv: process.env.APP_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
-  databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:123456@localhost:5433/pravahax_db?schema=public',
-  testDatabaseUrl: process.env.TEST_DATABASE_URL || 'postgresql://postgres:123456@localhost:5433/pravahax_test_db?schema=public',
+  databaseUrl: process.env.DATABASE_URL,
+  testDatabaseUrl: process.env.TEST_DATABASE_URL,
   timezone: process.env.TIMEZONE || 'Asia/Kolkata',
-  jwtSecret: process.env.JWT_SECRET || 'dev_secret_pravahax_attendance_movement_2026_key',
+  jwtSecret,
   biometric: {
     engine: biometricEngine,
     detectorName: isAdaFaceEngine ? 'SCRFD' : 'YuNet',

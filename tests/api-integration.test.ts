@@ -282,8 +282,8 @@ describe('Step 02 API Integration Test Suite', () => {
       expect(res.body.error.code).toBe('UNAUTHORIZED');
     });
 
-    it('token belonging to deleted user returns 401', async () => {
-      // Create user, get token, then delete user
+    it('token belonging to a suspended user returns 401', async () => {
+      // Suspend rather than delete: audit rows reference the user and cannot be removed
       const tempUser = await testPrisma.user.create({
         data: {
           organizationId: org1Id,
@@ -300,13 +300,16 @@ describe('Step 02 API Integration Test Suite', () => {
         hostelId: hostel1AId,
       });
 
-      await testPrisma.user.delete({ where: { id: tempUser.id } });
+      await testPrisma.user.update({
+        where: { id: tempUser.id },
+        data: { status: UserStatus.SUSPENDED },
+      });
 
       const res = await request(app)
         .get('/api/v1/residents')
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(401);
-      expect(res.body.error.message).toContain('no longer exists');
+      expect(res.body.error.message).toContain('inactive or suspended');
     });
   });
 

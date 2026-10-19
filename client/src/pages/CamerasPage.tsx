@@ -9,6 +9,7 @@ import { Modal } from '../components/Modal';
 import { camerasApi } from '../api/cameras.api';
 import { facilitiesApi, Facility, FacilityLocation } from '../api/facilities.api';
 import { CameraEntity, CameraDiagnostics, CameraTestResult } from '../types/camera.types';
+import { usePreviewStreamUrl } from '../hooks/usePreviewStreamUrl';
 import {
   Video,
   VideoOff,
@@ -18,7 +19,6 @@ import {
   RefreshCw,
   Plus,
   AlertCircle,
-  X,
   CheckCircle2,
   Wifi,
   Edit2,
@@ -33,10 +33,6 @@ import {
 export const CamerasPage: React.FC = () => {
   const { user } = useAuth();
   const { success, error: toastError, info } = useToast();
-
-  if (user?.role === 'GUARD') {
-    return <Navigate to="/gate" replace />;
-  }
 
   const isAdmin = user?.role === 'ADMIN';
 
@@ -105,7 +101,6 @@ export const CamerasPage: React.FC = () => {
 
   // Direct Laptop Browser Webcam Support
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const customModalRef = useRef<HTMLDivElement | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const [isWebcamPreviewActive, setIsWebcamPreviewActive] = useState<boolean>(false);
   const [webcamError, setWebcamError] = useState<string | null>(null);
@@ -241,9 +236,10 @@ export const CamerasPage: React.FC = () => {
   }, [fetchCameras]);
 
   // Fetch diagnostics for selected camera
-  const fetchDiagnostics = useCallback(async (cameraId: string) => {
+  const fetchDiagnostics = useCallback(async (cameraId: string, isCurrent: () => boolean = () => true, signal?: AbortSignal) => {
     try {
-      const res = await camerasApi.getCameraHealth(cameraId);
+      const res = await camerasApi.getCameraHealth(cameraId, signal);
+      if (!isCurrent()) return;
       setDiagnostics({
         cameraId: res.data.cameraId,
         sourceType: res.data.sourceType,
@@ -268,13 +264,24 @@ export const CamerasPage: React.FC = () => {
   useEffect(() => {
     if (!selectedCameraId) return;
 
-    fetchDiagnostics(selectedCameraId);
+    // Skip overlapping polls and drop responses that arrive after the camera changed.
+    let isCurrent = true;
+    let isRequestInFlight = false;
+    const controller = new AbortController();
+    const poll = () => {
+      if (isRequestInFlight) return;
+      isRequestInFlight = true;
+      fetchDiagnostics(selectedCameraId, () => isCurrent, controller.signal).finally(() => {
+        isRequestInFlight = false;
+      });
+    };
 
-    pollIntervalRef.current = setInterval(() => {
-      fetchDiagnostics(selectedCameraId);
-    }, 2000);
+    poll();
+    pollIntervalRef.current = setInterval(poll, 2000);
 
     return () => {
+      isCurrent = false;
+      controller.abort();
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -399,63 +406,6 @@ export const CamerasPage: React.FC = () => {
     setModalTestResult(null);
   };
 
-  useEffect(() => {
-    const isCustomModalOpen = Boolean(snapshotData) || isRegisterModalOpen || isEditModalOpen;
-    if (!isCustomModalOpen) return;
-
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const frame = window.requestAnimationFrame(() => {
-      const firstFocusable = customModalRef.current?.querySelector<HTMLElement>(
-        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href]'
-      );
-      (firstFocusable || customModalRef.current)?.focus();
-    });
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        if (snapshotData) setSnapshotData(null);
-        else if (isEditModalOpen && !isSavingEdit) setIsEditModalOpen(false);
-        else if (isRegisterModalOpen && !isSubmittingCamera) {
-          setIsRegisterModalOpen(false);
-          setRegisterStep(1);
-          setModalTestResult(null);
-        }
-        return;
-      }
-
-      if (event.key !== 'Tab' || !customModalRef.current) return;
-      const focusable = Array.from(
-        customModalRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )
-      );
-      if (focusable.length === 0) {
-        event.preventDefault();
-        customModalRef.current.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus?.();
-    };
-  }, [snapshotData, isRegisterModalOpen, isEditModalOpen, isSubmittingCamera, isSavingEdit]);
   const handleRegisterNext = () => {
     if (!newCameraName.trim()) {
       toastError('Camera name is required');
@@ -555,7 +505,7 @@ export const CamerasPage: React.FC = () => {
 
   const openEditModal = (camera: CameraEntity) => {
     setEditCameraName(camera.name);
-    setEditCameraRole(camera.role === 'OUT' ? 'IN' : camera.role);
+    setEditCameraRole(camera.role);
     setEditCameraMovementAutomation(camera.configMetadata?.movementAutomationEnabled !== false);
     loadEditCameraLocations(camera.hostelId, camera.locationId);
 
@@ -662,6 +612,12 @@ export const CamerasPage: React.FC = () => {
     if (sourceType === 'WEBCAM') return 'Browser / USB Webcam';
     return 'Smart / Edge Camera (legacy)';
   };
+
+  const previewStreamUrl = usePreviewStreamUrl(isStreaming && !isWebcamPreviewActive ? selectedCamera?.id : null);
+
+  if (user?.role === 'GUARD') {
+    return <Navigate to="/gate" replace />;
+  }
 
   return (
     <div className="cameras-page">
@@ -926,7 +882,7 @@ export const CamerasPage: React.FC = () => {
                 ) : isStreaming ? (
                   <div className="video-player-wrapper">
                     <img
-                      src={camerasApi.getPreviewStreamUrl(selectedCamera.id)}
+                      src={previewStreamUrl || undefined}
                       alt={`Live Preview of ${selectedCamera.name}`}
                       className="live-preview-image"
                       onError={() => {
@@ -1057,7 +1013,7 @@ export const CamerasPage: React.FC = () => {
                     <span className="text-xs font-semibold text-slate-500 block mb-1">Last Seen</span>
                     <span className="text-sm font-bold text-slate-900">
                       {diagnostics?.lastSeenAt
-                        ? new Date(diagnostics.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                        ? new Date(diagnostics.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
                         : 'Not available'}
                     </span>
                   </div>
@@ -1105,47 +1061,14 @@ export const CamerasPage: React.FC = () => {
       </div>
 
       {/* Snapshot Preview Modal */}
-      {snapshotData && (
-        <div className="modal-backdrop" onClick={() => setSnapshotData(null)}>
-          <div ref={customModalRef} tabIndex={-1} className="modal-dialog snapshot-modal" role="dialog" aria-modal="true" aria-labelledby="camera-snapshot-title" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-group">
-                <CameraIcon size={20} className="modal-icon" />
-                <h3 id="camera-snapshot-title" className="modal-title">Camera Snapshot</h3>
-              </div>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setSnapshotData(null)}
-                aria-label="Close camera snapshot"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="modal-body">
-              <div className="snapshot-preview-frame">
-                <img
-                  src={`data:image/jpeg;base64,${snapshotData.dataBase64}`}
-                  alt="Captured Snapshot"
-                  className="snapshot-image"
-                />
-              </div>
-
-              <div className="snapshot-metadata-bar mt-3">
-                <span className="meta-item">
-                  <strong>Captured:</strong> {new Date(snapshotData.timestamp).toLocaleString()}
-                </span>
-                {snapshotData.width && snapshotData.height && (
-                  <span className="meta-item">
-                    <strong>Size:</strong> {snapshotData.width} × {snapshotData.height}
-                  </span>
-                )}
-                
-              </div>
-            </div>
-
-            <div className="modal-footer">
+      <Modal
+        isOpen={Boolean(snapshotData)}
+        onClose={() => setSnapshotData(null)}
+        title="Camera Snapshot"
+        size="lg"
+        footer={
+          snapshotData ? (
+            <>
               <a
                 href={`data:image/jpeg;base64,${snapshotData.dataBase64}`}
                 download={`pravahax-snapshot-${Date.now()}.jpg`}
@@ -1160,46 +1083,84 @@ export const CamerasPage: React.FC = () => {
               >
                 Close
               </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </>
+          ) : undefined
+        }
+      >
+        {snapshotData && (
+          <>
+            <div className="snapshot-preview-frame">
+                <img
+                  src={`data:image/jpeg;base64,${snapshotData.dataBase64}`}
+                  alt="Captured Snapshot"
+                  className="snapshot-image"
+                />
+              </div>
+
+              <div className="snapshot-metadata-bar mt-3">
+                <span className="meta-item">
+                  <strong>Captured:</strong> {new Date(snapshotData.timestamp).toLocaleString([], { timeZone: 'Asia/Kolkata' })}
+                </span>
+                {snapshotData.width && snapshotData.height && (
+                  <span className="meta-item">
+                    <strong>Size:</strong> {snapshotData.width} × {snapshotData.height}
+                  </span>
+                )}
+                
+              </div>
+          </>
+        )}
+      </Modal>
 
       {/* Add Camera Modal */}
-      {isRegisterModalOpen && (
-        <div className="modal-backdrop" onClick={closeRegisterModal}>
-          <div ref={customModalRef} tabIndex={-1} className="modal-dialog modal-md camera-add-dialog" role="dialog" aria-modal="true" aria-labelledby="add-camera-title" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h3 id="add-camera-title" className="modal-title">Add Camera</h3>
-                <p className="modal-subtitle">
-                  {registerStep === 1
-                    ? 'Choose where the camera is installed and what it is used for.'
-                    : 'Enter the connection details and verify the camera.'}
-                </p>
-              </div>
-              <button
+      <Modal
+        isOpen={isRegisterModalOpen}
+        onClose={closeRegisterModal}
+        title="Add Camera"
+        subtitle={
+          registerStep === 1
+            ? 'Choose where the camera is installed and what it is used for.'
+            : 'Enter the connection details and verify the camera.'
+        }
+        footer={
+          registerStep === 1 ? (
+            <>
+              <Button type="button" variant="outline" onClick={closeRegisterModal}>
+                Cancel
+              </Button>
+              <Button type="submit" form="add-camera-form" variant="primary" rightIcon={<ArrowRight size={16} />}>
+                Continue
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
                 type="button"
-                className="modal-close-btn"
-                onClick={closeRegisterModal}
-                aria-label="Close add camera"
+                variant="outline"
+                onClick={() => setRegisterStep(1)}
+                disabled={isSubmittingCamera}
               >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form
-              className="camera-add-form"
-              onSubmit={(e) => {
-                if (registerStep === 1) {
-                  e.preventDefault();
-                  handleRegisterNext();
-                  return;
-                }
-                handleRegisterCamera(e);
-              }}
-            >
-              <div className="modal-body">
+                Back
+              </Button>
+              <Button type="submit" form="add-camera-form" variant="primary" isLoading={isSubmittingCamera}>
+                Add Camera
+              </Button>
+            </>
+          )
+        }
+      >
+        <form
+          id="add-camera-form"
+          className="camera-add-form"
+          onSubmit={(e) => {
+            if (registerStep === 1) {
+              e.preventDefault();
+              handleRegisterNext();
+              return;
+            }
+            handleRegisterCamera(e);
+          }}
+        >
                 <div className="camera-add-progress" aria-label="Camera setup progress">
                   <div className={`camera-add-progress-step ${registerStep === 1 ? 'is-active' : ''}`}>
                     <span className="camera-add-progress-number">1</span>
@@ -1287,7 +1248,7 @@ export const CamerasPage: React.FC = () => {
                           className="form-control"
                           value={newCameraSourceType}
                           onChange={(e) => {
-                            setNewCameraSourceType(e.target.value as any);
+                            setNewCameraSourceType(e.target.value as typeof newCameraSourceType);
                             setModalTestResult(null);
                           }}
                         >
@@ -1302,7 +1263,7 @@ export const CamerasPage: React.FC = () => {
                           id="cam-role"
                           className="form-control"
                           value={newCameraRole}
-                          onChange={(e) => setNewCameraRole(e.target.value as any)}
+                          onChange={(e) => setNewCameraRole(e.target.value as typeof newCameraRole)}
                         >
                           <option value="GENERAL">General Monitoring</option>
                           <option value="IN">Gate — Automatic IN / OUT</option>
@@ -1418,7 +1379,7 @@ export const CamerasPage: React.FC = () => {
                               id="cam-transport"
                               className="form-control"
                               value={newCameraTransport}
-                              onChange={(e) => setNewCameraTransport(e.target.value as any)}
+                              onChange={(e) => setNewCameraTransport(e.target.value as typeof newCameraTransport)}
                             >
                               <option value="tcp">TCP (Recommended)</option>
                               <option value="udp">UDP</option>
@@ -1483,60 +1444,52 @@ export const CamerasPage: React.FC = () => {
                     )}
                   </div>
                 )}
-              </div>
-
-              <div className="modal-footer">
-                {registerStep === 1 ? (
-                  <>
-                    <Button type="button" variant="outline" onClick={closeRegisterModal}>
-                      Cancel
-                    </Button>
-                    <Button type="submit" variant="primary" rightIcon={<ArrowRight size={16} />}>
-                      Continue
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setRegisterStep(1)}
-                      disabled={isSubmittingCamera}
-                    >
-                      Back
-                    </Button>
-                    <Button type="submit" variant="primary" isLoading={isSubmittingCamera}>
-                      Add Camera
-                    </Button>
-                  </>
-                )}
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
       {/* Edit Camera Modal */}
-      {isEditModalOpen && (
-        <div className="modal-backdrop" onClick={() => setIsEditModalOpen(false)}>
-          <div ref={customModalRef} tabIndex={-1} className="modal-dialog modal-lg" role="dialog" aria-modal="true" aria-labelledby="edit-camera-title" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-group">
-                <Edit2 size={20} className="modal-icon" />
-                <h3 id="edit-camera-title" className="modal-title">Edit Camera</h3>
-              </div>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setIsEditModalOpen(false)}
-                aria-label="Close modal"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveEdit}>
-              <div className="modal-body">
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          if (!isSavingEdit) setIsEditModalOpen(false);
+        }}
+        title="Edit Camera"
+        size="lg"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="danger"
+              className="mr-auto"
+              onClick={() => {
+                if (selectedCamera) {
+                  setIsEditModalOpen(false);
+                  setCameraPendingDelete(selectedCamera);
+                }
+              }}
+              leftIcon={<Trash2 size={16} />}
+            >
+              Delete Camera
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsEditModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="edit-camera-form"
+              variant="primary"
+              isLoading={isSavingEdit}
+            >
+              Save Changes
+            </Button>
+          </>
+        }
+      >
+        <form id="edit-camera-form" onSubmit={handleSaveEdit}>
                 <div className="form-group">
                   <label htmlFor="edit-name" className="form-label">
                     Camera Name <span className="required">*</span>
@@ -1593,10 +1546,11 @@ export const CamerasPage: React.FC = () => {
                     id="edit-role"
                     className="form-control"
                     value={editCameraRole}
-                    onChange={(e) => setEditCameraRole(e.target.value as any)}
+                    onChange={(e) => setEditCameraRole(e.target.value as typeof editCameraRole)}
                   >
                     <option value="GENERAL">General Monitoring</option>
                     <option value="IN">Gate — Automatic IN / OUT</option>
+                    <option value="OUT">Gate — OUT only</option>
                     <option value="ATTENDANCE">Existing Attendance Checkpoint</option>
                   </select>
                 </div>
@@ -1663,7 +1617,7 @@ export const CamerasPage: React.FC = () => {
                               id="edit-transport"
                               className="form-control text-sm"
                               value={editCameraTransport}
-                              onChange={(e) => setEditCameraTransport(e.target.value as any)}
+                              onChange={(e) => setEditCameraTransport(e.target.value as typeof editCameraTransport)}
                             >
                               <option value="tcp">TCP (Recommended)</option>
                               <option value="udp">UDP</option>
@@ -1738,42 +1692,8 @@ export const CamerasPage: React.FC = () => {
                     </div>
                   </>
                 )}
-              </div>
-
-              <div className="modal-footer">
-                <Button
-                  type="button"
-                  variant="danger"
-                  className="mr-auto"
-                  onClick={() => {
-                    if (selectedCamera) {
-                      setIsEditModalOpen(false);
-                      setCameraPendingDelete(selectedCamera);
-                    }
-                  }}
-                  leftIcon={<Trash2 size={16} />}
-                >
-                  Delete Camera
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsEditModalOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  isLoading={isSavingEdit}
-                >
-                  Save Changes
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </form>
+      </Modal>
 
       <Modal
         isOpen={Boolean(cameraPendingDelete)}

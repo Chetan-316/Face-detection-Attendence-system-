@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
 import { AuthService } from '../../modules/auth/auth.service';
+import { validatePassword } from '../../modules/auth/password.validator';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../common/errors';
 import { AuditService } from '../../modules/audit/audit.service';
 
@@ -164,6 +165,9 @@ export function createStaffRouter(db: PrismaClient = defaultPrisma): Router {
         throw new ValidationError('Invalid staff account status');
       }
 
+      // A role or status change must invalidate sessions already issued to this account.
+      const revokeSessions = nextRole !== existing.role || nextStatus !== existing.status;
+
       const updated = await db.$transaction(async (tx) => {
         const staff = await tx.user.update({
           where: { id: existing.id },
@@ -173,6 +177,7 @@ export function createStaffRouter(db: PrismaClient = defaultPrisma): Router {
             role: nextRole as StaffRole,
             hostelId: hostel.id,
             status: nextStatus as UserStatus,
+            ...(revokeSessions ? { tokenVersion: { increment: 1 } } : {}),
           },
           select: {
             id: true,
@@ -242,15 +247,13 @@ export function createStaffRouter(db: PrismaClient = defaultPrisma): Router {
         throw new NotFoundError('Staff account', id);
       }
       const password = String(req.body?.password || '');
-      if (password.length < 8) {
-        throw new ValidationError('Temporary password must be at least 8 characters');
-      }
+      validatePassword(password);
 
       const passwordHash = await bcrypt.hash(password, 10);
       await db.$transaction(async (tx) => {
         await tx.user.update({
           where: { id: existing.id },
-          data: { passwordHash },
+          data: { passwordHash, tokenVersion: { increment: 1 } },
         });
 
         await auditService.record(

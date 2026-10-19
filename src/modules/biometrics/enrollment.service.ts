@@ -107,6 +107,7 @@ export class EnrollmentService {
           organizationId: resident.organizationId,
           hostelId: resident.hostelId,
           isEnabled: true,
+          deletedAt: null,
         },
         orderBy: { createdAt: 'asc' },
       });
@@ -115,7 +116,7 @@ export class EnrollmentService {
       }
       targetCameraId = availableCam.id;
     } else {
-      const camera = await this.db.camera.findUnique({ where: { id: targetCameraId } });
+      const camera = await this.db.camera.findUnique({ where: { id: targetCameraId, deletedAt: null } });
       if (
         !camera ||
         camera.organizationId !== resident.organizationId ||

@@ -4,6 +4,8 @@ import { config } from '../config';
 import { CameraService } from '../modules/cameras/camera.service';
 import { PythonWorkerClient, defaultPythonWorkerClient } from '../modules/biometrics/python-worker-client';
 
+const WEAK_JWT_MARKERS = ['dev_secret', 'changeme', 'change_me', 'your-secret', 'example'];
+
 export interface LifecycleOptions {
   cameraService?: CameraService;
   workerClient?: PythonWorkerClient;
@@ -32,30 +34,50 @@ export class LifecycleManager {
   public validateEnvironment(): void {
     const isProd = process.env.NODE_ENV === 'production' || config.appEnv === 'production';
     if (isProd) {
-      // 1. JWT secret must be secure and non-default
+      const refuse = (reason: string): never => {
+        throw new Error(`[PRAVAHAx Security Guard] Production startup rejected: ${reason}`);
+      };
+
+      // 1. JWT secret must be secure, non-placeholder, and not trivially repetitive
+      const jwtSecret = config.jwtSecret;
       if (
-        !config.jwtSecret ||
-        config.jwtSecret === 'dev_secret_pravahax_attendance_movement_2026_key' ||
-        config.jwtSecret.length < 32
+        !jwtSecret ||
+        jwtSecret.length < 32 ||
+        WEAK_JWT_MARKERS.some((marker) => jwtSecret.toLowerCase().includes(marker)) ||
+        new Set(jwtSecret).size < 16
       ) {
-        throw new Error(
-          '[PRAVAHAx Security Guard] Production startup rejected: JWT_SECRET must be configured with a secure random key of at least 32 characters.'
-        );
+        refuse('JWT_SECRET must be configured with a secure random key of at least 32 characters (not a placeholder).');
       }
 
-      // 2. Mock biometrics must NEVER run in production
+      // 2. Mock biometrics and silent mock fallback must NEVER run in production
       if (process.env.BIOMETRIC_MOCK === 'true') {
-        throw new Error(
-          '[PRAVAHAx Security Guard] Production startup rejected: BIOMETRIC_MOCK cannot be enabled in production environment.'
-        );
+        refuse('BIOMETRIC_MOCK cannot be enabled in production environment.');
+      }
+      if (process.env.BIOMETRIC_ALLOW_MOCK_FALLBACK === 'true') {
+        refuse('BIOMETRIC_ALLOW_MOCK_FALLBACK cannot be enabled in production environment.');
       }
 
-      // 3. CORS_ORIGIN must contain explicit trusted frontend origin(s) (cannot be missing, empty, or '*')
+      // 3. Biometric model configuration and checksums must be pinned for the selected engine
+      const sha256 = /^[a-f0-9]{64}$/i;
+      const requiredChecksums =
+        config.biometric.engine === 'scrfd_adaface'
+          ? ['SCRFD_MODEL_SHA256', 'ADAFACE_MODEL_SHA256']
+          : ['YUNET_MODEL_SHA256', 'SFACE_MODEL_SHA256'];
+      for (const key of requiredChecksums) {
+        if (!sha256.test(process.env[key] ?? '')) {
+          refuse(`${key} must be set to a 64-character hex SHA-256 for engine '${config.biometric.engine}'.`);
+        }
+      }
+
+      // 4. CORS_ORIGIN must contain explicit trusted frontend origin(s) (cannot be missing, empty, or '*')
       const corsOrigin = process.env.CORS_ORIGIN?.trim();
-      if (!corsOrigin || corsOrigin === '*' || corsOrigin.split(',').map((s) => s.trim()).includes('*')) {
-        throw new Error(
-          '[PRAVAHAx Security Guard] Production startup rejected: CORS_ORIGIN must contain explicit trusted frontend origin(s).'
-        );
+      if (!corsOrigin || corsOrigin.split(',').map((s) => s.trim()).some((origin) => origin === '*' || origin === '')) {
+        refuse('CORS_ORIGIN must contain explicit trusted frontend origin(s).');
+      }
+
+      // 5. Destructive seed/reset tooling is development-only
+      if (process.env.ALLOW_DESTRUCTIVE_SEED === 'true') {
+        refuse('ALLOW_DESTRUCTIVE_SEED cannot be enabled in production environment.');
       }
     }
   }

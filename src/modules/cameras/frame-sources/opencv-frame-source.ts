@@ -46,7 +46,7 @@ export class OpenCvFrameSource implements IFrameSource {
     return new Promise<void>((resolve, reject) => {
       let isSettled = false;
 
-      const pythonCmd = process.env.PYTHON_PATH || 'python';
+      const pythonCmd = process.env.PYTHON_BIN || 'python';
       const args = [
         scriptPath,
         '--device',

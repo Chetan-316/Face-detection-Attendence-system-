@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ResidentDetailModal } from '../features/residents/ResidentDetailModal';
@@ -59,6 +59,31 @@ const mockResidentEnrolled: SafeResident = {
   fullName: 'Kabir Verma',
   faceEnrollmentStatus: 'ENROLLED',
 };
+
+const savedOverrides: Array<[object, string, PropertyDescriptor | undefined]> = [];
+
+function override(target: object, key: string, descriptor: PropertyDescriptor) {
+  savedOverrides.push([target, key, Object.getOwnPropertyDescriptor(target, key)]);
+  Object.defineProperty(target, key, { configurable: true, ...descriptor });
+}
+
+function restoreOverrides() {
+  while (savedOverrides.length > 0) {
+    const [target, key, descriptor] = savedOverrides.pop()!;
+    if (descriptor) Object.defineProperty(target, key, descriptor);
+    else delete (target as unknown as Record<string, unknown>)[key];
+  }
+}
+
+function stubBrowserCamera() {
+  const stream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream;
+  override(navigator, 'mediaDevices', { value: { getUserMedia: vi.fn().mockResolvedValue(stream) } });
+  override(HTMLVideoElement.prototype, 'videoWidth', { get: () => 640 });
+  override(HTMLVideoElement.prototype, 'videoHeight', { get: () => 480 });
+  override(HTMLMediaElement.prototype, 'play', { value: vi.fn().mockResolvedValue(undefined) });
+  override(HTMLCanvasElement.prototype, 'getContext', { value: vi.fn().mockReturnValue({ drawImage: vi.fn() }) });
+  override(HTMLCanvasElement.prototype, 'toDataURL', { value: vi.fn().mockReturnValue('data:image/jpeg;base64,AAAA') });
+}
 
 describe('Step 05: Face Enrollment & Revocation Frontend UI Tests', () => {
   beforeEach(() => {
@@ -180,7 +205,11 @@ describe('Step 05: Face Enrollment & Revocation Frontend UI Tests', () => {
   });
 
   describe('2. Face Enrollment Modal Lifecycle & Quality Gates', () => {
-    it('opens enrollment modal, starts live camera, and displays progress and quality inspection gates', async () => {
+    afterEach(() => {
+      restoreOverrides();
+    });
+
+    it('opens enrollment modal on the first angle with zero progress and starts an enrollment session', async () => {
       (biometricsApi.startEnrollment as any).mockResolvedValue({
         data: {
           sessionId: 'enr-test-1',
@@ -240,22 +269,22 @@ describe('Step 05: Face Enrollment & Revocation Frontend UI Tests', () => {
         </MemoryRouter>
       );
 
-      // Verify modal headers and camera indicator
       expect(screen.getByRole('heading', { name: /Enroll Face — Aarav Sharma/i })).toBeInTheDocument();
-      expect(screen.getByText(/Position Face Here/i)).toBeInTheDocument();
+      expect(screen.getByText('Look straight at the camera')).toBeInTheDocument();
+      expect(screen.getByText('Angle 1 of 5')).toBeInTheDocument();
+      expect(screen.getByText('0 of 5 angles captured')).toBeInTheDocument();
+      expect(screen.getByRole('progressbar', { name: /Angles captured/i })).toHaveAttribute('aria-valuenow', '0');
 
-      // Verify quality inspection gates are rendered
-      expect(screen.getByText('One Face Detected')).toBeInTheDocument();
-      expect(screen.getByText('Centered & Sized')).toBeInTheDocument();
-      expect(screen.getByText('Good Lighting')).toBeInTheDocument();
-      expect(screen.getByText('Sharp Focus')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(biometricsApi.startEnrollment).toHaveBeenCalledWith(mockResidentNotEnrolled.id, 'cam-webcam-1');
+      });
 
       // Verify biometric embedding values are NEVER rendered in the DOM
       expect(screen.queryByText(/0\.\d{5}/)).not.toBeInTheDocument();
       expect(screen.queryByText(/embedding/i)).not.toBeInTheDocument();
     });
 
-    it('displays clear user feedback on quality rejection (e.g. MULTIPLE_FACES or TOO_BLURRY)', async () => {
+    it('shows operator-readable feedback when a real Capture Front click is rejected for multiple faces', async () => {
       (biometricsApi.startEnrollment as any).mockResolvedValue({
         data: {
           sessionId: 'enr-test-1',
@@ -302,6 +331,8 @@ describe('Step 05: Face Enrollment & Revocation Frontend UI Tests', () => {
         },
       });
 
+      stubBrowserCamera();
+
       render(
         <MemoryRouter>
           <ToastProvider>
@@ -315,11 +346,20 @@ describe('Step 05: Face Enrollment & Revocation Frontend UI Tests', () => {
         </MemoryRouter>
       );
 
+      const captureButton = await screen.findByRole('button', { name: /Capture Front/i });
+      await waitFor(() => expect(captureButton).toBeEnabled());
+      fireEvent.click(captureButton);
+
       await waitFor(() => {
-        expect(
-          screen.getByText(/Only one person should be visible/i)
-        ).toBeInTheDocument();
+        expect(biometricsApi.captureFrame).toHaveBeenCalledWith(
+          mockResidentNotEnrolled.id,
+          'FRONT',
+          'data:image/jpeg;base64,AAAA'
+        );
       });
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(/Only one person should be visible/i);
+      expect(screen.getByText('0 of 5 angles captured')).toBeInTheDocument();
     });
 
     it('cancels enrollment cleanly on Cancel button click', async () => {

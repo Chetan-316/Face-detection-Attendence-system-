@@ -12,6 +12,7 @@ so deployment can use properly licensed weights.
 
 import hashlib
 import os
+import shutil
 import sys
 import urllib.request
 from typing import Optional, Tuple
@@ -29,6 +30,9 @@ if ACTIVE_ENGINE not in {"legacy", "scrfd_adaface"}:
 
 YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
 SFACE_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
+YUNET_SHA_ENV = "YUNET_MODEL_SHA256"
+SFACE_SHA_ENV = "SFACE_MODEL_SHA256"
+DOWNLOAD_TIMEOUT_SECONDS = 60
 
 if ACTIVE_ENGINE == "scrfd_adaface":
     DETECTOR_INFO = {
@@ -110,14 +114,44 @@ def _sha256(path: str) -> str:
     return digest.hexdigest()
 
 
-def _verify_optional_sha(path: str, expected: Optional[str], label: str) -> None:
-    if not expected:
-        return
+def _verify_sha(path: str, expected: str, label: str) -> None:
     actual = _sha256(path)
     if actual.lower() != expected.strip().lower():
         raise RuntimeError(
             f"{label} checksum mismatch. Expected {expected}, got {actual}."
         )
+
+
+def _verify_optional_sha(path: str, expected: Optional[str], label: str) -> None:
+    if not expected:
+        return
+    _verify_sha(path, expected, label)
+
+
+def _download_verified(
+    url: str, dest: str, expected_sha: Optional[str], label: str, min_bytes: int
+) -> None:
+    if not expected_sha:
+        raise RuntimeError(
+            f"Refusing to download {label}: no expected SHA-256 is configured. "
+            "Set the matching *_MODEL_SHA256 variable, or place a verified file locally."
+        )
+
+    part_path = dest + ".part"
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    sys.stderr.write(f"Downloading operator-approved {label} to {dest}...\n")
+    try:
+        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response, open(part_path, "wb") as handle:
+            shutil.copyfileobj(response, handle, 1024 * 1024)
+
+        if os.path.getsize(part_path) < min_bytes:
+            raise RuntimeError(f"Downloaded {label} file is missing or unexpectedly small.")
+
+        _verify_sha(part_path, expected_sha, label)
+        os.replace(part_path, dest)
+    finally:
+        if os.path.exists(part_path):
+            os.remove(part_path)
 
 
 def _resolve_operator_model(
@@ -148,14 +182,7 @@ def _resolve_operator_model(
             f"model file, or set {url_env} to an operator-approved download URL."
         )
 
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    sys.stderr.write(f"Downloading operator-supplied {label} to {path}...\n")
-    urllib.request.urlretrieve(url, path)
-
-    if not os.path.exists(path) or os.path.getsize(path) < min_bytes:
-        raise RuntimeError(f"Downloaded {label} file is missing or unexpectedly small.")
-
-    _verify_optional_sha(path, os.environ.get(sha_env), label)
+    _download_verified(url, path, os.environ.get(sha_env), label, min_bytes)
     return path
 
 
@@ -195,14 +222,18 @@ def ensure_models_downloaded(models_dir: str = None) -> Tuple[str, str]:
         if os.path.exists(root_yunet) and os.path.getsize(root_yunet) >= 100_000:
             yunet_path = root_yunet
         else:
-            sys.stderr.write(f"Downloading YuNet detector to {yunet_path}...\n")
-            urllib.request.urlretrieve(YUNET_URL, yunet_path)
+            _download_verified(
+                YUNET_URL, yunet_path, os.environ.get(YUNET_SHA_ENV), "YuNet detector", 100_000
+            )
+    _verify_optional_sha(yunet_path, os.environ.get(YUNET_SHA_ENV), "YuNet detector")
 
     if not os.path.exists(sface_path) or os.path.getsize(sface_path) < 1_000_000:
         if os.path.exists(root_sface) and os.path.getsize(root_sface) >= 1_000_000:
             sface_path = root_sface
         else:
-            sys.stderr.write(f"Downloading SFace recognizer to {sface_path}...\n")
-            urllib.request.urlretrieve(SFACE_URL, sface_path)
+            _download_verified(
+                SFACE_URL, sface_path, os.environ.get(SFACE_SHA_ENV), "SFace recognizer", 1_000_000
+            )
+    _verify_optional_sha(sface_path, os.environ.get(SFACE_SHA_ENV), "SFace recognizer")
 
     return yunet_path, sface_path

@@ -9,6 +9,7 @@ export interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -19,6 +20,7 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   footer,
   size = 'md',
+  initialFocusRef,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -71,10 +73,14 @@ export const Modal: React.FC<ModalProps> = ({
     document.body.style.overflow = 'hidden';
 
     requestAnimationFrame(() => {
+      const active = document.activeElement;
+      if (modalRef.current && active && active !== modalRef.current && modalRef.current.contains(active)) return;
+      const preferred = initialFocusRef?.current;
+      const preferredUsable = preferred && !preferred.hasAttribute('disabled') ? preferred : null;
       const firstFocusable = modalRef.current?.querySelector<HTMLElement>(
         'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href]'
       );
-      (firstFocusable || modalRef.current)?.focus();
+      (preferredUsable || firstFocusable || modalRef.current)?.focus();
     });
 
     return () => {
@@ -82,7 +88,7 @@ export const Modal: React.FC<ModalProps> = ({
       document.body.style.overflow = '';
       previouslyFocusedRef.current?.focus?.();
     };
-  }, [isOpen]);
+  }, [isOpen, initialFocusRef]);
 
   if (!isOpen) return null;
 

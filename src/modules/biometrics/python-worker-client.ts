@@ -12,14 +12,20 @@ import { BiometricWorkerError } from './biometric.errors';
 import { config } from '../../config';
 
 interface PendingRequest {
+  id: number;
   resolve: (value: any) => void;
   reject: (reason: any) => void;
-  timer: NodeJS.Timeout;
+  timer?: NodeJS.Timeout;
+  // A timed-out request stays queued so the worker's late reply is consumed, not handed to the next request.
+  abandoned: boolean;
 }
+
+const MAX_PENDING_REQUESTS = 32;
 
 export class PythonWorkerClient {
   private process: ChildProcess | null = null;
   private pendingQueue: PendingRequest[] = [];
+  private requestSeq: number = 0;
   private isReady: boolean = false;
   private isStarting: boolean = false;
   private startPromise: Promise<void> | null = null;
@@ -76,8 +82,9 @@ export class PythonWorkerClient {
       const pythonCmd = process.env.PYTHON_BIN || (process.platform === 'win32' ? 'python' : 'python3');
       const workerDir = path.dirname(scriptPath);
 
+      let child: ChildProcess;
       try {
-        this.process = spawn(pythonCmd, args, {
+        child = spawn(pythonCmd, args, {
           cwd: workerDir,
           stdio: ['pipe', 'pipe', 'pipe'],
           env: {
@@ -91,22 +98,27 @@ export class PythonWorkerClient {
         this.lastError = `Spawn error: ${err.message}`;
         return reject(new BiometricWorkerError(`Failed to spawn Python biometric worker (${pythonCmd}): ${err.message}`));
       }
+      // Handlers below act only while this child is the current process, so a stale
+      // child's events cannot reset or reject state that belongs to a newer start.
+      this.process = child;
 
-      this.process.on('error', (err) => {
+      child.on('error', (err) => {
+        if (this.process !== child) return;
         console.error('Python biometric worker process error:', err);
         this.lastError = `Process error: ${err.message}`;
-        this.cleanup();
+        this.cleanup(child);
         if (this.isStarting) {
           this.isStarting = false;
           reject(new BiometricWorkerError(`Biometric worker error (${pythonCmd}): ${err.message}`));
         }
       });
 
-      this.process.on('exit', (code, signal) => {
+      child.on('exit', (code, signal) => {
+        if (this.process !== child) return;
         const exitMsg = `Worker exited with code ${code}, signal ${signal}. Stderr: ${this.lastStderr}`;
         this.lastError = exitMsg;
         console.warn('Python biometric worker exited:', exitMsg);
-        this.cleanup();
+        this.cleanup(child);
         if (this.isStarting) {
           this.isStarting = false;
           reject(new BiometricWorkerError(`Biometric worker exited prematurely: ${exitMsg}`));
@@ -114,8 +126,8 @@ export class PythonWorkerClient {
       });
 
       // Handle stderr
-      if (this.process.stderr) {
-        const stderrRl = readline.createInterface({ input: this.process.stderr });
+      if (child.stderr) {
+        const stderrRl = readline.createInterface({ input: child.stderr });
         stderrRl.on('line', (line) => {
           this.lastStderr = (this.lastStderr ? this.lastStderr + '\n' : '') + line;
           if (this.lastStderr.length > 2000) {
@@ -126,9 +138,10 @@ export class PythonWorkerClient {
       }
 
       // Handle stdout
-      if (this.process.stdout) {
-        const stdoutRl = readline.createInterface({ input: this.process.stdout });
+      if (child.stdout) {
+        const stdoutRl = readline.createInterface({ input: child.stdout });
         stdoutRl.on('line', (line) => {
+          if (this.process !== child) return;
           line = line.trim();
           if (!line) return;
 
@@ -137,14 +150,25 @@ export class PythonWorkerClient {
             if (data.event === 'started') {
               this.isReady = true;
               this.isStarting = false;
+              clearTimeout(initTimer);
               resolve();
               return;
             }
 
-            const nextReq = this.pendingQueue.shift();
-            if (nextReq) {
-              clearTimeout(nextReq.timer);
-              nextReq.resolve(data);
+            // The current worker does not echo request_id, so it answers in queue order.
+            // A worker that echoes it is matched exactly.
+            const idx = typeof data.request_id === 'number'
+              ? this.pendingQueue.findIndex((req) => req.id === data.request_id)
+              : 0;
+            if (idx === -1) {
+              console.warn('[PythonWorkerClient] Dropped worker response with unknown request_id');
+              return;
+            }
+            const [req] = this.pendingQueue.splice(idx, 1);
+            if (!req) return;
+            if (req.timer) clearTimeout(req.timer);
+            if (!req.abandoned) {
+              req.resolve(data);
             }
           } catch (e) {
             console.error('Failed to parse worker stdout JSON:', line);
@@ -154,10 +178,14 @@ export class PythonWorkerClient {
 
       // SCRFD + AdaFace may take longer to map ONNX weights on low-end CPUs.
       const initTimer = setTimeout(() => {
-        if (!this.isReady) {
+        if (!this.isReady && this.process === child) {
           const timeoutMsg = `Timed out waiting for biometric worker initialization. Last stderr: ${this.lastStderr || 'none'}`;
           this.lastError = timeoutMsg;
-          this.cleanup();
+          this.cleanup(child);
+          // A worker that never reports ready would otherwise keep running as an orphan.
+          try {
+            child.kill();
+          } catch (e) {}
           reject(new BiometricWorkerError(timeoutMsg));
         }
       }, config.biometric.engine === 'scrfd_adaface' ? 30000 : 10000);
@@ -174,22 +202,27 @@ export class PythonWorkerClient {
           await this.start();
         }
 
-        if (!this.process || !this.process.stdin || !this.process.stdin.writable) {
+        const child = this.process;
+        if (!child || !child.stdin || !child.stdin.writable) {
           throw new BiometricWorkerError('Biometric worker stdin is not writable');
         }
 
-        const timer = setTimeout(() => {
-          const idx = this.pendingQueue.findIndex((req) => req.timer === timer);
-          if (idx !== -1) {
-            this.pendingQueue.splice(idx, 1);
-            reject(new BiometricWorkerError(`Biometric worker request '${command}' timed out after ${timeoutMs}ms`));
-          }
+        if (this.pendingQueue.length >= MAX_PENDING_REQUESTS) {
+          throw new BiometricWorkerError(
+            `Biometric worker backlog is full (${MAX_PENDING_REQUESTS} requests pending)`
+          );
+        }
+
+        const requestId = ++this.requestSeq;
+        const req: PendingRequest = { id: requestId, resolve, reject, abandoned: false };
+        req.timer = setTimeout(() => {
+          req.abandoned = true;
+          reject(new BiometricWorkerError(`Biometric worker request '${command}' timed out after ${timeoutMs}ms`));
         }, timeoutMs);
+        this.pendingQueue.push(req);
 
-        this.pendingQueue.push({ resolve, reject, timer });
-
-        const cmdObj = { command, ...payload };
-        this.process.stdin.write(JSON.stringify(cmdObj) + '\n');
+        const cmdObj = { command, ...payload, request_id: requestId };
+        child.stdin.write(JSON.stringify(cmdObj) + '\n');
       } catch (err) {
         reject(err);
       }
@@ -365,27 +398,35 @@ export class PythonWorkerClient {
   }
 
   public async stop(): Promise<void> {
-    if (!this.process) return;
+    // Capture this instance's current child. The delayed kill targets only that child, so a
+    // start() that runs during the grace period is never killed by this stop().
+    const child = this.process;
+    if (!child) return;
 
     try {
-      if (this.process.stdin && this.process.stdin.writable) {
-        this.process.stdin.write(JSON.stringify({ command: 'stop' }) + '\n');
+      if (child.stdin && child.stdin.writable) {
+        child.stdin.write(JSON.stringify({ command: 'stop' }) + '\n');
       }
     } catch (e) {
       // Ignore write errors during shutdown
     }
 
+    // Detach state now so new requests start a fresh child instead of queuing on a stopping one.
+    this.cleanup(child);
+
     setTimeout(() => {
-      if (this.process) {
-        try {
-          this.process.kill();
-        } catch (e) {}
-      }
-      this.cleanup();
+      try {
+        child.kill();
+      } catch (e) {}
     }, 1000);
   }
 
-  private cleanup() {
+  /**
+   * Resets state for the given child. When a child is passed, state is reset only if that child
+   * is still the current process, so events from an older child cannot affect a newer one.
+   */
+  private cleanup(child?: ChildProcess) {
+    if (child && this.process !== child) return;
     this.isReady = false;
     this.isStarting = false;
     this.startPromise = null;

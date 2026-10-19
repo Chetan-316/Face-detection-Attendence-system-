@@ -12,6 +12,42 @@ import {
   PaginatedAttendanceReportResponse,
 } from '../types/reports.types';
 
+async function downloadCsv(
+  endpoint: string,
+  params: Record<string, string | undefined>,
+  fileName: string,
+  label: string
+): Promise<void> {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value);
+  }
+
+  const qs = query.toString();
+  const url = `${API_BASE_URL}${endpoint}${qs ? `?${qs}` : ''}`;
+  const token = getStoredToken();
+
+  const response = await fetch(url, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download ${label}: ${response.statusText}`);
+  }
+
+  const blob = await response.blob();
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = `${fileName}-${new Date().toISOString().split('T')[0]}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
 export const reportsApi = {
   getAttendanceSessions: async (params?: {
     hostelId?: string;
@@ -51,7 +87,7 @@ export const reportsApi = {
 
     const qs = query.toString();
     return apiClient<SessionRosterReport>(
-      `/reports/attendance/sessions/${sessionId}${qs ? `?${qs}` : ''}`
+      `/reports/attendance/sessions/${encodeURIComponent(sessionId)}${qs ? `?${qs}` : ''}`
     );
   },
 
@@ -75,7 +111,7 @@ export const reportsApi = {
 
   getResidentAttendance: async (residentId: string): Promise<ResidentAttendanceSummaryReport> => {
     return apiClient<ResidentAttendanceSummaryReport>(
-      `/reports/residents/${residentId}/attendance`
+      `/reports/residents/${encodeURIComponent(residentId)}/attendance`
     );
   },
 
@@ -115,7 +151,7 @@ export const reportsApi = {
   ): Promise<{ data: MovementReportItem[] }> => {
     const qs = limit ? `?limit=${limit}` : '';
     return apiClient<{ data: MovementReportItem[] }>(
-      `/reports/residents/${residentId}/movements${qs}`
+      `/reports/residents/${encodeURIComponent(residentId)}/movements${qs}`
     );
   },
 
@@ -134,7 +170,7 @@ export const reportsApi = {
   },
 
   getResidentSummary: async (residentId: string): Promise<ResidentSummaryReport> => {
-    return apiClient<ResidentSummaryReport>(`/reports/residents/${residentId}/summary`);
+    return apiClient<ResidentSummaryReport>(`/reports/residents/${encodeURIComponent(residentId)}/summary`);
   },
 
   downloadAttendanceCsv: async (params?: {
@@ -143,35 +179,17 @@ export const reportsApi = {
     dateFrom?: string;
     dateTo?: string;
   }): Promise<void> => {
-    const query = new URLSearchParams();
-    if (params?.hostelId) query.set('hostelId', params.hostelId);
-    if (params?.sessionId) query.set('sessionId', params.sessionId);
-    if (params?.dateFrom) query.set('dateFrom', params.dateFrom);
-    if (params?.dateTo) query.set('dateTo', params.dateTo);
-
-    const qs = query.toString();
-    const url = `${API_BASE_URL}/reports/export/attendance${qs ? `?${qs}` : ''}`;
-    const token = getStoredToken();
-
-    const response = await fetch(url, {
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    return downloadCsv(
+      '/reports/export/attendance',
+      {
+        hostelId: params?.hostelId,
+        sessionId: params?.sessionId,
+        dateFrom: params?.dateFrom,
+        dateTo: params?.dateTo,
       },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to download attendance CSV: ${response.statusText}`);
-    }
-
-    const blob = await response.blob();
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = `attendance-report-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(downloadUrl);
+      'attendance-report',
+      'attendance CSV'
+    );
   },
 
   downloadMovementCsv: async (params?: {
@@ -181,35 +199,17 @@ export const reportsApi = {
     dateFrom?: string;
     dateTo?: string;
   }): Promise<void> => {
-    const query = new URLSearchParams();
-    if (params?.hostelId) query.set('hostelId', params.hostelId);
-    if (params?.residentId) query.set('residentId', params.residentId);
-    if (params?.direction) query.set('direction', params.direction);
-    if (params?.dateFrom) query.set('dateFrom', params.dateFrom);
-    if (params?.dateTo) query.set('dateTo', params.dateTo);
-
-    const qs = query.toString();
-    const url = `${API_BASE_URL}/reports/export/movements${qs ? `?${qs}` : ''}`;
-    const token = getStoredToken();
-
-    const response = await fetch(url, {
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    return downloadCsv(
+      '/reports/export/movements',
+      {
+        hostelId: params?.hostelId,
+        residentId: params?.residentId,
+        direction: params?.direction,
+        dateFrom: params?.dateFrom,
+        dateTo: params?.dateTo,
       },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to download movement CSV: ${response.statusText}`);
-    }
-
-    const blob = await response.blob();
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    link.download = `movement-report-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(downloadUrl);
+      'movement-report',
+      'movement CSV'
+    );
   },
 };

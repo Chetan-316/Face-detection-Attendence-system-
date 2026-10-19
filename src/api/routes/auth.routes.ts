@@ -49,6 +49,7 @@ export function createAuthRouter(db = defaultPrisma) {
           role: user.role,
           organizationId: user.organizationId,
           hostelId: user.hostelId,
+          tokenVersion: user.tokenVersion,
         });
 
         // Safe user response - NO passwordHash or database internals

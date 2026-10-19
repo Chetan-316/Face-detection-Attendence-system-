@@ -425,11 +425,11 @@ describe('Step 04: Real Camera Abstraction Layer Tests', () => {
         .expect(404);
     });
 
-    it('cross-organization access returns 403 or 404', async () => {
+    it('cross-organization access is reported as not found (no existence leak)', async () => {
       await request(app)
         .get(`/api/v1/cameras/${testCamera.id}`)
         .set('Authorization', `Bearer ${otherOrgToken}`)
-        .expect(403);
+        .expect(404);
     });
 
     it('POST /api/v1/cameras registers camera with validated schema', async () => {
@@ -503,7 +503,13 @@ describe('Step 04: Real Camera Abstraction Layer Tests', () => {
     });
 
     it('GET /api/v1/cameras/:id/preview delivers live MJPEG multipart stream', async () => {
-      // Test media streaming authentication via ?token= query parameter (for browser <img> tags)
+      // Media streaming authentication via camera-scoped ?streamToken= (for browser <img> tags)
+      const tokenRes = await request(app)
+        .post(`/api/v1/cameras/${testCamera.id}/stream-token`)
+        .set('Authorization', `Bearer ${wardenToken}`);
+      expect(tokenRes.status).toBe(200);
+      const streamToken = tokenRes.body.streamToken;
+
       const http = await import('http');
       const server = http.createServer(app);
 
@@ -516,7 +522,7 @@ describe('Step 04: Real Camera Abstraction Layer Tests', () => {
           }
 
           const req = http.get(
-            `http://localhost:${address.port}/api/v1/cameras/${testCamera.id}/preview?token=${wardenToken}`,
+            `http://localhost:${address.port}/api/v1/cameras/${testCamera.id}/preview?streamToken=${streamToken}`,
             (res) => {
               try {
                 expect(res.statusCode).toBe(200);

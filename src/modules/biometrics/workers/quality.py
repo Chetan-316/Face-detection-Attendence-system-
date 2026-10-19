@@ -127,7 +127,7 @@ class QualityChecker:
             )
             largest_area = detected_faces[0]["bbox"]["width"] * detected_faces[0]["bbox"]["height"]
             second_area = detected_faces[1]["bbox"]["width"] * detected_faces[1]["bbox"]["height"]
-            if expected_pose or largest_area > 1.6 * second_area:
+            if largest_area > 1.6 * second_area:
                 detected_faces = [detected_faces[0]]
                 face_count = 1
             else:
@@ -146,7 +146,7 @@ class QualityChecker:
         confidence = face["score"]
         landmarks = face.get("landmarks", [])
 
-        detected_pose = expected_pose if expected_pose else self.classify_pose(landmarks, bbox)
+        detected_pose = self.classify_pose(landmarks, bbox)
 
         # Crop face region safely for blur and lighting analysis
         y1 = max(0, by)
@@ -187,17 +187,6 @@ class QualityChecker:
             "frame_width": w,
             "frame_height": h,
         }
-
-        # If an expected pose was targeted during manual enrollment, accept the detected face sample
-        if expected_pose:
-            return {
-                "is_valid": True,
-                "rejection_reason": None,
-                "message": f"Sample captured for {expected_pose}.",
-                "face_count": 1,
-                "detected_pose": expected_pose,
-                "metrics": metrics
-            }
 
         # 2. Confidence check
         if confidence < self.min_confidence:
@@ -259,6 +248,17 @@ class QualityChecker:
                 "is_valid": False,
                 "rejection_reason": "TOO_BRIGHT",
                 "message": "Move away from direct glare.",
+                "face_count": 1,
+                "detected_pose": detected_pose,
+                "metrics": metrics
+            }
+
+        # 7. Pose match, checked only after every quality gate has passed
+        if expected_pose and detected_pose != expected_pose:
+            return {
+                "is_valid": False,
+                "rejection_reason": "WRONG_POSE",
+                "message": f"Turn your face to {expected_pose}.",
                 "face_count": 1,
                 "detected_pose": detected_pose,
                 "metrics": metrics

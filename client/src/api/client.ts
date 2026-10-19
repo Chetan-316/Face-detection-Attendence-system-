@@ -64,7 +64,7 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
   const token = getStoredToken();
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
     ...(options.headers as Record<string, string>),
   };
 
@@ -98,6 +98,10 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
     } catch {
       data = null;
     }
+  }
+
+  if (response.ok && !contentType?.includes('application/json')) {
+    throw new ApiError(response.status, 'Unexpected response from server. Check the API base URL.', 'INVALID_RESPONSE');
   }
 
   if (!response.ok) {

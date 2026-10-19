@@ -81,10 +81,17 @@ export class AuditService {
     });
   }
 
-  public async getHistoryForEntity(entityType: string, entityId: string) {
+  public async getHistoryForEntity(
+    entityType: string,
+    entityId: string,
+    options: { take?: number; cursor?: string } = {}
+  ) {
+    const take = Math.min(Math.max(options.take ?? 100, 1), 500);
     return this.db.auditLog.findMany({
       where: { entityType, entityId },
-      orderBy: { timestamp: 'desc' },
+      orderBy: [{ timestamp: 'desc' }, { id: 'desc' }],
+      take,
+      ...(options.cursor ? { cursor: { id: options.cursor }, skip: 1 } : {}),
       include: {
         performedBy: {
           select: {

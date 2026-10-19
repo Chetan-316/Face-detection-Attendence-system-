@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { NotFoundError, ValidationError } from '../../common/errors';
+import { config } from '../../config';
 import { AuditService } from '../audit/audit.service';
 import { CameraDiagnostics, CameraFrame, ICameraAdapter } from './camera.types';
 import { CameraAdapterFactory } from './camera-adapter.factory';
@@ -83,7 +84,8 @@ export class CameraService {
 
     if (input.sourceType === CameraSourceType.RTSP) {
       const rtspUrl = String(cleanConfig.rtspUrl || '').trim();
-      if (!/^rtsps?:\/\//i.test(rtspUrl)) {
+      const syntheticAllowed = Boolean(cleanConfig.testInputOverride) && config.appEnv !== 'production';
+      if (!/^rtsps?:\/\//i.test(rtspUrl) && !syntheticAllowed) {
         throw new ValidationError('A valid RTSP stream URL is required for an IP / network camera');
       }
     }
@@ -269,7 +271,7 @@ export class CameraService {
 
   public async getCamera(id: string): Promise<Camera> {
     const camera = await this.db.camera.findUnique({
-      where: { id },
+      where: { id, deletedAt: null },
       include: { location: true },
     });
     if (!camera) {
@@ -278,9 +280,25 @@ export class CameraService {
     return camera;
   }
 
+  public async assertCameraInScope(
+    cameraId: string,
+    scopeHostelId: string | undefined,
+    organizationId: string
+  ): Promise<Camera> {
+    const camera = await this.getCamera(cameraId);
+    if (camera.organizationId !== organizationId) {
+      throw new NotFoundError('Camera', cameraId);
+    }
+    if (scopeHostelId && camera.hostelId !== scopeHostelId) {
+      throw new NotFoundError('Camera', cameraId);
+    }
+    return camera;
+  }
+
   public async listCameras(hostelId?: string, organizationId?: string, role?: CameraRole) {
     return this.db.camera.findMany({
       where: {
+        deletedAt: null,
         ...(hostelId ? { hostelId } : {}),
         ...(organizationId ? { organizationId } : {}),
         ...(role ? { role } : {}),
@@ -524,6 +542,7 @@ export class CameraService {
 
     await this.releaseCamera(cameraId);
 
+    // Keep the row so movement events keep pointing at the device that recorded them.
     return this.db.$transaction(async (tx) => {
       await this.auditService.record(
         {
@@ -544,7 +563,10 @@ export class CameraService {
         tx
       );
 
-      return tx.camera.delete({ where: { id: cameraId } });
+      return tx.camera.update({
+        where: { id: cameraId },
+        data: { isEnabled: false, deletedAt: new Date() },
+      });
     });
   }
 

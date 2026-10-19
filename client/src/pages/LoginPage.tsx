@@ -18,7 +18,7 @@ export const LoginPage: React.FC = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const from = (location.state as any)?.from?.pathname || '/';
+  const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || '/';
 
   const validate = (): boolean => {
     const errors: { username?: string; password?: string } = {};
@@ -55,8 +55,10 @@ export const LoginPage: React.FC = () => {
         setAuthError('Invalid username or password');
       } else if (err.code === 'TOO_MANY_REQUESTS') {
         setAuthError('Too many failed attempts. Please try again later.');
+      } else if (err.code === 'NETWORK_ERROR') {
+        setAuthError(err.message);
       } else {
-        setAuthError(err.message || 'Unable to connect to authorization server');
+        setAuthError('Unable to sign in right now. Please try again.');
       }
     } finally {
       setIsLoading(false);

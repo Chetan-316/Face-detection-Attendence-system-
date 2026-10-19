@@ -6,6 +6,7 @@ import { SafeResident } from '../../types/resident.types';
 import { useAuth } from '../../auth/AuthContext';
 import { formatDateTime } from '../../utils/formatters';
 import { residentsApi } from '../../api/residents.api';
+import { AuthenticatedImage } from '../../components/AuthenticatedImage';
 import {
   User,
   Phone,
@@ -132,7 +133,7 @@ export const ResidentDetailModal: React.FC<ResidentDetailModalProps> = ({
             <div className="flex items-start gap-3 mb-3">
               {/* Photo Box */}
               <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center">
-                <img
+                <AuthenticatedImage
                   src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
                   alt={resident.fullName}
                   className="w-full h-full object-cover"

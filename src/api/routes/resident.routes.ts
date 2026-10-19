@@ -1,8 +1,10 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { StaffRole, PresenceState, MovementType, MovementSource } from '@prisma/client';
+import { randomInt } from 'crypto';
+import { PrismaClient, StaffRole, PresenceState } from '@prisma/client';
 import { ResidentService } from '../../modules/residents/resident.service';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
 import { validateRequest } from '../middleware/validation.middleware';
+import { requireHostelScope } from '../middleware/scope';
 import {
   createResidentSchema,
   registerRegularComerSchema,
@@ -11,13 +13,28 @@ import {
   reactivateResidentSchema,
   listResidentsQuerySchema,
 } from '../../modules/residents/resident.schemas';
-import { NotFoundError, ValidationError } from '../../common/errors';
+import { ConflictError, NotFoundError, ValidationError } from '../../common/errors';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createFaceEnrollmentRouter } from './face-enrollment.routes';
 import { EnrollmentService } from '../../modules/biometrics/enrollment.service';
 import { PresenceService } from '../../modules/presence/presence.service';
 import { CameraService } from '../../modules/cameras/camera.service';
 import { ProfilePhotoService } from '../../modules/residents/profile-photo.service';
+
+// Matches the imageBase64 cap in biometric.schemas.ts
+const MAX_IMAGE_BASE64_CHARS = 7_000_000;
+
+async function generateVisitorCode(db: PrismaClient, organizationId: string): Promise<string> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const candidate = `VIS-${randomInt(0, 1_000_000).toString().padStart(6, '0')}`;
+    const existing = await db.resident.findUnique({
+      where: { organizationId_residentCode: { organizationId, residentCode: candidate } },
+      select: { id: true },
+    });
+    if (!existing) return candidate;
+  }
+  throw new ConflictError('Could not allocate a unique visitor code. Please retry.');
+}
 
 export function createResidentRouter(
   db = defaultPrisma,
@@ -51,7 +68,7 @@ export function createResidentRouter(
 
         if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
           // Wardens and guards are strictly locked to their assigned hostel.
-          effectiveHostelId = user.hostelId || undefined;
+          effectiveHostelId = requireHostelScope(user);
         } else if (user.role === StaffRole.ADMIN && query.hostelId) {
           // Administrators can manage the whole organization and optionally filter by hostel.
           const hostel = await db.hostel.findUnique({
@@ -150,7 +167,7 @@ export function createResidentRouter(
       let effectiveHostelId: string | undefined;
 
       if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
-        effectiveHostelId = user.hostelId || undefined;
+        effectiveHostelId = requireHostelScope(user);
       } else if (user.role === StaffRole.ADMIN && query.hostelId) {
         const hostel = await db.hostel.findUnique({
           where: { id: query.hostelId },
@@ -181,9 +198,7 @@ export function createResidentRouter(
       const user = req.user!;
       const where: any = { organizationId: user.organizationId, isActive: true };
       if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
-        if (user.hostelId) {
-          where.id = user.hostelId;
-        }
+        where.id = requireHostelScope(user);
       }
       const hostels = await db.hostel.findMany({
         where,
@@ -220,20 +235,28 @@ export function createResidentRouter(
    */
   router.post(
     '/regular-comer',
+    requirePermission('MOVEMENT_NORMAL_RECORD'),
     validateRequest({ body: registerRegularComerSchema }),
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const user = req.user!;
         const body = req.body;
 
-        const targetHostelId = user.hostelId || body.hostelId;
+        const targetHostelId =
+          user.role === StaffRole.ADMIN ? user.hostelId || body.hostelId : requireHostelScope(user);
         if (!targetHostelId) {
           throw new ValidationError('A facility/hostel must be assigned or specified');
         }
 
+        const targetHostel = await db.hostel.findUnique({ where: { id: targetHostelId } });
+        if (!targetHostel || targetHostel.organizationId !== user.organizationId || !targetHostel.isActive) {
+          throw new NotFoundError('Hostel', targetHostelId);
+        }
+
         const category = body.category?.trim() || 'Regular Visitor';
-        const rawCode = body.code?.trim() || `VIS-${Date.now().toString().slice(-4)}`;
-        const code = rawCode.toUpperCase();
+        const code = body.code?.trim()
+          ? body.code.trim().toUpperCase()
+          : await generateVisitorCode(db, user.organizationId);
 
         const resident = await residentService.createRegularComer({
           organizationId: user.organizationId,
@@ -243,25 +266,10 @@ export function createResidentRouter(
           category,
           contactPhone: body.contactPhone?.trim() || null,
           initialPresence: body.markInNow ? PresenceState.IN : PresenceState.OUT,
+          markInNow: Boolean(body.markInNow),
           performedByUserId: user.id,
           performedByRole: user.role,
         });
-
-        if (body.markInNow) {
-          try {
-            await db.movementEvent.create({
-              data: {
-                residentId: resident.id,
-                hostelId: targetHostelId,
-                movementType: MovementType.IN,
-                source: MovementSource.GUARD_CONFIRMATION,
-                effectiveTimestamp: new Date(),
-                confirmedByUserId: user.id,
-                notes: `Quick-registered regular comer (${category}) marked IN at gate`,
-              },
-            });
-          } catch {}
-        }
 
         const safeResident = await residentService.getResidentScoped(resident.id, user);
         res.status(201).json(safeResident);
@@ -433,7 +441,10 @@ export function createResidentRouter(
         if (Buffer.isBuffer(req.body) && req.body.length > 0) {
           imageBuffer = req.body;
         } else if (req.body && req.body.cameraId) {
-          // Capture from camera hardware snapshot
+          // Capture from camera hardware snapshot, only for a resident and camera in the actor's scope
+          await residentService.getResidentScoped(id, user);
+          const scopeHostelId = requireHostelScope(user);
+          await camService.assertCameraInScope(req.body.cameraId, scopeHostelId, user.organizationId);
           const snapshot = await camService.captureSnapshot(req.body.cameraId);
           if (!snapshot || !snapshot.frameBuffer) {
             throw new ValidationError('Failed to capture snapshot from camera hardware');
@@ -442,6 +453,9 @@ export function createResidentRouter(
         } else if (req.body && req.body.imageBase64) {
           let b64 = req.body.imageBase64;
           if (typeof b64 === 'string') {
+            if (b64.length > MAX_IMAGE_BASE64_CHARS) {
+              throw new ValidationError('Image payload exceeds the size limit');
+            }
             if (b64.includes(',')) {
               b64 = b64.split(',', 2)[1];
             }

@@ -2,6 +2,7 @@ import React from 'react';
 import { Badge } from '../../components/Badge';
 import { SafeResident } from '../../types/resident.types';
 import { residentsApi } from '../../api/residents.api';
+import { AuthenticatedImage } from '../../components/AuthenticatedImage';
 import {
   UserX,
   PlusCircle,
@@ -114,7 +115,7 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                 <td className="px-6 py-3.5">
                   <div className="flex items-center gap-3.5">
                     <div className="w-11 h-11 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
-                      <img
+                      <AuthenticatedImage
                         src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
                         alt=""
                         className="w-full h-full object-cover"

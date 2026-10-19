@@ -45,7 +45,7 @@ vi.mock('../api/reports.api', () => ({
 
 vi.mock('../api/residents.api', () => ({
   residentsApi: {
-    getResidents: vi.fn(),
+    listResidents: vi.fn(),
     getSummary: vi.fn(),
   },
 }));
@@ -138,7 +138,7 @@ describe('Reports presence and movement workflow', () => {
     });
     (reportsApi.getResidentSummary as any).mockResolvedValue(residentSummary);
     (reportsApi.downloadMovementCsv as any).mockResolvedValue(undefined);
-    (residentsApi.getResidents as any).mockResolvedValue({ data: [] });
+    (residentsApi.listResidents as any).mockResolvedValue({ data: [] });
   });
 
   const renderReports = () =>
@@ -235,7 +235,7 @@ describe('Reports presence and movement workflow', () => {
   });
 
   it('allows Warden/Admin to search and inspect a resident movement summary', async () => {
-    (residentsApi.getResidents as any).mockResolvedValue({
+    (residentsApi.listResidents as any).mockResolvedValue({
       data: [
         {
           id: 'res-1',
@@ -253,7 +253,7 @@ describe('Reports presence and movement workflow', () => {
     fireEvent.change(input, { target: { value: 'Rahul' } });
 
     await waitFor(() => {
-      expect(residentsApi.getResidents).toHaveBeenCalledWith(
+      expect(residentsApi.listResidents).toHaveBeenCalledWith(
         expect.objectContaining({ search: 'Rahul' })
       );
       expect(screen.getByText('Rahul Patil')).toBeInTheDocument();

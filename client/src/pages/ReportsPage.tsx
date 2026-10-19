@@ -23,6 +23,7 @@ import {
   ResidentSummaryReport,
 } from '../types/reports.types';
 import { SafeResident } from '../types/resident.types';
+import { addBusinessDays, businessDateKey } from '../utils/businessDate';
 import {
   FileText,
   Calendar,
@@ -108,24 +109,20 @@ export const ReportsPage: React.FC = () => {
 
   // Calculate Date Ranges
   const getDateRangeParams = (range: string, customFrom: string, customTo: string) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = businessDateKey();
     if (range === 'today') {
-      return { dateFrom: `${today}T00:00:00.000Z`, dateTo: `${today}T23:59:59.999Z` };
+      return { dateFrom: today, dateTo: today };
     }
     if (range === 'last7') {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      return { dateFrom: d.toISOString(), dateTo: new Date().toISOString() };
+      return { dateFrom: addBusinessDays(today, -7), dateTo: today };
     }
     if (range === 'last30') {
-      const d = new Date();
-      d.setDate(d.getDate() - 30);
-      return { dateFrom: d.toISOString(), dateTo: new Date().toISOString() };
+      return { dateFrom: addBusinessDays(today, -30), dateTo: today };
     }
     if (range === 'custom' && (customFrom || customTo)) {
       return {
-        dateFrom: customFrom ? `${customFrom}T00:00:00.000Z` : undefined,
-        dateTo: customTo ? `${customTo}T23:59:59.999Z` : undefined,
+        dateFrom: customFrom || undefined,
+        dateTo: customTo || undefined,
       };
     }
     return {};
@@ -243,7 +240,7 @@ export const ReportsPage: React.FC = () => {
       return;
     }
     try {
-      const res = await residentsApi.getResidents({ search: query, pageSize: 8 });
+      const res = await residentsApi.listResidents({ search: query, pageSize: 8 });
       setResidentSearchResults(res.data);
     } catch {
       // Ignore search errors in typing

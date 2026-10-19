@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { config } from '../src/config';
 import { TemporalStabilizer } from '../src/modules/recognition/temporal-stabilizer';
 import { MatchResult } from '../src/modules/recognition/recognition.types';
 
@@ -47,26 +48,51 @@ describe('TemporalStabilizer Unit Tests', () => {
     expect(f3.shouldEmitEvent).toBe(true); // First stable emission
   });
 
-  it('emits once per continuous appearance and rearms only after absence', () => {
-    const stabilizer = new TemporalStabilizer({ minConsistentFrames: 3, windowSize: 5, cooldownMs: 5000, trackTimeoutMs: 10000 });
+  it('emits once per continuous appearance and rearms only after the configured absence', () => {
+    const rearmMs = config.recognition.cooldownMs;
+    const frameIntervalMs = 200;
+    const stabilizer = new TemporalStabilizer({
+      minConsistentFrames: 3,
+      windowSize: 5,
+      cooldownMs: rearmMs,
+      trackTimeoutMs: rearmMs * 2,
+    });
 
     stabilizer.update(bbox, matchResA, 1000);
     stabilizer.update(bbox, matchResA, 1200);
-    const f3 = stabilizer.update(bbox, matchResA, 1400);
-    expect(f3.shouldEmitEvent).toBe(true);
+    const first = stabilizer.update(bbox, matchResA, 1400);
+    expect(first.shouldEmitEvent).toBe(true);
 
-    const f4 = stabilizer.update(bbox, matchResA, 2000);
-    expect(f4.shouldEmitEvent).toBe(false);
+    // Continuously visible for three full rearm periods: must stay locked, never toggle again.
+    let lastSeenAt = 1400;
+    for (let t = 1400 + frameIntervalMs; t <= 1400 + 3 * rearmMs; t += frameIntervalMs) {
+      const result = stabilizer.update(bbox, matchResA, t);
+      expect(result.classification).toBe('MATCH');
+      expect(result.shouldEmitEvent).toBe(false);
+      lastSeenAt = t;
+    }
 
-    // Still continuously visible well beyond the old timer: must remain locked.
-    const f5 = stabilizer.update(bbox, matchResA, 7000);
-    expect(f5.classification).toBe('MATCH');
-    expect(f5.shouldEmitEvent).toBe(false);
+    // Absent for one configured rearm period, then returns: this is a new appearance.
+    const returned = stabilizer.update(bbox, matchResA, lastSeenAt + rearmMs);
+    expect(returned.classification).toBe('MATCH');
+    expect(returned.shouldEmitEvent).toBe(true);
+  });
 
-    // Resident disappears for >5 seconds, then returns. This is a new appearance.
-    const f6 = stabilizer.update(bbox, matchResA, 13050);
-    expect(f6.classification).toBe('MATCH');
-    expect(f6.shouldEmitEvent).toBe(true);
+  it('does not rearm when the absence is shorter than the configured rearm period', () => {
+    const rearmMs = config.recognition.cooldownMs;
+    const stabilizer = new TemporalStabilizer({
+      minConsistentFrames: 3,
+      windowSize: 5,
+      cooldownMs: rearmMs,
+      trackTimeoutMs: rearmMs * 2,
+    });
+
+    stabilizer.update(bbox, matchResA, 1000);
+    stabilizer.update(bbox, matchResA, 1200);
+    expect(stabilizer.update(bbox, matchResA, 1400).shouldEmitEvent).toBe(true);
+
+    const beforeRearm = stabilizer.update(bbox, matchResA, 1400 + rearmMs - 1);
+    expect(beforeRearm.shouldEmitEvent).toBe(false);
   });
 
   it('stabilizes UNKNOWN without flickering', () => {

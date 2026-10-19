@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { LocationType, PrismaClient, StaffRole } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
+import { isWithinHostelScope } from '../middleware/scope';
 import { OrganizationService } from '../../modules/organizations/organization.service';
 import { AuditService } from '../../modules/audit/audit.service';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../common/errors';
@@ -23,6 +24,9 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
           : actor.hostelId;
 
       if (!requestedHostelId) {
+        if (actor.role !== StaffRole.ADMIN) {
+          throw new ForbiddenError('No hostel assigned to this account');
+        }
         res.status(200).json({
           data: {
             hostelId: null,
@@ -37,10 +41,7 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
       if (!hostel || hostel.organizationId !== actor.organizationId) {
         throw new NotFoundError('Facility', requestedHostelId);
       }
-      if (
-        (actor.role === StaffRole.WARDEN || actor.role === StaffRole.GUARD) &&
-        actor.hostelId !== hostel.id
-      ) {
+      if (!isWithinHostelScope(actor, hostel.id)) {
         throw new ForbiddenError('Cannot view settings for another facility');
       }
 
@@ -239,7 +240,7 @@ export function createFacilityRouter(db: PrismaClient = defaultPrisma): Router {
 
       if (!nextActive) {
         const enabledCameraCount = await db.camera.count({
-          where: { locationId: existing.id, isEnabled: true },
+          where: { locationId: existing.id, isEnabled: true, deletedAt: null },
         });
         if (enabledCameraCount > 0) {
           throw new ValidationError('Reassign or disable cameras before deactivating this gate/location');

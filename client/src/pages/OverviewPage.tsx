@@ -28,11 +28,6 @@ import {
 export const OverviewPage: React.FC = () => {
   const { user } = useAuth();
 
-  // Guard role is redirected directly to Gate
-  if (user?.role === 'GUARD') {
-    return <Navigate to="/gate" replace />;
-  }
-
   const isWarden = user?.role === 'WARDEN';
   const isAdmin = user?.role === 'ADMIN';
 
@@ -132,6 +127,11 @@ export const OverviewPage: React.FC = () => {
     ? 'Residents Not Returned'
     : 'Residents Currently Outside';
   const outsideStatusLabel = isAfterReturnDeadline ? 'Not Returned' : 'Outside';
+
+  // Guard role is redirected directly to Gate
+  if (user?.role === 'GUARD') {
+    return <Navigate to="/gate" replace />;
+  }
 
   return (
     <div className="overview-page flex flex-col gap-7 max-w-7xl mx-auto w-full">

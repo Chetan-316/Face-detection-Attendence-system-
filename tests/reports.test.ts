@@ -668,6 +668,89 @@ describe('Step 09: Operational Attendance & Movement Reporting Tests', () => {
   });
 
   // ----------------------------------------------------
+  // Resident-level hostel scope: a GUARD or WARDEN must not read a resident
+  // from another hostel through the resident report endpoints.
+  // ----------------------------------------------------
+  it('blocks GUARD and WARDEN from other-hostel resident movement history (404), allows own hostel', async () => {
+    const residentA1 = await testPrisma.resident.create({
+      data: {
+        organizationId: orgAId,
+        hostelId: hostelA1Id,
+        residentCode: 'R_SCOPE_A1',
+        fullName: 'Hostel A1 Resident',
+        roomGroup: 'S-1',
+        status: ResidentStatus.ACTIVE,
+      },
+    });
+
+    const residentA2 = await testPrisma.resident.create({
+      data: {
+        organizationId: orgAId,
+        hostelId: hostelA2Id,
+        residentCode: 'R_SCOPE_A2',
+        fullName: 'Hostel A2 Resident',
+        roomGroup: 'S-2',
+        status: ResidentStatus.ACTIVE,
+      },
+    });
+
+    await testPrisma.movementEvent.create({
+      data: {
+        residentId: residentA2.id,
+        hostelId: hostelA2Id,
+        movementType: MovementType.OUT,
+        source: MovementSource.FACE_RECOGNITION,
+        effectiveTimestamp: new Date('2026-09-30T10:00:00.000Z'),
+      },
+    });
+
+    const guardOwn = await request(app)
+      .get(`/api/v1/reports/residents/${residentA1.id}/movements`)
+      .set('Authorization', `Bearer ${guardA1Token}`);
+    expect(guardOwn.status).toBe(200);
+
+    const guardCrossHostel = await request(app)
+      .get(`/api/v1/reports/residents/${residentA2.id}/movements`)
+      .set('Authorization', `Bearer ${guardA1Token}`);
+    expect(guardCrossHostel.status).toBe(404);
+    expect(guardCrossHostel.body.data).toBeUndefined();
+
+    const wardenCrossHostel = await request(app)
+      .get(`/api/v1/reports/residents/${residentA2.id}/movements`)
+      .set('Authorization', `Bearer ${wardenA1Token}`);
+    expect(wardenCrossHostel.status).toBe(404);
+
+    const wardenOwn = await request(app)
+      .get(`/api/v1/reports/residents/${residentA2.id}/movements`)
+      .set('Authorization', `Bearer ${wardenA2Token}`);
+    expect(wardenOwn.status).toBe(200);
+    expect(wardenOwn.body.data).toHaveLength(1);
+  });
+
+  it('blocks WARDEN from other-hostel resident summary and attendance (404)', async () => {
+    const residentA2 = await testPrisma.resident.create({
+      data: {
+        organizationId: orgAId,
+        hostelId: hostelA2Id,
+        residentCode: 'R_SCOPE_SUM_A2',
+        fullName: 'Hostel A2 Summary Resident',
+        roomGroup: 'S-3',
+        status: ResidentStatus.ACTIVE,
+      },
+    });
+
+    const summary = await request(app)
+      .get(`/api/v1/reports/residents/${residentA2.id}/summary`)
+      .set('Authorization', `Bearer ${wardenA1Token}`);
+    expect(summary.status).toBe(404);
+
+    const attendance = await request(app)
+      .get(`/api/v1/reports/residents/${residentA2.id}/attendance`)
+      .set('Authorization', `Bearer ${wardenA1Token}`);
+    expect(attendance.status).toBe(404);
+  });
+
+  // ----------------------------------------------------
   // Requirement 70 & 71: TEST — CSV EXPORT & FORMULA INJECTION PROTECTION
   // Verify headers, rows, UTF-8 BOM, and formula escaping for = + - @
   // ----------------------------------------------------

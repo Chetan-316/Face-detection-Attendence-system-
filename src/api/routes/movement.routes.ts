@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient, StaffRole, MovementType, MovementSource, PresenceState } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../database/client';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
+import { isWithinHostelScope } from '../middleware/scope';
 import { MovementDecisionService } from '../../modules/movement-decision/movement-decision.service';
 import { PresenceService } from '../../modules/presence/presence.service';
 import { MovementService } from '../../modules/movements/movement.service';
@@ -11,6 +12,7 @@ import {
   NotFoundError,
   ValidationError,
 } from '../../common/errors';
+import { intQuery, optionalDateQuery } from '../../common/utils/query-params';
 
 export function createMovementRouter(
   db: PrismaClient = defaultPrisma,
@@ -118,17 +120,12 @@ export function createMovementRouter(
         throw new ValidationError("movementType must be either 'IN' or 'OUT'");
       }
 
-      // Scoping: Warden and Guard must match resident hostel
-      if (
-        (actor.role === StaffRole.WARDEN || actor.role === StaffRole.GUARD) &&
-        actor.hostelId &&
-        resident.hostelId !== actor.hostelId
-      ) {
+      if (!isWithinHostelScope(actor, resident.hostelId)) {
         throw new ForbiddenError('Cannot confirm movement for resident of another hostel');
       }
 
       // Check camera
-      const camera = await db.camera.findUnique({ where: { id: cameraId } });
+      const camera = await db.camera.findUnique({ where: { id: cameraId, deletedAt: null } });
       if (!camera || camera.organizationId !== actor.organizationId) {
         throw new NotFoundError('Camera', cameraId);
       }
@@ -212,11 +209,7 @@ export function createMovementRouter(
         throw new NotFoundError('Resident', residentId);
       }
 
-      if (
-        actor.role === StaffRole.WARDEN &&
-        actor.hostelId &&
-        resident.hostelId !== actor.hostelId
-      ) {
+      if (!isWithinHostelScope(actor, resident.hostelId)) {
         throw new ForbiddenError('Cannot correct presence for a resident of another hostel');
       }
 
@@ -323,8 +316,8 @@ export function createMovementRouter(
         }
       }
 
-      const page = Math.max(1, parseInt(query.page || '1', 10));
-      const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize || '20', 10)));
+      const page = intQuery(query.page, 'page', 1);
+      const pageSize = Math.min(100, intQuery(query.pageSize, 'pageSize', 20));
       const skip = (page - 1) * pageSize;
 
       const where: any = {
@@ -355,8 +348,8 @@ export function createMovementRouter(
 
       if (query.dateFrom || query.dateTo) {
         where.effectiveTimestamp = {};
-        if (query.dateFrom) where.effectiveTimestamp.gte = new Date(query.dateFrom);
-        if (query.dateTo) where.effectiveTimestamp.lte = new Date(query.dateTo);
+        where.effectiveTimestamp.gte = optionalDateQuery(query.dateFrom, 'dateFrom');
+        where.effectiveTimestamp.lte = optionalDateQuery(query.dateTo, 'dateTo');
       }
 
       const [total, events] = await Promise.all([

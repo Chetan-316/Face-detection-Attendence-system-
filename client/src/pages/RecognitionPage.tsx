@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useToast } from '../components/ToastContext';
@@ -18,6 +18,8 @@ import {
 } from '../types/movement.types';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
+import { AuthenticatedImage } from '../components/AuthenticatedImage';
+import { usePreviewStreamUrl } from '../hooks/usePreviewStreamUrl';
 import {
   Play,
   Square,
@@ -45,7 +47,13 @@ export const RecognitionPage: React.FC = () => {
 
   const [cameras, setCameras] = useState<CameraEntity[]>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string>('');
-  const [selectedCamera, setSelectedCamera] = useState<CameraEntity | null>(null);
+  const selectedCamera = useMemo(
+    () => cameras.find((c) => c.id === selectedCameraId) || null,
+    [cameras, selectedCameraId]
+  );
+  // Overlay boxes are normalized against the frame that was sent for analysis, then fitted to the displayed media.
+  const sourceFrameSizeRef = useRef({ width: 640, height: 480 });
+  const mediaSizeRef = useRef({ width: 640, height: 480 });
 
   const [sessionStatus, setSessionStatus] = useState<RecognitionSessionStatus | null>(null);
   const [observations, setObservations] = useState<RecognitionObservation[]>([]);
@@ -169,22 +177,13 @@ export const RecognitionPage: React.FC = () => {
       setIsLoading(true);
       const res = await camerasApi.listCameras(user?.hostelId || undefined);
       setCameras(res.data);
-
-      setSelectedCameraId((current) => {
-        const activeId = current || (res.data.length > 0 ? res.data[0].id : '');
-        if (activeId) {
-          const found = res.data.find((c) => c.id === activeId) || null;
-          setSelectedCamera(found);
-          fetchStatusAndResults(activeId);
-        }
-        return activeId;
-      });
+      setSelectedCameraId((current) => current || (res.data.length > 0 ? res.data[0].id : ''));
     } catch (err: any) {
       toastError(err.message || 'Failed to load cameras');
     } finally {
       setIsLoading(false);
     }
-  }, [user?.hostelId, toastError, fetchStatusAndResults]);
+  }, [user?.hostelId, toastError]);
 
   useEffect(() => {
     fetchCameras();
@@ -205,6 +204,7 @@ export const RecognitionPage: React.FC = () => {
     if (!selectedCameraId) return;
 
     let isMounted = true;
+    const overlayTimers: number[] = [];
 
     // Close previous SSE connection and pending reconnect timer
     if (reconnectTimerRef.current) {
@@ -271,9 +271,9 @@ export const RecognitionPage: React.FC = () => {
             });
 
             // Clear overlay box after 2.5s
-            setTimeout(() => {
+            overlayTimers.push(window.setTimeout(() => {
               setActiveBoxes((prev) => prev.filter((b) => b.id !== obs.id));
-            }, 2500);
+            }, 2500));
           } catch (e) {
             console.error('Failed to parse SSE observation:', e);
           }
@@ -333,6 +333,7 @@ export const RecognitionPage: React.FC = () => {
 
     return () => {
       isMounted = false;
+      overlayTimers.forEach((timer) => window.clearTimeout(timer));
       if (reconnectTimerRef.current) {
         window.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
@@ -362,6 +363,8 @@ export const RecognitionPage: React.FC = () => {
         const canvas = document.createElement('canvas');
         canvas.width = Math.min(640, video.videoWidth);
         canvas.height = Math.min(480, video.videoHeight);
+        sourceFrameSizeRef.current = { width: canvas.width, height: canvas.height };
+        mediaSizeRef.current = { width: video.videoWidth, height: video.videoHeight };
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -407,11 +410,26 @@ export const RecognitionPage: React.FC = () => {
   useEffect(() => {
     if (!selectedCameraId) return;
 
+    let isCurrent = true;
+    let isRequestInFlight = false;
     const interval = setInterval(() => {
-      recognitionApi.getStatus(selectedCameraId).then(setSessionStatus).catch(() => {});
+      if (isRequestInFlight) return;
+      isRequestInFlight = true;
+      recognitionApi
+        .getStatus(selectedCameraId)
+        .then((status) => {
+          if (isCurrent) setSessionStatus(status);
+        })
+        .catch(() => {})
+        .finally(() => {
+          isRequestInFlight = false;
+        });
     }, 3000);
 
-    return () => clearInterval(interval);
+    return () => {
+      isCurrent = false;
+      clearInterval(interval);
+    };
   }, [selectedCameraId]);
 
   // 5. Draw bounding boxes on canvas overlay
@@ -420,6 +438,20 @@ export const RecognitionPage: React.FC = () => {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // Size the canvas to its displayed area and fit the media inside it the same way object-contain does.
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.round(rect.width));
+    canvas.height = Math.max(1, Math.round(rect.height));
+    const media = mediaSizeRef.current;
+    const frame = sourceFrameSizeRef.current;
+    const fitScale = Math.min(canvas.width / media.width, canvas.height / media.height);
+    const contentWidth = media.width * fitScale;
+    const contentHeight = media.height * fitScale;
+    const offsetX = (canvas.width - contentWidth) / 2;
+    const offsetY = (canvas.height - contentHeight) / 2;
+    const scaleX = contentWidth / frame.width;
+    const scaleY = contentHeight / frame.height;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -450,21 +482,26 @@ export const RecognitionPage: React.FC = () => {
         label = 'UNKNOWN';
       }
 
+      const x = offsetX + bbox.x * scaleX;
+      const y = offsetY + bbox.y * scaleY;
+      const width = bbox.width * scaleX;
+      const height = bbox.height * scaleY;
+
       ctx.strokeStyle = strokeColor;
       ctx.lineWidth = 3;
-      ctx.strokeRect(bbox.x, bbox.y, bbox.width, bbox.height);
+      ctx.strokeRect(x, y, width, height);
       ctx.fillStyle = fillColor;
-      ctx.fillRect(bbox.x, bbox.y, bbox.width, bbox.height);
+      ctx.fillRect(x, y, width, height);
 
       // Label background & text
       ctx.font = 'bold 12px Inter, system-ui, sans-serif';
       const textWidth = ctx.measureText(label).width;
-      const labelY = Math.max(16, bbox.y - 6);
+      const labelY = Math.max(16, y - 6);
 
       ctx.fillStyle = strokeColor;
-      ctx.fillRect(bbox.x, labelY - 14, textWidth + 8, 18);
+      ctx.fillRect(x, labelY - 14, textWidth + 8, 18);
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(label, bbox.x + 4, labelY);
+      ctx.fillText(label, x + 4, labelY);
     }
   }, [activeBoxes]);
 
@@ -503,8 +540,6 @@ export const RecognitionPage: React.FC = () => {
   const handleCameraChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
     setSelectedCameraId(id);
-    const cam = cameras.find((c) => c.id === id) || null;
-    setSelectedCamera(cam);
     setObservations([]);
     setActiveBoxes([]);
     setStreamError(null);
@@ -563,18 +598,27 @@ export const RecognitionPage: React.FC = () => {
   const latestResidentMatch = observations.find((o) => o.classification === 'MATCH' && o.resident);
   const isRunning = sessionStatus?.state === 'RUNNING';
 
+  const previewStreamUrl = usePreviewStreamUrl(isLaptopCameraActive ? null : selectedCameraId);
+
   useEffect(() => {
-    if (latestResidentMatch?.resident?.id) {
-      residentsApi
-        .getResident(latestResidentMatch.resident.id)
-        .then((res) => {
-          setActiveResidentDetails(res);
-          if (res.presence?.currentState) {
-            setActiveResidentPresence(res.presence.currentState);
-          }
-        })
-        .catch(() => {});
-    }
+    if (!latestResidentMatch?.resident?.id) return;
+
+    // Ignore a lookup that finishes after a newer match has replaced it.
+    let isCurrent = true;
+    residentsApi
+      .getResident(latestResidentMatch.resident.id)
+      .then((res) => {
+        if (!isCurrent) return;
+        setActiveResidentDetails(res);
+        if (res.presence?.currentState) {
+          setActiveResidentPresence(res.presence.currentState);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isCurrent = false;
+    };
   }, [latestResidentMatch?.resident?.id]);
 
   return (
@@ -791,8 +835,6 @@ export const RecognitionPage: React.FC = () => {
                   {/* Canvas Overlay for Bounding Boxes */}
                   <canvas
                     ref={canvasRef}
-                    width={640}
-                    height={480}
                     className="absolute inset-0 w-full h-full pointer-events-none"
                   />
                   <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow">
@@ -810,7 +852,7 @@ export const RecognitionPage: React.FC = () => {
               ) : selectedCameraId && !streamError ? (
                 <>
                   <img
-                    src={camerasApi.getPreviewStreamUrl(selectedCameraId)}
+                    src={previewStreamUrl || undefined}
                     alt="Live Camera Feed"
                     className="w-full h-full object-contain"
                     onError={() => setStreamError('Stream disconnected or unavailable')}
@@ -818,8 +860,6 @@ export const RecognitionPage: React.FC = () => {
                   {/* Canvas Overlay for Bounding Boxes */}
                   <canvas
                     ref={canvasRef}
-                    width={640}
-                    height={480}
                     className="absolute inset-0 w-full h-full pointer-events-none"
                   />
                   <button
@@ -941,7 +981,7 @@ export const RecognitionPage: React.FC = () => {
               <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-lg overflow-hidden border-2 border-slate-600 bg-slate-800 shrink-0 flex items-center justify-center shadow">
-                    <img
+                    <AuthenticatedImage
                       src={residentsApi.getProfilePhotoUrl(latestResidentMatch.resident.id)}
                       alt={latestResidentMatch.resident.fullName}
                       className="w-full h-full object-cover"
@@ -1050,7 +1090,7 @@ export const RecognitionPage: React.FC = () => {
                   </div>
                 ) : (
                   recentMovements.map((mov) => {
-                    const movTime = new Date(mov.effectiveTimestamp).toLocaleTimeString();
+                    const movTime = new Date(mov.effectiveTimestamp).toLocaleTimeString([], { timeZone: 'Asia/Kolkata' });
                     const isIN = mov.movementType === 'IN';
 
                     return (
@@ -1085,7 +1125,12 @@ export const RecognitionPage: React.FC = () => {
               </div>
             ) : (
               /* Scrollable Observations List */
-              <div className="feed-list p-3 overflow-y-auto flex-1 flex flex-col gap-2.5">
+              <div
+                className="feed-list p-3 overflow-y-auto flex-1 flex flex-col gap-2.5"
+                role="log"
+                aria-live="polite"
+                aria-label="Recognition events"
+              >
               {observations.length === 0 ? (
                 <div className="text-center py-12 text-slate-500 text-xs flex flex-col items-center">
                   <Eye size={32} className="mb-2 opacity-30" />
@@ -1107,7 +1152,7 @@ export const RecognitionPage: React.FC = () => {
                     ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
                     : 'bg-purple-500/10 text-purple-400 border-purple-500/30';
 
-                  const timeStr = new Date(obs.detectedAt).toLocaleTimeString();
+                  const timeStr = new Date(obs.detectedAt).toLocaleTimeString([], { timeZone: 'Asia/Kolkata' });
 
                   return (
                     <div
@@ -1128,7 +1173,7 @@ export const RecognitionPage: React.FC = () => {
                       {isMatch && obs.resident && (
                         <div className="resident-match-info mt-1 flex items-start gap-2.5">
                           <div className="w-10 h-10 rounded overflow-hidden border border-slate-700 bg-slate-800 shrink-0 flex items-center justify-center">
-                            <img
+                            <AuthenticatedImage
                               src={residentsApi.getProfilePhotoUrl(obs.resident.id)}
                               alt=""
                               className="w-full h-full object-cover"

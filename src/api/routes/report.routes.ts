@@ -8,6 +8,7 @@ import {
   ForbiddenError,
   ValidationError,
 } from '../../common/errors';
+import { intQuery, optionalIntQuery } from '../../common/utils/query-params';
 
 export function createReportRouter(
   db: PrismaClient = defaultPrisma,
@@ -35,8 +36,8 @@ export function createReportRouter(
       const actor = getActor(req);
       const query = req.query as any;
 
-      const page = query.page ? parseInt(query.page, 10) : 1;
-      const pageSize = query.pageSize ? parseInt(query.pageSize, 10) : 20;
+      const page = intQuery(query.page, 'page', 1);
+      const pageSize = intQuery(query.pageSize, 'pageSize', 20);
 
       const result = await service.getAttendanceSessionsReport(
         {
@@ -95,7 +96,7 @@ export function createReportRouter(
       }
 
       const query = req.query as any;
-      const days = query.days ? parseInt(query.days, 10) : undefined;
+      const days = optionalIntQuery(query.days, 'days');
 
       const trend = await service.getAttendanceTrend(
         {
@@ -144,8 +145,8 @@ export function createReportRouter(
       const actor = getActor(req);
       const query = req.query as any;
 
-      const page = query.page ? parseInt(query.page, 10) : 1;
-      const pageSize = query.pageSize ? parseInt(query.pageSize, 10) : 20;
+      const page = intQuery(query.page, 'page', 1);
+      const pageSize = intQuery(query.pageSize, 'pageSize', 20);
 
       const result = await service.getMovementHistory(
         {
@@ -180,7 +181,7 @@ export function createReportRouter(
         ? req.params.residentId[0]
         : req.params.residentId;
 
-      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+      const limit = intQuery(req.query.limit, 'limit', 50);
 
       const movements = await service.getResidentMovementHistory(residentId, actor, limit);
       res.status(200).json({ data: movements });

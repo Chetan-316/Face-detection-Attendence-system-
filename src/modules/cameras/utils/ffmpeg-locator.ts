@@ -5,6 +5,13 @@ import { execSync } from 'child_process';
 let cachedFfmpegPath: string | null = null;
 let cachedFfprobePath: string | null = null;
 
+// spawn() cannot run Windows .cmd/.bat shims without a shell (fails with EINVAL), so only real executables qualify.
+function pickExecutable(whereOutput: string, isWindows: boolean): string {
+  const lines = whereOutput.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (!isWindows) return lines[0] || '';
+  return lines.find((line) => line.toLowerCase().endsWith('.exe')) || '';
+}
+
 /**
  * Searches for FFmpeg and FFprobe binary locations across environment,
  * registry paths, WinGet packages, and standard fallback locations.
@@ -24,10 +31,10 @@ export function getFfmpegPath(): string {
   try {
     const isWindows = process.platform === 'win32';
     const checkCmd = isWindows ? 'where.exe ffmpeg' : 'which ffmpeg';
-    const output = execSync(checkCmd, { stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString()
-      .split(/\r?\n/)[0]
-      .trim();
+    const output = pickExecutable(
+      execSync(checkCmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString(),
+      isWindows
+    );
 
     if (output && fs.existsSync(output)) {
       cachedFfmpegPath = output;
@@ -102,10 +109,10 @@ export function getFfprobePath(): string {
   try {
     const isWindows = process.platform === 'win32';
     const checkCmd = isWindows ? 'where.exe ffprobe' : 'which ffprobe';
-    const output = execSync(checkCmd, { stdio: ['ignore', 'pipe', 'ignore'] })
-      .toString()
-      .split(/\r?\n/)[0]
-      .trim();
+    const output = pickExecutable(
+      execSync(checkCmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString(),
+      isWindows
+    );
 
     if (output && fs.existsSync(output)) {
       cachedFfprobePath = output;

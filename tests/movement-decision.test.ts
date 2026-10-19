@@ -19,6 +19,8 @@ import {
 } from '@prisma/client';
 import { RecognitionObservation } from '../src/modules/recognition/recognition.types';
 
+const TRANSITION_INTERVAL_MS = 5000;
+
 describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
   let movementDecisionService: MovementDecisionService;
   let movementService: MovementService;
@@ -43,7 +45,7 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     movementService = new MovementService(testPrisma);
     movementDecisionService = new MovementDecisionService(testPrisma, movementService, {
       globalAutomationEnabled: true,
-      minTransitionIntervalMs: 5000,
+      minTransitionIntervalMs: TRANSITION_INTERVAL_MS,
     });
     residentService = new ResidentService(testPrisma);
     app = createApp(testPrisma, { movementDecisionService });
@@ -258,13 +260,12 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
   });
 
   // Test 54: SAME CAMERA TOGGLES OUT
-  it('54: same automatic gate toggles resident from IN -> OUT on the next appearance', async () => {
+  it('54: same automatic gate toggles resident from IN -> OUT once the transition interval has elapsed', async () => {
     const resident = await createTestResident('R_IN_2', PresenceState.IN);
-    // Even if the previous movement was moments ago, a new recognized appearance
-    // in TOGGLE mode must change state immediately.
+    // The rapid-transition guard applies to TOGGLE as well, so the last movement must be older than the interval.
     await testPrisma.residentPresence.update({
       where: { residentId: resident.id },
-      data: { lastMovementTime: new Date() },
+      data: { lastMovementTime: new Date(Date.now() - TRANSITION_INTERVAL_MS - 1000) },
     });
     const obs = createObservation(inCameraId, resident, 'MATCH');
 
@@ -278,6 +279,25 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
       where: { residentId: resident.id },
     });
     expect(presence?.currentState).toBe(PresenceState.OUT);
+  });
+
+  // Test 54a: TOGGLE honours the rapid-transition guard
+  it('54a: TOGGLE suppresses a flip inside the minimum transition interval (Result = TRANSITION_SUPPRESSED)', async () => {
+    const resident = await createTestResident('R_IN_2A', PresenceState.IN);
+    await testPrisma.residentPresence.update({
+      where: { residentId: resident.id },
+      data: { lastMovementTime: new Date(Date.now() - 1000) },
+    });
+
+    const decision = await movementDecisionService.evaluateObservation(
+      createObservation(inCameraId, resident, 'MATCH')
+    );
+
+    expect(decision.status).toBe('TRANSITION_SUPPRESSED');
+    const presence = await testPrisma.residentPresence.findUnique({
+      where: { residentId: resident.id },
+    });
+    expect(presence?.currentState).toBe(PresenceState.IN);
   });
 
   // Test 55: OUT TRANSITION
@@ -587,7 +607,9 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     const decision = await movementDecisionService.evaluateObservation(obs);
 
     expect(decision.status).toBe('ERROR');
-    expect(decision.reason).toContain('Simulated atomic failure');
+    // Callers get a fixed code; the underlying error detail stays in the server log.
+    expect(decision.reason).toBe('MOVEMENT_RECORD_FAILED');
+    expect(decision.reason).not.toContain('Simulated atomic failure');
 
     // Assert that no partial records were persisted
     const movementCount = await testPrisma.movementEvent.count({
@@ -619,7 +641,8 @@ describe('Step 07: Movement Decision Engine & Gate Automation Tests', () => {
     const decision = await movementDecisionService.evaluateObservation(obs);
 
     expect(decision.status).toBe('ERROR');
-    expect(decision.reason).toContain('Simulated atomic failure');
+    expect(decision.reason).toBe('MOVEMENT_RECORD_FAILED');
+    expect(decision.reason).not.toContain('Simulated atomic failure');
 
     // CRITICAL: No MovementEvent must exist
     const movementCount = await testPrisma.movementEvent.count({

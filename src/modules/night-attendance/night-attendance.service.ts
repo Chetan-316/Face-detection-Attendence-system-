@@ -177,7 +177,6 @@ export class NightAttendanceService {
       if (!resident.presence) {
         throw new NotFoundError('ResidentPresence', input.residentId);
       }
-
       // Cross-hostel safety
       if (resident.hostelId !== session.hostelId || resident.presence.hostelId !== session.hostelId) {
         throw new DomainIntegrityError(
@@ -205,6 +204,14 @@ export class NightAttendanceService {
         throw new ConflictError(
           `Resident '${resident.residentCode}' already has an attendance record in session '${session.title}'`
         );
+      }
+
+      // A return cannot be backdated before the resident's last recorded movement (departure)
+      if (
+        resident.presence.lastMovementTime &&
+        input.effectiveReturnTime.getTime() < resident.presence.lastMovementTime.getTime()
+      ) {
+        throw new ValidationError('Effective return time cannot be before the resident last left the hostel');
       }
 
       // 4. Execute Warden Missed IN correction INSIDE this atomic transaction

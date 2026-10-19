@@ -66,17 +66,32 @@ export class PresenceService {
     };
   }
 
-  public async listResidentsByPresence(hostelId: string, state: PresenceState) {
+  public async listResidentsByPresence(
+    hostelId: string,
+    state: PresenceState,
+    options: { take?: number; cursor?: string } = {}
+  ) {
+    const take = Math.min(Math.max(options.take ?? 100, 1), 500);
     return this.db.residentPresence.findMany({
       where: {
         hostelId,
         currentState: state,
       },
       include: {
-        resident: true,
+        resident: {
+          select: {
+            id: true,
+            residentCode: true,
+            fullName: true,
+            roomGroup: true,
+            status: true,
+          },
+        },
         lastMovementEvent: true,
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ updatedAt: 'desc' }, { residentId: 'desc' }],
+      take,
+      ...(options.cursor ? { cursor: { residentId: options.cursor }, skip: 1 } : {}),
     });
   }
 }

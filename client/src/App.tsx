@@ -52,7 +52,14 @@ export const App: React.FC = () => {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<OverviewPage />} />
+              <Route
+                index
+                element={
+                  <RoleRoute allowed={['ADMIN', 'WARDEN']}>
+                    <OverviewPage />
+                  </RoleRoute>
+                }
+              />
 
               <Route
                 path="residents"
@@ -120,7 +127,7 @@ export const App: React.FC = () => {
               <Route
                 path="recognition"
                 element={
-                  <RoleRoute allowed={['ADMIN']}>
+                  <RoleRoute allowed={['ADMIN', 'WARDEN']}>
                     <RecognitionPage />
                   </RoleRoute>
                 }

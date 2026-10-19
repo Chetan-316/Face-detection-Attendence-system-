@@ -3,16 +3,11 @@ import { PrismaClient, StaffRole, CameraSourceType, CameraRole } from '@prisma/c
 import { z } from 'zod';
 import { CameraService } from '../../modules/cameras/camera.service';
 import { createAuthMiddleware } from '../middleware/auth.middleware';
-import { tokenService } from '../auth/token.service';
 import {
-  AuthenticationError,
-  NotFoundError,
   PermissionDeniedError,
   ValidationError,
 } from '../../common/errors';
-import {
-  assertUserCanOperateInOrganization,
-} from '../../modules/auth/permissions';
+import { requireHostelScope } from '../middleware/scope';
 import { toSafeCameraDto } from '../../modules/cameras/utils/camera-dto';
 import { testCameraConnection } from '../../modules/cameras/utils/camera-connection-test';
 import { config } from '../../config';
@@ -50,7 +45,7 @@ export function createCameraRouter(
   cameraService: CameraService = new CameraService(db)
 ) {
   const router = Router();
-  const { requireAuth, requireRole } = createAuthMiddleware(db);
+  const { requireAuth, requireRole, requireCameraPreviewAuth, watchSessionRevocation } = createAuthMiddleware(db);
 
   function extractId(param: string | string[]): string {
     return Array.isArray(param) ? param[0] : param;
@@ -62,63 +57,8 @@ export function createCameraRouter(
   async function resolveAndAuthorizeCamera(req: Request, paramId: string | string[]) {
     const cameraId = extractId(paramId);
     const user = req.user!;
-    const camera = await cameraService.getCamera(cameraId);
-
-    assertUserCanOperateInOrganization(user, camera.organizationId);
-
-    if (user.role === StaffRole.WARDEN || user.role === StaffRole.GUARD) {
-      if (user.hostelId && camera.hostelId !== user.hostelId) {
-        throw new NotFoundError('Camera', cameraId);
-      }
-    }
-
-    return camera;
-  }
-
-  /**
-   * Streaming authentication helper:
-   * Accepts standard Authorization header OR query parameter '?token=...'
-   * for standard <img> and <video> media tag streaming.
-   */
-  async function authenticateStreamRequest(req: Request, res: Response, next: NextFunction) {
-    try {
-      let token: string | undefined;
-
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7).trim();
-      } else if (typeof req.query.token === 'string') {
-        token = req.query.token.trim();
-      }
-
-      if (!token) {
-        throw new AuthenticationError('Authentication token is required for camera stream');
-      }
-
-      const payload = tokenService.verifyToken(token);
-      const user = await db.user.findUnique({
-        where: { id: payload.sub },
-      });
-
-      if (!user || user.status !== 'ACTIVE') {
-        throw new AuthenticationError('User is not authorized or inactive');
-      }
-
-      req.user = {
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        organizationId: user.organizationId,
-        hostelId: user.hostelId,
-        status: user.status,
-      };
-
-      next();
-    } catch (err) {
-      next(err);
-    }
+    const scopeHostelId = requireHostelScope(user);
+    return cameraService.assertCameraInScope(cameraId, scopeHostelId, user.organizationId);
   }
 
   // 1. GET /api/v1/cameras - List cameras in scope
@@ -464,7 +404,7 @@ export function createCameraRouter(
   // 9. GET /api/v1/cameras/:id/preview - Live MJPEG Preview Stream
   router.get(
     '/:id/preview',
-    authenticateStreamRequest,
+    requireCameraPreviewAuth,
     async (req: Request, res: Response, next: NextFunction) => {
       try {
         const camera = await resolveAndAuthorizeCamera(req, req.params.id);
@@ -508,12 +448,18 @@ export function createCameraRouter(
           }
         });
 
+        const stopRevocationWatch = watchSessionRevocation(req.user!, () => {
+          res.end();
+        });
+
         // Clean cleanup on client disconnect
         req.on('close', () => {
+          stopRevocationWatch();
           unsubscribe();
         });
 
         res.on('finish', () => {
+          stopRevocationWatch();
           unsubscribe();
         });
       } catch (err) {

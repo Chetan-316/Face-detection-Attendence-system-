@@ -543,6 +543,12 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
         },
       });
 
+      const tokenRes = await request(app)
+        .post(`/api/v1/cameras/${camera.id}/stream-token`)
+        .set('Authorization', `Bearer ${wardenToken}`);
+      expect(tokenRes.status).toBe(200);
+      const streamToken = tokenRes.body.streamToken;
+
       const http = await import('http');
       const server = http.createServer(app);
 
@@ -555,7 +561,7 @@ describe('Step 10: Production RTSP Camera Streaming & Decoupled Hardware Pipelin
           }
 
           const req = http.get(
-            `http://localhost:${address.port}/api/v1/cameras/${camera.id}/preview?token=${wardenToken}`,
+            `http://localhost:${address.port}/api/v1/cameras/${camera.id}/preview?streamToken=${streamToken}`,
             (res) => {
               try {
                 expect(res.statusCode).toBe(200);

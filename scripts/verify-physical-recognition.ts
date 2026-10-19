@@ -15,7 +15,6 @@ import { TemplateMatcher } from '../src/modules/recognition/template-matcher';
 import { TemplateCache } from '../src/modules/recognition/template-cache';
 import { TemporalStabilizer } from '../src/modules/recognition/temporal-stabilizer';
 import { config } from '../src/config';
-import cv2 from 'opencv4nodejs-prebuilt'; // or opencv via python worker
 
 const prisma = new PrismaClient();
 const workerClient = new PythonWorkerClient();
@@ -26,8 +25,8 @@ const matcher = new TemplateMatcher({
   minMargin: config.recognition.minMargin,
 });
 const stabilizer = new TemporalStabilizer({
-  minConsistentObservations: 3,
-  observationWindowSize: 5,
+  minConsistentFrames: 3,
+  windowSize: 5,
   cooldownMs: config.recognition.cooldownMs,
   trackTimeoutMs: 5000,
 });
@@ -145,7 +144,7 @@ async function run() {
 
     // Invalidate and reload template cache
     templateCache.invalidate(hostel.id);
-    const cachedTemplates = await templateCache.getTemplatesForHostel(hostel.id);
+    const cachedTemplates = await templateCache.getTemplatesForHostel(hostel.id, hostel.organizationId);
     console.log(`Loaded ${cachedTemplates.length} eligible template(s) into cache for Hostel ${hostel.code}`);
 
     // TEST A: Enrolled Person MATCH
@@ -213,7 +212,7 @@ async function run() {
       data: { faceEnrollmentStatus: FaceEnrollmentStatus.REVOKED },
     });
     templateCache.invalidate(hostel.id);
-    const refreshedTemplates = await templateCache.getTemplatesForHostel(hostel.id);
+    const refreshedTemplates = await templateCache.getTemplatesForHostel(hostel.id, hostel.organizationId);
     console.log(`Templates in cache after revocation: ${refreshedTemplates.length}`);
     const matchResE = matcher.match(residentAVector, refreshedTemplates);
     console.log(`Presenting same face again -> Classification: ${matchResE.classification}, Resident: ${matchResE.resident?.fullName ?? 'null'}`);

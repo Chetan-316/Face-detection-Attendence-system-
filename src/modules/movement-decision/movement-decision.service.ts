@@ -167,8 +167,8 @@ export class MovementDecisionService {
     }
 
     // 3. Camera Role & Capability Validation
-    const camera = await this.db.camera.findUnique({
-      where: { id: observation.cameraId },
+    const camera = await this.db.camera.findFirst({
+      where: { id: observation.cameraId, deletedAt: null },
     });
 
     if (!camera || !camera.isEnabled) {
@@ -280,142 +280,137 @@ export class MovementDecisionService {
       };
     }
 
-    // 8. Inspect Current Authoritative ResidentPresence State
-    const currentPresence = await this.db.residentPresence.findUnique({
-      where: { residentId: resident.id },
-    });
+    // 8. Read presence, decide direction, and record the movement under one row lock.
+    // Without the lock, two concurrent recognitions for one resident could both read the
+    // same state and both toggle from it.
+    let outcome: MovementDecisionResult;
+    try {
+      outcome = await this.db.$transaction(async (tx): Promise<MovementDecisionResult> => {
+        await tx.$queryRaw`SELECT 1 FROM "resident_presences" WHERE "residentId" = ${resident.id} FOR UPDATE`;
 
-    const currentState = currentPresence?.currentState ?? null;
-    const movementMode = cameraConfig.movementMode === 'ROLE' ? 'ROLE' : 'TOGGLE';
-    const targetDirection: MovementType =
-      movementMode === 'TOGGLE'
-        ? currentState === PresenceState.IN
-          ? MovementType.OUT
-          : MovementType.IN
-        : camera.role === CameraRole.IN
-          ? MovementType.IN
-          : MovementType.OUT;
+        const currentPresence = await tx.residentPresence.findUnique({
+          where: { residentId: resident.id },
+        });
 
-    // New residents default to IN on their first automatic-gate recognition.
-    // The refusal below remains only for explicit legacy ROLE-mode OUT cameras.
-    if (!currentPresence && targetDirection === MovementType.OUT) {
-      return {
-        status: 'INITIAL_PRESENCE_MISSING',
-        cameraId: camera.id,
-        cameraRole: camera.role,
-        residentId: resident.id,
-        residentCode: resident.residentCode,
-        residentName: resident.fullName,
-        timestamp,
-        reason: 'No prior presence record found; automatic OUT movement refused',
-      };
-    }
+        const currentState = currentPresence?.currentState ?? null;
+        const movementMode = cameraConfig.movementMode === 'ROLE' ? 'ROLE' : 'TOGGLE';
+        const targetDirection: MovementType =
+          movementMode === 'TOGGLE'
+            ? currentState === PresenceState.IN
+              ? MovementType.OUT
+              : MovementType.IN
+            : camera.role === CameraRole.IN
+              ? MovementType.IN
+              : MovementType.OUT;
 
-    // 9. Duplicate State Suppression (used only by legacy ROLE mode)
-    if (currentState === PresenceState.IN && targetDirection === MovementType.IN) {
-      const result: MovementDecisionResult = {
-        status: 'ALREADY_IN',
-        direction: MovementType.IN,
-        residentId: resident.id,
-        residentCode: resident.residentCode,
-        residentName: resident.fullName,
-        previousPresence: PresenceState.IN,
-        currentPresence: PresenceState.IN,
-        cameraId: camera.id,
-        cameraRole: camera.role,
-        timestamp,
-        reason: 'Resident is already recorded as IN; duplicate movement suppressed',
-      };
-      if (observationId) this.cacheResult(observationId, result);
-      return result;
-    }
+        // New residents default to IN on their first automatic-gate recognition.
+        // The refusal below remains only for explicit legacy ROLE-mode OUT cameras.
+        if (!currentPresence && targetDirection === MovementType.OUT) {
+          return {
+            status: 'INITIAL_PRESENCE_MISSING',
+            cameraId: camera.id,
+            cameraRole: camera.role,
+            residentId: resident.id,
+            residentCode: resident.residentCode,
+            residentName: resident.fullName,
+            timestamp,
+            reason: 'No prior presence record found; automatic OUT movement refused',
+          };
+        }
 
-    if (currentState === PresenceState.OUT && targetDirection === MovementType.OUT) {
-      const result: MovementDecisionResult = {
-        status: 'ALREADY_OUT',
-        direction: MovementType.OUT,
-        residentId: resident.id,
-        residentCode: resident.residentCode,
-        residentName: resident.fullName,
-        previousPresence: PresenceState.OUT,
-        currentPresence: PresenceState.OUT,
-        cameraId: camera.id,
-        cameraRole: camera.role,
-        timestamp,
-        reason: 'Resident is already recorded as OUT; duplicate movement suppressed',
-      };
-      if (observationId) this.cacheResult(observationId, result);
-      return result;
-    }
+        // 9. Duplicate State Suppression (used only by legacy ROLE mode)
+        if (currentState === PresenceState.IN && targetDirection === MovementType.IN) {
+          return {
+            status: 'ALREADY_IN',
+            direction: MovementType.IN,
+            residentId: resident.id,
+            residentCode: resident.residentCode,
+            residentName: resident.fullName,
+            previousPresence: PresenceState.IN,
+            currentPresence: PresenceState.IN,
+            cameraId: camera.id,
+            cameraRole: camera.role,
+            timestamp,
+            reason: 'Resident is already recorded as IN; duplicate movement suppressed',
+          };
+        }
 
-    // 10. Rapid Camera Transition Guard
-    // Single-camera TOGGLE mode already has stronger per-appearance deduplication in
-    // TemporalStabilizer. Do not block the first valid recognition with a timer.
-    // Keep this guard only for legacy ROLE mode (separate IN/OUT cameras).
-    if (movementMode === 'ROLE' && currentPresence?.lastMovementTime) {
-      const elapsedMs =
-        Date.now() - new Date(currentPresence.lastMovementTime).getTime();
-      if (elapsedMs < this.minTransitionIntervalMs) {
-        const result: MovementDecisionResult = {
-          status: 'TRANSITION_SUPPRESSED',
+        if (currentState === PresenceState.OUT && targetDirection === MovementType.OUT) {
+          return {
+            status: 'ALREADY_OUT',
+            direction: MovementType.OUT,
+            residentId: resident.id,
+            residentCode: resident.residentCode,
+            residentName: resident.fullName,
+            previousPresence: PresenceState.OUT,
+            currentPresence: PresenceState.OUT,
+            cameraId: camera.id,
+            cameraRole: camera.role,
+            timestamp,
+            reason: 'Resident is already recorded as OUT; duplicate movement suppressed',
+          };
+        }
+
+        // 10. Rapid Transition Guard, for TOGGLE and ROLE modes. It reads the persisted last
+        // movement time, so it still holds after a restart clears the in-memory episode lock
+        // in TemporalStabilizer. The first recognition of a resident has no presence row yet.
+        if (currentPresence?.lastMovementTime) {
+          const elapsedMs = Date.now() - new Date(currentPresence.lastMovementTime).getTime();
+          if (elapsedMs < this.minTransitionIntervalMs) {
+            return {
+              status: 'TRANSITION_SUPPRESSED',
+              residentId: resident.id,
+              residentCode: resident.residentCode,
+              residentName: resident.fullName,
+              previousPresence: currentPresence.currentState,
+              currentPresence: currentPresence.currentState,
+              cameraId: camera.id,
+              cameraRole: camera.role,
+              timestamp,
+              reason: `Rapid opposite transition suppressed: only ${elapsedMs}ms elapsed since last movement (minimum threshold: ${this.minTransitionIntervalMs}ms)`,
+            };
+          }
+        }
+
+        // 11. Record the movement inside this transaction. MovementService takes the external
+        // client, so its presence update happens under the lock acquired above.
+        const movementEvent = await this.movementService.recordNormalMovement(
+          {
+            residentId: resident.id,
+            movementType: targetDirection,
+            hostelId: camera.hostelId,
+            locationId: camera.locationId,
+            cameraId: camera.id,
+            source: MovementSource.FACE_RECOGNITION,
+            performedByUserId: null,
+            performedByRole: null,
+            notes:
+              movementMode === 'TOGGLE'
+                ? `Automatic single-camera presence toggle at ${camera.name}`
+                : `Automated face recognition at ${camera.name} (${camera.role})`,
+            recognitionReference: observationId || null,
+            effectiveTimestamp: new Date(),
+          },
+          tx
+        );
+
+        const newPresence =
+          targetDirection === MovementType.IN ? PresenceState.IN : PresenceState.OUT;
+
+        return {
+          status: 'MOVEMENT_CREATED',
+          direction: targetDirection,
+          movementEventId: movementEvent.id,
           residentId: resident.id,
           residentCode: resident.residentCode,
           residentName: resident.fullName,
-          previousPresence: currentState!,
-          currentPresence: currentState!,
+          previousPresence: currentState ?? PresenceState.OUT,
+          currentPresence: newPresence,
           cameraId: camera.id,
           cameraRole: camera.role,
-          timestamp,
-          reason: `Rapid opposite transition suppressed: only ${elapsedMs}ms elapsed since last movement (minimum threshold: ${this.minTransitionIntervalMs}ms)`,
+          timestamp: movementEvent.effectiveTimestamp.toISOString(),
         };
-        if (observationId) this.cacheResult(observationId, result);
-        return result;
-      }
-    }
-
-    // 11. Commit Atomic Movement Transaction via MovementService
-    // MovementService handles: SELECT FOR UPDATE, atomic presence init (if first IN),
-    // MovementEvent creation, ResidentPresence update, AuditLog — all in ONE transaction.
-    try {
-      const movementEvent = await this.movementService.recordNormalMovement({
-        residentId: resident.id,
-        movementType: targetDirection,
-        hostelId: camera.hostelId,
-        locationId: camera.locationId,
-        cameraId: camera.id,
-        source: MovementSource.FACE_RECOGNITION,
-        performedByUserId: null,
-        performedByRole: null,
-        notes:
-          movementMode === 'TOGGLE'
-            ? `Automatic single-camera presence toggle at ${camera.name}`
-            : `Automated face recognition at ${camera.name} (${camera.role})`,
-        recognitionReference: observationId || null,
-        effectiveTimestamp: new Date(),
       });
-
-      const newPresence =
-        targetDirection === MovementType.IN ? PresenceState.IN : PresenceState.OUT;
-
-      const result: MovementDecisionResult = {
-        status: 'MOVEMENT_CREATED',
-        direction: targetDirection,
-        movementEventId: movementEvent.id,
-        residentId: resident.id,
-        residentCode: resident.residentCode,
-        residentName: resident.fullName,
-        previousPresence: currentState ?? PresenceState.OUT,
-        currentPresence: newPresence,
-        cameraId: camera.id,
-        cameraRole: camera.role,
-        timestamp: movementEvent.effectiveTimestamp.toISOString(),
-      };
-
-      if (observationId) {
-        this.cacheResult(observationId, result);
-      }
-
-      return result;
     } catch (err: any) {
       // Catch DB-level unique constraint violation on recognitionReference (P2002)
       // This is the final safety net for concurrent writes that pass all prior checks.
@@ -458,6 +453,7 @@ export class MovementDecisionService {
       }
 
       console.error(`[MovementDecisionService] Error recording movement for resident ${resident.id}:`, err);
+      // Fixed code for callers. The underlying error detail stays in the server log.
       return {
         status: 'ERROR',
         cameraId: camera.id,
@@ -466,9 +462,15 @@ export class MovementDecisionService {
         residentCode: resident.residentCode,
         residentName: resident.fullName,
         timestamp,
-        reason: err.message || 'Database error during movement execution',
+        reason: 'MOVEMENT_RECORD_FAILED',
       };
     }
+
+    // Initial-presence refusals stay uncached so a later recognition can succeed once presence exists.
+    if (observationId && outcome.status !== 'INITIAL_PRESENCE_MISSING') {
+      this.cacheResult(observationId, outcome);
+    }
+    return outcome;
   }
 
   private cacheResult(observationId: string, result: MovementDecisionResult): void {

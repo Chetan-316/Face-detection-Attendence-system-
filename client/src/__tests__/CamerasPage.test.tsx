@@ -148,7 +148,7 @@ describe('Cameras page product workflow', () => {
     expect(
       screen.getByText('Connect gate cameras, check their status, and confirm the live view.')
     ).toBeInTheDocument();
-    expect(screen.getByText(/Camera setup is simple:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Camera setup:/i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getAllByText('Laptop Webcam').length).toBeGreaterThan(0);
@@ -211,5 +211,26 @@ describe('Cameras page product workflow', () => {
     expect(text).not.toContain('embedding');
     expect(text).not.toContain('yolo detection');
     expect(text).not.toContain('confidence score');
+  });
+
+  it('keeps an OUT gate camera as OUT when its settings are saved', async () => {
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByText('Main Gate IP Camera')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Main Gate IP Camera'));
+    fireEvent.click(await screen.findByRole('button', { name: /^edit$/i }));
+
+    expect(screen.getByLabelText('Camera Purpose')).toHaveValue('OUT');
+
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => {
+      expect(camerasApi.updateCamera).toHaveBeenCalledWith(
+        'cam-gate-2',
+        expect.objectContaining({ role: 'OUT' })
+      );
+    });
   });
 });

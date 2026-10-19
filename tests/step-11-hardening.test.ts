@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest';
 import request from 'supertest';
 import { PrismaClient, StaffRole, CameraSourceType, CameraRole, ResidentStatus, FaceEnrollmentStatus } from '@prisma/client';
 import { createApp } from '../src/api/app';
@@ -13,6 +13,7 @@ import { AttendanceRecognitionBridge } from '../src/modules/attendance-decision/
 import { PythonWorkerClient } from '../src/modules/biometrics/python-worker-client';
 import { tokenService } from '../src/api/auth/token.service';
 import { config } from '../src/config';
+import { createTestPrismaClient } from './helpers/test-db';
 
 describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', () => {
   let db: PrismaClient;
@@ -24,9 +25,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
   let wardenToken: string;
 
   beforeAll(async () => {
-    db = new PrismaClient({
-      datasources: { db: { url: config.testDatabaseUrl } },
-    });
+    db = createTestPrismaClient();
     await db.$connect();
 
     // Setup base organization and hostel fixtures
@@ -89,7 +88,6 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
       await db.movementEvent.deleteMany({ where: { hostelId: testHostel.id } });
       await db.camera.deleteMany({ where: { organizationId: testOrg.id } });
       await db.resident.deleteMany({ where: { organizationId: testOrg.id } });
-      await db.auditLog.deleteMany({ where: { organizationId: testOrg.id } });
       await db.user.deleteMany({ where: { organizationId: testOrg.id } });
       await db.hostel.deleteMany({ where: { organizationId: testOrg.id } });
       await db.organization.deleteMany({ where: { id: testOrg.id } });
@@ -164,6 +162,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('READY');
 
+      await db.movementEvent.deleteMany({ where: { cameraId: offlineCam.id } });
       await db.camera.delete({ where: { id: offlineCam.id } });
     });
 
@@ -256,13 +255,30 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
   // 4. PRODUCTION SAFETY GUARDS (Req 75, 76, 77)
   // --------------------------------------------------------------------------
   describe('Production Environment Safety Guards', () => {
+    const CHECKSUM_KEYS = ['YUNET_MODEL_SHA256', 'SFACE_MODEL_SHA256'];
+    const originalChecksums: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+      for (const key of CHECKSUM_KEYS) {
+        originalChecksums[key] = process.env[key];
+        process.env[key] = 'a'.repeat(64);
+      }
+    });
+
+    afterEach(() => {
+      for (const key of CHECKSUM_KEYS) {
+        if (originalChecksums[key] === undefined) delete process.env[key];
+        else process.env[key] = originalChecksums[key];
+      }
+    });
+
     it('rejects startup in production if default dev JWT_SECRET is configured', () => {
       const origEnv = process.env.NODE_ENV;
       const origJwt = config.jwtSecret;
 
       try {
         process.env.NODE_ENV = 'production';
-        config.jwtSecret = 'dev_secret_pravahax_attendance_movement_2026_key';
+        config.jwtSecret = 'dev_secret_guard_fixture_not_a_real_key_0123456789';
 
         const lifecycle = new LifecycleManager(db);
         expect(() => lifecycle.validateEnvironment()).toThrow(
@@ -455,6 +471,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
 
     afterAll(async () => {
       try {
+        await db.movementEvent.deleteMany({ where: { cameraId: testCamera.id } });
         await db.camera.delete({ where: { id: testCamera.id } });
       } catch {}
     });
@@ -578,6 +595,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
     afterAll(async () => {
       try {
         await db.resident.delete({ where: { id: inactiveResident.id } });
+        await db.movementEvent.deleteMany({ where: { cameraId: gateCamera.id } });
         await db.camera.delete({ where: { id: gateCamera.id } });
       } catch {}
     });
@@ -669,6 +687,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
       expect(records.length).toBe(0);
 
       await db.attendanceSession.delete({ where: { id: session.id } });
+      await db.movementEvent.deleteMany({ where: { cameraId: attCamera.id } });
       await db.camera.delete({ where: { id: attCamera.id } });
     });
   });
@@ -812,6 +831,7 @@ describe('Step 11: Production Hardening, Recovery & System Acceptance Tests', ()
       const rawJson = JSON.stringify(res.body);
       expect(rawJson).not.toContain('TopSecretPassword123');
 
+      await db.movementEvent.deleteMany({ where: { cameraId: cam.id } });
       await db.camera.delete({ where: { id: cam.id } });
     });
   });

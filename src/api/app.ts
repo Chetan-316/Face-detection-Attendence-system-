@@ -27,6 +27,7 @@ import { ReportService } from '../modules/reports/report.service';
 import { createReportRouter } from './routes/report.routes';
 import { createStaffRouter } from './routes/staff.routes';
 import { createFacilityRouter } from './routes/facility.routes';
+import { createStreamTokenRouter } from './routes/stream-token.routes';
 
 export interface CreateAppOptions {
   enrollmentService?: EnrollmentService;
@@ -39,6 +40,15 @@ export interface CreateAppOptions {
   attendanceDecisionService?: AttendanceDecisionService;
   attendanceBridge?: AttendanceRecognitionBridge;
   reportService?: ReportService;
+}
+
+function normalizeOrigin(value: string): string {
+  if (value === '*') return value;
+  try {
+    return new URL(value).origin;
+  } catch {
+    return value;
+  }
 }
 
 export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppOptions) {
@@ -79,22 +89,17 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   // Basic Security & HTTP Headers
   app.use(helmet());
 
-  // CORS configuration: Allow explicit origins, any vercel.app preview/production deployment, and localhost
-  const rawOrigins = process.env.CORS_ORIGIN
-    ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
-    : [];
+  // CORS: exact origin match against the explicit CORS_ORIGIN list only
+  const allowedOrigins = (process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : [])
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(normalizeOrigin);
 
   app.use(
     cors({
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        if (
-          rawOrigins.includes('*') ||
-          rawOrigins.includes(origin) ||
-          origin.endsWith('.vercel.app') ||
-          origin.includes('localhost') ||
-          origin.includes('127.0.0.1')
-        ) {
+        if (allowedOrigins.includes('*') || allowedOrigins.includes(normalizeOrigin(origin))) {
           return callback(null, true);
         }
         callback(new Error(`Origin '${origin}' not allowed by CORS`));
@@ -141,6 +146,7 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
   app.use('/api/v1/auth', createAuthRouter(db));
   app.use('/api/v1/residents', createResidentRouter(db, options?.enrollmentService, cameraService));
   app.use('/api/v1/cameras', createCameraRouter(db, cameraService));
+  app.use('/api/v1/cameras', createStreamTokenRouter(db, cameraService));
   app.use('/api/v1/cameras', createRecognitionRouter(db, recognitionService));
   app.use('/api/v1/biometrics', createBiometricRouter(db, options?.biometricService));
   app.use('/api/v1/movements', createMovementRouter(db, movementDecisionService));
@@ -173,6 +179,20 @@ export function createApp(db: PrismaClient = defaultPrisma, options?: CreateAppO
           message: err.message,
           details: err.details || {},
         },
+      });
+      return;
+    }
+
+    // Body-parser errors: malformed JSON is a client error, oversized bodies are 413
+    if (err?.type === 'entity.parse.failed') {
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Malformed JSON request body', details: {} },
+      });
+      return;
+    }
+    if (err?.type === 'entity.too.large') {
+      res.status(413).json({
+        error: { code: 'PAYLOAD_TOO_LARGE', message: 'Request body exceeds the size limit', details: {} },
       });
       return;
     }

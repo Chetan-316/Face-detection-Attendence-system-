@@ -529,6 +529,18 @@ describe('Step 06: Continuous Face Recognition Engine Tests', () => {
 
   describe('4. Side-Effect Isolation (Observation Only)', () => {
     it('confirms recognition DOES NOT alter ResidentPresence, MovementEvent, or AttendanceRecord', async () => {
+      // GENERAL cameras are observation-only; IN/OUT gates route stable matches into movement automation.
+      const observationCamera = await testPrisma.camera.create({
+        data: {
+          organizationId: org.id,
+          hostelId: hostel1.id,
+          name: 'Observation Only Camera',
+          sourceType: CameraSourceType.WEBCAM,
+          role: CameraRole.GENERAL,
+          isEnabled: true,
+          healthStatus: 'ONLINE',
+        },
+      });
       const initialMovements = await testPrisma.movementEvent.count();
       const initialAttendance = await testPrisma.attendanceRecord.count();
       const presenceBefore = await testPrisma.residentPresence.findUnique({
@@ -537,7 +549,7 @@ describe('Step 06: Continuous Face Recognition Engine Tests', () => {
 
       // Start recognition and process matching frames
       await request(app)
-        .post(`/api/v1/cameras/${testCamera.id}/recognition/start`)
+        .post(`/api/v1/cameras/${observationCamera.id}/recognition/start`)
         .set('Authorization', `Bearer ${wardenToken}`);
 
       vi.spyOn(mockWorkerClient, 'extractFaces').mockResolvedValue({
@@ -554,8 +566,8 @@ describe('Step 06: Continuous Face Recognition Engine Tests', () => {
       });
 
       for (let i = 0; i < 3; i++) {
-        await recognitionService.handleCameraFrame(testCamera.id, {
-          cameraId: testCamera.id,
+        await recognitionService.handleCameraFrame(observationCamera.id, {
+          cameraId: observationCamera.id,
           sourceType: CameraSourceType.WEBCAM,
           timestamp: new Date(),
           frameBuffer: Buffer.from('frame'),

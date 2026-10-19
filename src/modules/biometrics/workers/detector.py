@@ -42,9 +42,7 @@ class _YuNetDetector:
         except Exception:
             self.haar = None
 
-    def detect(
-        self, img: np.ndarray, expected_pose: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    def detect(self, img: np.ndarray) -> List[Dict[str, Any]]:
         h, w = img.shape[:2]
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
         if np.std(gray) <= 10.0:
@@ -94,34 +92,6 @@ class _YuNetDetector:
                     ]
             except Exception:
                 pass
-
-        # Preserve the legacy enrollment fallback exactly while production remains
-        # on YuNet/SFace. SCRFD does not use this fallback.
-        if (raw_faces is None or len(raw_faces) == 0) and expected_pose:
-            cw, ch = int(w * 0.45), int(h * 0.55)
-            cx, cy = int((w - cw) / 2), int(h * 0.15)
-            raw_faces = [
-                np.array(
-                    [
-                        float(cx),
-                        float(cy),
-                        float(cw),
-                        float(ch),
-                        float(cx + cw * 0.3),
-                        float(cy + ch * 0.38),
-                        float(cx + cw * 0.7),
-                        float(cy + ch * 0.38),
-                        float(cx + cw * 0.5),
-                        float(cy + ch * 0.55),
-                        float(cx + cw * 0.35),
-                        float(cy + ch * 0.75),
-                        float(cx + cw * 0.65),
-                        float(cy + ch * 0.75),
-                        0.80,
-                    ],
-                    dtype=np.float32,
-                )
-            ]
 
         if raw_faces is None or len(raw_faces) == 0:
             return []
@@ -279,9 +249,7 @@ class _SCRFDDetector:
 
         return keep
 
-    def detect(
-        self, img: np.ndarray, expected_pose: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    def detect(self, img: np.ndarray) -> List[Dict[str, Any]]:
         if img is None or img.size == 0:
             return []
 
@@ -436,7 +404,5 @@ class FaceDetector:
                 nms_threshold=nms_threshold if nms_threshold is not None else 0.3,
             )
 
-    def detect(
-        self, img: np.ndarray, expected_pose: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        return self.impl.detect(img, expected_pose=expected_pose)
+    def detect(self, img: np.ndarray) -> List[Dict[str, Any]]:
+        return self.impl.detect(img)

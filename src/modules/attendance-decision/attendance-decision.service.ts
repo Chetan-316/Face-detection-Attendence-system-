@@ -43,7 +43,7 @@ export class AttendanceDecisionService {
 
     // 2. Fetch and validate camera
     const camera = await this.db.camera.findUnique({
-      where: { id: cameraId },
+      where: { id: cameraId, deletedAt: null },
     });
 
     if (!camera || !camera.isEnabled) {
@@ -166,12 +166,14 @@ export class AttendanceDecisionService {
       if (boundSession) return boundSession;
     }
 
-    // Otherwise, check for any active session in the hostel (unbound cameraId or general)
+    // Otherwise, check for any active session in the hostel (unbound cameraId or general).
+    // A session bound to another camera must not shadow an unbound one.
     return this.db.attendanceSession.findFirst({
       where: {
         hostelId,
         organizationId,
         status: AttendanceSessionStatus.ACTIVE,
+        ...(cameraId ? { cameraId: null } : {}),
       },
       orderBy: { startTime: 'desc' },
     });
@@ -269,6 +271,9 @@ export class AttendanceDecisionService {
     // 3. Atomically write AttendanceRecord with P2002 defensive handling
     try {
       const record = await this.db.$transaction(async (tx) => {
+        // Lock the session row so a concurrent close cannot commit between the status check and the insert
+        await tx.$queryRaw`SELECT id FROM "attendance_sessions" WHERE id = ${session.id} FOR UPDATE`;
+
         // Re-check session status inside transaction
         const currentSession = await tx.attendanceSession.findUnique({
           where: { id: session.id },

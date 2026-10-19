@@ -18,7 +18,7 @@ async function bootstrap() {
   await lifecycle.verifyDatabaseStartup();
 
   // 3. Create express application
-  const app = createApp(prisma);
+  const app = createApp(prisma, { cameraService: defaultCameraService });
 
   // 4. Start HTTP listener
   const server = app.listen(config.port, () => {

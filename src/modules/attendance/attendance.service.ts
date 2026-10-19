@@ -11,7 +11,9 @@ import {
   ResidentStatus,
   CameraRole,
 } from '@prisma/client';
+import { DateTime } from 'luxon';
 import { prisma as defaultPrisma } from '../../database/client';
+import { config } from '../../config';
 import {
   ConflictError,
   DomainIntegrityError,
@@ -100,7 +102,7 @@ export class AttendanceService {
 
     // Camera / Hostel consistency and role verification (if camera provided)
     if (input.cameraId) {
-      const camera = await this.db.camera.findUnique({ where: { id: input.cameraId } });
+      const camera = await this.db.camera.findUnique({ where: { id: input.cameraId, deletedAt: null } });
       if (!camera) {
         throw new NotFoundError('Camera', input.cameraId);
       }
@@ -121,9 +123,14 @@ export class AttendanceService {
     }
     assertUserCanOperateInHostel(staffUser, input.organizationId, input.hostelId);
 
-    // Normalize logical attendance date (midnight-safe)
+    // Logical attendance date is the start of the day in the hostel's timezone, not UTC midnight
     const effectiveStartTime = input.startTime || nowUtc();
-    const logicalDate = input.attendanceDate || new Date(new Date(effectiveStartTime).setUTCHours(0, 0, 0, 0));
+    if (input.endTime && input.endTime.getTime() < effectiveStartTime.getTime()) {
+      throw new ValidationError('Session end time cannot be before its start time');
+    }
+    const logicalDate =
+      input.attendanceDate ||
+      DateTime.fromJSDate(new Date(effectiveStartTime), { zone: config.timezone }).startOf('day').toJSDate();
 
     return this.db.$transaction(async (tx) => {
       const session = await tx.attendanceSession.create({
@@ -278,6 +285,23 @@ export class AttendanceService {
     const closeTimestamp = nowUtc();
 
     return this.db.$transaction(async (tx) => {
+      // Lock and re-read: the status checked above may already be stale under concurrent mark/close
+      await tx.$queryRaw`SELECT id FROM "attendance_sessions" WHERE id = ${sessionId} FOR UPDATE`;
+      const locked = await tx.attendanceSession.findUniqueOrThrow({ where: { id: sessionId } });
+      if (locked.status === AttendanceSessionStatus.CLOSED) {
+        return locked;
+      }
+      if (locked.status !== AttendanceSessionStatus.ACTIVE) {
+        throw new InvalidStateTransitionError(
+          locked.status,
+          AttendanceSessionStatus.CLOSED,
+          'Only ACTIVE sessions can be closed'
+        );
+      }
+      if (closeTimestamp.getTime() < locked.startTime.getTime()) {
+        throw new ValidationError('Session cannot be closed before its start time');
+      }
+
       // 1. Update session status to CLOSED
       const updated = await tx.attendanceSession.update({
         where: { id: sessionId },
@@ -357,6 +381,8 @@ export class AttendanceService {
     externalTx?: Prisma.TransactionClient
   ): Promise<AttendanceRecord> {
     const executeOperation = async (tx: Prisma.TransactionClient) => {
+      // Lock before the status read so a concurrent close cannot slip in between check and insert
+      await tx.$queryRaw`SELECT id FROM "attendance_sessions" WHERE id = ${input.sessionId} FOR UPDATE`;
       const session = await tx.attendanceSession.findUnique({
         where: { id: input.sessionId },
       });
@@ -683,11 +709,14 @@ export class AttendanceService {
       where.status = params.status;
     }
     if (params.date) {
-      const startOfDay = new Date(`${params.date}T00:00:00.000Z`);
-      const endOfDay = new Date(`${params.date}T23:59:59.999Z`);
+      // Day bounds in the hostel timezone, matching how attendanceDate is stored
+      const day = DateTime.fromISO(params.date, { zone: config.timezone });
+      if (!day.isValid) {
+        throw new ValidationError('Date must be in YYYY-MM-DD format');
+      }
       where.attendanceDate = {
-        gte: startOfDay,
-        lte: endOfDay,
+        gte: day.startOf('day').toJSDate(),
+        lte: day.endOf('day').toJSDate(),
       };
     }
 
