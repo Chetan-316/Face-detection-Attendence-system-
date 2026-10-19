@@ -3,11 +3,7 @@ import { Badge } from '../../components/Badge';
 import { SafeResident } from '../../types/resident.types';
 import { residentsApi } from '../../api/residents.api';
 import { AuthenticatedImage } from '../../components/AuthenticatedImage';
-import {
-  UserX,
-  PlusCircle,
-  User as UserIcon,
-} from 'lucide-react';
+import { UserX, PlusCircle, User as UserIcon } from 'lucide-react';
 import { Button } from '../../components/Button';
 
 interface ResidentListTableProps {
@@ -21,6 +17,30 @@ interface ResidentListTableProps {
   onOpenAdd?: () => void;
 }
 
+// Fixed column widths keep every row aligned and the table inside 1366px.
+// The Resident column (no width) takes the remaining space.
+const COLUMNS = (
+  <colgroup>
+    <col />
+    <col style={{ width: 120 }} />
+    <col style={{ width: 116 }} />
+    <col style={{ width: 200 }} />
+    <col style={{ width: 124 }} />
+    <col style={{ width: 256 }} />
+  </colgroup>
+);
+
+const HEADERS = (
+  <tr>
+    <th scope="col">Resident</th>
+    <th scope="col">Room</th>
+    <th scope="col">Presence</th>
+    <th scope="col">Face</th>
+    <th scope="col">Status</th>
+    <th scope="col" className="col-actions">Actions</th>
+  </tr>
+);
+
 export const ResidentListTable: React.FC<ResidentListTableProps> = ({
   residents,
   isLoading,
@@ -33,27 +53,19 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
 }) => {
   if (isLoading) {
     return (
-      <div className="table-container bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <table className="data-table w-full" aria-label="Residents">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 text-left text-sm font-semibold">
-              <th className="px-6 py-4">Resident</th>
-              <th className="px-6 py-4">Room</th>
-              <th className="px-6 py-4">Presence</th>
-              <th className="px-6 py-4">Face</th>
-              <th className="px-6 py-4">Status</th>
-              <th className="px-6 py-4 text-right">Actions</th>
-            </tr>
-          </thead>
+      <div className="table-container">
+        <table className="data-table residents-table" aria-label="Residents">
+          {COLUMNS}
+          <thead>{HEADERS}</thead>
           <tbody>
             {[...Array(6)].map((_, i) => (
-              <tr key={i} className="h-16 border-b border-slate-100">
-                <td className="px-6 py-4"><span className="skeleton-cell w-36 h-5 rounded" /></td>
-                <td className="px-6 py-4"><span className="skeleton-cell w-20 h-5 rounded" /></td>
-                <td className="px-6 py-4"><span className="skeleton-cell w-20 h-5 rounded" /></td>
-                <td className="px-6 py-4"><span className="skeleton-cell w-24 h-5 rounded" /></td>
-                <td className="px-6 py-4"><span className="skeleton-cell w-16 h-5 rounded" /></td>
-                <td className="px-6 py-4 text-right"><span className="skeleton-cell w-16 h-5 rounded ml-auto" /></td>
+              <tr key={i}>
+                <td><span className="skeleton-cell w-36 h-5 rounded" /></td>
+                <td><span className="skeleton-cell w-20 h-5 rounded" /></td>
+                <td><span className="skeleton-cell w-20 h-5 rounded" /></td>
+                <td><span className="skeleton-cell w-24 h-5 rounded" /></td>
+                <td><span className="skeleton-cell w-16 h-5 rounded" /></td>
+                <td className="col-actions"><span className="skeleton-cell w-16 h-5 rounded ml-auto" /></td>
               </tr>
             ))}
           </tbody>
@@ -92,91 +104,77 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
   }
 
   return (
-    <div className="table-container bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-      <table className="data-table w-full text-left border-collapse text-sm" aria-label="Residents">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50/70 text-slate-600 font-semibold text-sm">
-            <th scope="col" className="px-6 py-4">Resident</th>
-            <th scope="col" className="px-6 py-4">Room</th>
-            <th scope="col" className="px-6 py-4">Presence</th>
-            <th scope="col" className="px-6 py-4">Face</th>
-            <th scope="col" className="px-6 py-4">Status</th>
-            <th scope="col" className="px-6 py-4 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
+    <div className="table-container">
+      <table className="data-table residents-table" aria-label="Residents">
+        {COLUMNS}
+        <thead>{HEADERS}</thead>
+        <tbody>
           {residents.map((resident) => {
+            const needsEnrollment =
+              canManage &&
+              resident.status === 'ACTIVE' &&
+              resident.faceEnrollmentStatus !== 'ENROLLED' &&
+              Boolean(onEnrollFace);
+
             return (
-              <tr
-                key={resident.id}
-                className="hover:bg-slate-50/80 transition-colors h-18"
-              >
-                {/* Resident (Photo + Name + Code) */}
-                <td className="px-6 py-3.5">
-                  <div className="flex items-center gap-3.5">
-                    <div className="w-11 h-11 rounded-full overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center">
+              <tr key={resident.id}>
+                {/* Resident (photo, name, code) */}
+                <td>
+                  <div className="resident-cell">
+                    <div className="resident-avatar">
                       <AuthenticatedImage
-                        src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
+                        src={
+                          typeof residentsApi.getProfilePhotoUrl === 'function'
+                            ? residentsApi.getProfilePhotoUrl(resident.id)
+                            : `/api/v1/residents/${resident.id}/profile-photo`
+                        }
                         alt=""
-                        className="w-full h-full object-cover"
+                        className="resident-avatar-img"
                         onError={(e) => {
                           (e.target as HTMLElement).style.display = 'none';
                         }}
                       />
-                      <UserIcon size={20} className="text-slate-400" />
+                      <UserIcon size={18} aria-hidden="true" />
                     </div>
 
-                    <div className="flex flex-col min-w-0">
+                    <div className="resident-text">
                       {canOpenProfile ? (
                         <button
                           type="button"
-                          className="font-semibold text-slate-900 text-left hover:text-blue-600 truncate text-15px"
+                          className="resident-name"
                           onClick={() => onSelect(resident)}
                         >
                           {resident.fullName}
                         </button>
                       ) : (
-                        <span className="font-semibold text-slate-900 truncate text-15px">
-                          {resident.fullName}
-                        </span>
+                        <span className="resident-name">{resident.fullName}</span>
                       )}
-                      <span className="font-mono text-sm text-slate-500 mt-0.5">{resident.residentCode}</span>
+                      <span className="resident-code">{resident.residentCode}</span>
                     </div>
                   </div>
                 </td>
 
                 {/* Room */}
-                <td className="px-6 py-3.5 text-slate-700 font-medium text-15px">
-                  {resident.roomGroup}
-                </td>
+                <td>{resident.roomGroup}</td>
 
                 {/* Presence */}
-                <td className="px-6 py-3.5">
-                  <Badge
-                    type="presence"
-                    value={resident.presence?.currentState || 'OUT'}
-                  />
+                <td>
+                  <Badge type="presence" value={resident.presence?.currentState || 'OUT'} />
                 </td>
 
-                {/* Face Enrollment */}
-                <td className="px-6 py-3.5">
-                  <Badge
-                    type="enrollment"
-                    value={resident.faceEnrollmentStatus}
-                  />
+                {/* Face enrollment */}
+                <td>
+                  <Badge type="enrollment" value={resident.faceEnrollmentStatus} />
                 </td>
 
-                {/* Status */}
-                <td className="px-6 py-3.5">
-                  <Badge
-                    type="status"
-                    value={resident.status}
-                  />
+                {/* Account status */}
+                <td>
+                  <Badge type="status" value={resident.status} />
                 </td>
 
-                {/* Action */}
-                <td className="px-6 py-3.5 text-right">
-                  <div className="inline-flex items-center justify-end gap-2">
+                {/* Actions: at most one primary action per row */}
+                <td className="col-actions">
+                  <div className="resident-actions">
                     {canOpenProfile ? (
                       <Button
                         type="button"
@@ -188,28 +186,21 @@ export const ResidentListTable: React.FC<ResidentListTableProps> = ({
                         Open Profile
                       </Button>
                     ) : (
-                      <span className="text-sm font-medium text-slate-400">Read only</span>
+                      <span className="resident-readonly">Read only</span>
                     )}
 
-                    {canManage && (
-                      <>
-                        {resident.status === 'ACTIVE' &&
-                          resident.faceEnrollmentStatus !== 'ENROLLED' &&
-                          onEnrollFace && (
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              size="sm"
-                              onClick={() => onEnrollFace(resident)}
-                              aria-label={`Enroll face for ${resident.fullName}`}
-                            >
-                              {resident.faceEnrollmentStatus === 'NEEDS_REENROLLMENT'
-                                ? 'Re-enroll Face'
-                                : 'Enroll Face'}
-                            </Button>
-                          )}
-
-                      </>
+                    {needsEnrollment && onEnrollFace && (
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        onClick={() => onEnrollFace(resident)}
+                        aria-label={`Enroll face for ${resident.fullName}`}
+                      >
+                        {resident.faceEnrollmentStatus === 'NEEDS_REENROLLMENT'
+                          ? 'Re-enroll Face'
+                          : 'Enroll Face'}
+                      </Button>
                     )}
                   </div>
                 </td>

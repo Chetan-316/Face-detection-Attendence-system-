@@ -107,8 +107,8 @@ export const ResidentFilterBar: React.FC<ResidentFilterBarProps> = ({
           </select>
         </div>
 
-        {/* Face Status Filter */}
-        <div className="filter-item">
+        {/* Face Status Filter (wider so "Re-enrollment required" stays readable) */}
+        <div className="filter-item filter-item--wide">
           <select
             className="filter-select"
             value={faceEnrollmentStatus}

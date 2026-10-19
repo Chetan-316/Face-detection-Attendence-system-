@@ -23,15 +23,9 @@ import { usePreviewStreamUrl } from '../hooks/usePreviewStreamUrl';
 import {
   Play,
   Square,
-  RefreshCw,
   Video,
-  Shield,
-  Activity,
-  Layers,
   Clock,
   UserCheck,
-  UserX,
-  HelpCircle,
   AlertCircle,
   Eye,
   Camera as CameraIcon,
@@ -39,6 +33,19 @@ import {
   LogOut,
   User as UserIcon,
 } from 'lucide-react';
+
+import '../styles/gate.css';
+
+// Labels come from the configured sourceType only.
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  WEBCAM: 'Webcam',
+  RTSP: 'RTSP',
+  SMART_CAMERA: 'Smart Cam',
+};
+
+function cameraSourceLabel(sourceType: string | undefined): string {
+  return sourceType ? SOURCE_TYPE_LABELS[sourceType] ?? sourceType : 'Camera';
+}
 
 export const RecognitionPage: React.FC = () => {
   const { user } = useAuth();
@@ -621,115 +628,99 @@ export const RecognitionPage: React.FC = () => {
     };
   }, [latestResidentMatch?.resident?.id]);
 
+  const sourceLabel = cameraSourceLabel(selectedCamera?.sourceType);
+  const roleTone = selectedCamera?.role === 'IN' ? 'is-ok' : selectedCamera?.role === 'OUT' ? 'is-warn' : 'is-neutral';
+  // The browser camera is an operator fallback. Labels follow the configured source, not an assumed laptop.
+  const isBrowserSource = selectedCamera?.sourceType === 'WEBCAM';
+
   return (
-    <div className="recognition-page-container">
-      {/* Page Header */}
-      <div className="page-header-row mb-6">
-        <div>
-          <h1 className="page-title text-2xl font-bold flex items-center gap-2">
-            <Eye className="text-primary-500" size={24} />
+    <div className="recognition-page">
+      {/* Page header: title, camera selector, session control */}
+      <div className="rec-topbar">
+        <div className="rec-topbar-main">
+          <h1 className="rec-title">
+            <Eye size={18} aria-hidden="true" />
             Gate Monitor
-            <span className="text-slate-500 text-sm font-normal">Face Recognition</span>
+            <span className="rec-title-sub">Face Recognition</span>
           </h1>
-          <p className="page-subtitle text-slate-600 text-sm mt-1">
-            Live resident identification and supervised gate movement controls.
-          </p>
+          <span
+            data-testid="recognition-status-badge"
+            className={`gate-pill ${isRunning ? 'is-ok' : sessionStatus?.state === 'ERROR' ? 'is-danger' : 'is-neutral'}`}
+          >
+            <span
+              className={`gate-dot ${isRunning ? 'is-live' : sessionStatus?.state === 'ERROR' ? 'is-warn' : ''}`}
+            />
+            {sessionStatus?.state || 'STOPPED'}
+          </span>
         </div>
 
-        {/* Camera Selector & Session Controls */}
-        <div className="flex items-center gap-3">
-          <div className="camera-select-wrapper">
-            <select
-              aria-label="Select Camera"
-              className="form-select min-w-[220px]"
-              value={selectedCameraId}
-              onChange={handleCameraChange}
-              disabled={isLoading || isActionPending}
-            >
-              {cameras.map((cam) => (
-                <option key={cam.id} value={cam.id}>
-                  {cam.name} — {cam.role === 'IN' ? 'Entry' : cam.role === 'OUT' ? 'Exit' : cam.role === 'ATTENDANCE' ? 'Attendance' : 'General'}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="rec-topbar-actions">
+          <select
+            aria-label="Select Camera"
+            className="rec-camera-select"
+            value={selectedCameraId}
+            onChange={handleCameraChange}
+            disabled={isLoading || isActionPending}
+          >
+            {cameras.map((cam) => (
+              <option key={cam.id} value={cam.id}>
+                {cam.name} — {cam.role === 'IN' ? 'Entry' : cam.role === 'OUT' ? 'Exit' : cam.role === 'ATTENDANCE' ? 'Attendance' : 'General'}
+              </option>
+            ))}
+          </select>
 
           {canManageSession ? (
             isRunning ? (
               <button
                 type="button"
-                className="btn btn-danger flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded bg-rose-600 hover:bg-rose-700 text-white shadow"
+                className="btn btn-danger btn-sm"
                 onClick={handleStopRecognition}
                 disabled={isActionPending}
                 data-testid="stop-recognition-btn"
               >
-                <Square size={16} />
+                <Square size={14} />
                 <span>Stop Recognition</span>
               </button>
             ) : (
               <button
                 type="button"
-                className="btn btn-primary flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded bg-emerald-600 hover:bg-emerald-700 text-white shadow"
+                className="btn btn-primary btn-sm"
                 onClick={handleStartRecognition}
                 disabled={isActionPending || !selectedCamera?.isEnabled}
                 data-testid="start-recognition-btn"
               >
-                <Play size={16} />
+                <Play size={14} />
                 <span>Start Recognition</span>
               </button>
             )
           ) : (
-            <div className="flex items-center gap-2">
-              <span
-                className={`px-3 py-1.5 text-xs font-semibold rounded-full border ${
-                  isRunning
-                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                    : 'bg-slate-800 text-slate-300 border-slate-700'
-                }`}
-              >
-                {isRunning ? '● Gate Recognition Active' : '○ Standby'}
-              </span>
-            </div>
+            <span className={`gate-pill ${isRunning ? 'is-ok' : 'is-neutral'}`}>
+              {isRunning ? 'Gate Recognition Active' : 'Standby'}
+            </span>
           )}
         </div>
       </div>
 
       {/* Gate Monitor & Telemetry Status Bar */}
-      <div className="gate-monitor-summary-card mb-6 grid grid-cols-1 md:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800 shadow-md">
-        <div className="gate-role-cell flex flex-col gap-0.5">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Active Gate & Role</span>
-          <span className="text-base font-bold text-slate-100 flex items-center gap-1.5">
-            <span>{selectedCamera?.name || 'Gate Camera'}</span>
-            <span
-              className={`text-xs px-2 py-0.5 rounded font-mono font-bold uppercase ${
-                selectedCamera?.role === 'IN'
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : selectedCamera?.role === 'OUT'
-                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                  : 'bg-slate-800 text-slate-300 border border-slate-700'
-              }`}
-            >
-              {selectedCamera?.role || 'GENERAL'}
-            </span>
+      <div className="rec-summary">
+        <div className="rec-summary-cell">
+          <span className="rec-summary-label">Active gate and role</span>
+          <span className="rec-summary-value">
+            <span className="rec-camera-name">{selectedCamera?.name || 'Gate Camera'}</span>
+            <span className={`gate-pill ${roleTone}`}>{selectedCamera?.role || 'GENERAL'}</span>
           </span>
         </div>
 
-        <div className="rec-state-cell flex flex-col gap-0.5">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Recognition</span>
-          <span className="text-base font-bold flex items-center gap-2">
-            <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                isRunning ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'
-              }`}
-            />
-            <span className={isRunning ? 'text-emerald-400' : 'text-slate-400'}>
-              {isRunning ? 'RUNNING' : 'STOPPED'}
-            </span>
+        <div className="rec-summary-cell">
+          <span className="rec-summary-label">Recognition</span>
+          <span className="rec-summary-value">
+            <span className={`gate-dot ${isRunning ? 'is-live' : ''}`} />
+            <span>{isRunning ? 'Running' : 'Stopped'}</span>
           </span>
         </div>
 
-        <div className="automation-state-cell flex flex-col gap-0.5">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Movement Automation</span>
+        <div className="rec-summary-cell">
+          <span className="rec-summary-label">Movement automation</span>
           {(() => {
             const isRoleMovement = selectedCamera?.role === 'IN' || selectedCamera?.role === 'OUT';
             const isCamAutoEnabled = selectedCamera?.configMetadata?.movementAutomationEnabled !== false;
@@ -737,13 +728,9 @@ export const RecognitionPage: React.FC = () => {
             const isAutomationActive = isRoleMovement && isCamAutoEnabled && isGlobalAuto;
 
             return (
-              <span className="text-base font-bold flex items-center gap-1.5">
+              <span className="rec-summary-value">
                 <span
-                  className={`text-xs px-2.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                    isAutomationActive
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
-                  }`}
+                  className={`gate-pill ${isAutomationActive ? 'is-ok' : 'is-neutral'}`}
                   data-testid="movement-automation-indicator"
                 >
                   Movement automation: {isAutomationActive ? 'ENABLED' : 'DISABLED'}
@@ -753,70 +740,37 @@ export const RecognitionPage: React.FC = () => {
           })()}
         </div>
 
-        <div className="presence-stats-cell flex flex-col gap-0.5">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">Hostel Presence</span>
-          <div className="text-sm font-semibold flex items-center gap-3">
-            <span className="text-emerald-400 flex items-center gap-1">
-              <span>Inside hostel:</span>
-              <strong className="text-white text-base font-bold">{presenceCounts?.currentlyIn ?? '—'}</strong>
+        <div className="rec-summary-cell">
+          <span className="rec-summary-label">Hostel presence</span>
+          <div className="rec-count-line">
+            <span>
+              <span>Inside hostel:</span> <strong>{presenceCounts?.currentlyIn ?? '—'}</strong>
             </span>
-            <span className="text-slate-500">•</span>
-            <span className="text-amber-400 flex items-center gap-1">
-              <span>Outside hostel:</span>
-              <strong className="text-white text-base font-bold">{presenceCounts?.currentlyOut ?? '—'}</strong>
+            <span aria-hidden="true">•</span>
+            <span>
+              <span>Outside hostel:</span> <strong>{presenceCounts?.currentlyOut ?? '—'}</strong>
             </span>
           </div>
         </div>
       </div>
 
-      {/* Main Grid: Video Stream on Left, Live Observations on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Live Camera + HUD */}
-        <div className="lg:col-span-2 flex flex-col gap-4">
-          <div className="camera-viewport-card bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-            {/* Top Toolbar */}
-            <div className="viewport-header px-4 py-3 bg-slate-800/80 border-b border-slate-700/60 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Video size={16} className="text-slate-400" />
-                <span className="font-semibold text-sm text-slate-200">
-                  {selectedCamera?.name || 'Camera View'}
-                </span>
-                <span className="text-xs text-slate-400">
-                  ({selectedCamera?.role || 'GENERAL'})
-                </span>
-              </div>
+      {/* Operations grid: live camera on the left, latest result and feed on the right */}
+      <div className="rec-ops">
+        {/* Live camera stage and HUD */}
+        <div className="rec-panel rec-camera-col">
+          <div className="rec-panel-header">
+            <span className="rec-panel-title">
+              <Video size={14} aria-hidden="true" />
+              {selectedCamera?.name || 'Camera view'}
+              <span className={`gate-pill ${roleTone}`}>{selectedCamera?.role || 'GENERAL'}</span>
+            </span>
+          </div>
 
-              {/* Status Badge */}
-              <div className="flex items-center gap-2">
-                <span
-                  data-testid="recognition-status-badge"
-                  className={`status-chip text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 ${
-                    isRunning
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : sessionStatus?.state === 'ERROR'
-                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                      : 'bg-slate-700 text-slate-300'
-                  }`}
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full ${
-                      isRunning
-                        ? 'bg-emerald-400 animate-pulse'
-                        : sessionStatus?.state === 'ERROR'
-                        ? 'bg-rose-400'
-                        : 'bg-slate-400'
-                    }`}
-                  />
-                  {sessionStatus?.state || 'STOPPED'}
-                </span>
-              </div>
-            </div>
-
-            {/* Video Viewport Container */}
-            <div
-              ref={videoContainerRef}
-              className="relative aspect-video bg-black flex items-center justify-center overflow-hidden"
-            >
+          {/* Video viewport: compact strip when offline, 16:9 when live */}
+          <div
+            ref={videoContainerRef}
+            className={`rec-stage${isLaptopCameraActive || (selectedCameraId && !streamError) ? '' : ' is-offline'}`}
+          >
               {isLaptopCameraActive ? (
                 <>
                   <video
@@ -830,21 +784,21 @@ export const RecognitionPage: React.FC = () => {
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-contain"
+                    className="rec-stage-media"
                   />
                   {/* Canvas Overlay for Bounding Boxes */}
                   <canvas
                     ref={canvasRef}
                     className="absolute inset-0 w-full h-full pointer-events-none"
                   />
-                  <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Live Laptop Camera</span>
+                  <div className="rec-live-badge">
+                    <span className="gate-dot is-live" />
+                    <span>{`Live ${sourceLabel}`}</span>
                   </div>
                   <button
                     type="button"
                     onClick={stopLaptopCamera}
-                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition"
+                    className="rec-overlay-button rec-corner-button"
                   >
                     Switch to Server Stream
                   </button>
@@ -854,7 +808,7 @@ export const RecognitionPage: React.FC = () => {
                   <img
                     src={previewStreamUrl || undefined}
                     alt="Live Camera Feed"
-                    className="w-full h-full object-contain"
+                    className="rec-stage-media"
                     onError={() => setStreamError('Stream disconnected or unavailable')}
                   />
                   {/* Canvas Overlay for Bounding Boxes */}
@@ -865,111 +819,84 @@ export const RecognitionPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={startLaptopCamera}
-                    className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 backdrop-blur-md text-white text-xs px-2.5 py-1 rounded-lg transition flex items-center gap-1"
+                    className="rec-overlay-button rec-corner-button"
                   >
-                    <CameraIcon size={12} />
-                    <span>Use Laptop Camera</span>
+                    <CameraIcon size={12} aria-hidden="true" />
+                    <span>{isBrowserSource ? `Use ${sourceLabel}` : 'Use browser camera'}</span>
                   </button>
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center text-slate-400 p-6 text-center gap-3">
-                  <CameraIcon size={48} className="opacity-40" />
-                  <p className="text-sm font-medium text-slate-200">Camera Feed Offline</p>
-                  <p className="text-xs text-slate-400 max-w-sm">
-                    {cameraError || streamError || 'Server camera adapter is offline. Click below to stream directly from your laptop.'}
-                  </p>
+                <div className="rec-stage-message">
+                  <CameraIcon size={24} aria-hidden="true" />
+                  <div className="rec-stage-copy">
+                    <p className="rec-stage-title">Camera feed offline</p>
+                    <p className="rec-stage-body">
+                      {cameraError || streamError || 'The camera stream is not available from the server.'}
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={startLaptopCamera}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 shadow transition"
+                    className="btn btn-outline btn-sm"
                   >
-                    <CameraIcon size={13} />
-                    <span>Start Laptop Camera</span>
+                    <CameraIcon size={13} aria-hidden="true" />
+                    <span>{isBrowserSource ? `Start ${sourceLabel}` : 'Start browser camera'}</span>
                   </button>
                 </div>
               )}
 
-              {/* HUD Telemetry Bar (Bottom overlay) */}
-              <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 flex items-center justify-between text-xs text-slate-300">
-                <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-1 font-mono">
-                    <Activity size={13} className="text-emerald-400" />
-                    FPS: {sessionStatus?.processingFps || 0} / {sessionStatus?.configuredMaxFps || 5}
-                  </span>
-                  <span className="flex items-center gap-1 font-mono">
-                    <Layers size={13} className="text-sky-400" />
-                    Frames: {sessionStatus?.framesProcessed || 0}
-                  </span>
-                  <span className="flex items-center gap-1 font-mono">
-                    <UserCheck size={13} className="text-indigo-400" />
-                    Enrolled Residents: {sessionStatus?.eligibleTemplates || 0}
-                  </span>
-                </div>
+            </div>
 
-                <div className="flex items-center gap-3">
-                  <span className="text-slate-400 text-xs">Hostel Node Scoped</span>
-                </div>
+            {/* Telemetry strip under the stage */}
+            <div className="rec-telemetry">
+              <span>
+                FPS: {sessionStatus?.processingFps || 0} / {sessionStatus?.configuredMaxFps || 5}
+              </span>
+              <span>Frames: {sessionStatus?.framesProcessed || 0}</span>
+              <span>Enrolled residents: {sessionStatus?.eligibleTemplates || 0}</span>
+            </div>
+
+            {/* Metrics breakdown */}
+            <div className="rec-metrics">
+              <div className="rec-metric">
+                <span className="rec-metric-value">{sessionStatus?.matches || 0}</span>
+                <span className="rec-metric-label">Stable MATCH</span>
+              </div>
+              <div className="rec-metric">
+                <span className="rec-metric-value">{sessionStatus?.uncertains || 0}</span>
+                <span className="rec-metric-label">UNCERTAIN</span>
+              </div>
+              <div className="rec-metric">
+                <span className="rec-metric-value">{sessionStatus?.unknowns || 0}</span>
+                <span className="rec-metric-label">UNKNOWN</span>
+              </div>
+              <div className="rec-metric">
+                <span className="rec-metric-value">{sessionStatus?.qualityInsufficients || 0}</span>
+                <span className="rec-metric-label">Low Quality</span>
               </div>
             </div>
 
-            {/* Metrics Breakdown Bar */}
-            <div className="px-4 py-3 bg-slate-900 border-t border-slate-800 grid grid-cols-4 gap-2 text-center text-xs">
-              <div className="bg-slate-800/60 p-2 rounded border border-slate-700/50">
-                <span className="text-emerald-400 font-semibold block text-base">
-                  {sessionStatus?.matches || 0}
-                </span>
-                <span className="text-slate-400">Stable MATCH</span>
-              </div>
-              <div className="bg-slate-800/60 p-2 rounded border border-slate-700/50">
-                <span className="text-amber-400 font-semibold block text-base">
-                  {sessionStatus?.uncertains || 0}
-                </span>
-                <span className="text-slate-400">UNCERTAIN</span>
-              </div>
-              <div className="bg-slate-800/60 p-2 rounded border border-slate-700/50">
-                <span className="text-purple-400 font-semibold block text-base">
-                  {sessionStatus?.unknowns || 0}
-                </span>
-                <span className="text-slate-400">UNKNOWN</span>
-              </div>
-              <div className="bg-slate-800/60 p-2 rounded border border-slate-700/50">
-                <span className="text-rose-400 font-semibold block text-base">
-                  {sessionStatus?.qualityInsufficients || 0}
-                </span>
-                <span className="text-slate-400">Low Quality</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Operational Policy Notice */}
-          <div className="isolation-notice bg-slate-900/60 border border-slate-800/80 rounded-lg p-3 text-xs text-slate-400 flex items-start gap-2.5">
-            <AlertCircle size={16} className="text-sky-400 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold text-slate-300">Passive Observation Mode</span>
-              <p className="mt-0.5 text-slate-400 leading-relaxed">
+            {/* Operational policy notice */}
+            <div className="rec-notice">
+              <AlertCircle size={14} aria-hidden="true" />
+              <div>
+                <strong>Passive Observation Mode</strong>
                 Configured gate cameras (IN / OUT) automatically create resident movement records from stable MATCH observations. Attendance sessions and leave automation remain decoupled.
-              </p>
+              </div>
             </div>
-          </div>
         </div>
 
-        {/* Right Column: Live Person Identified + Gate Decision Action + Observations Feed */}
-        <div className="lg:col-span-1 flex flex-col gap-4">
-          {/* Prominent Current Identified Resident & IN/OUT Action Card */}
-          <div
-            className="identified-person-card p-4 rounded-xl border shadow-lg transition-all"
-            style={{
-              backgroundColor: 'var(--bg-surface-elevated)',
-              borderColor: latestResidentMatch ? 'var(--primary-subtle)' : 'var(--border-subtle)',
-            }}
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-700/50 mb-3">
-              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <UserCheck size={14} className="text-emerald-400" />
+        {/* Right column: latest result, gate decision and observations feed */}
+        <div className="rec-panel rec-result-col">
+          {/* Latest result: the identified resident and the IN/OUT action, dominant while a resident is at the gate */}
+          <div className={`rec-result ${latestResidentMatch ? 'is-info' : 'is-ready'}`}>
+            <div className="rec-result-head">
+              <span className="rec-result-kicker">
+                <UserCheck size={14} aria-hidden="true" />
                 Current Resident at Gate
               </span>
               {latestResidentMatch && (
-                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                <span className="gate-pill is-info">
                   {typeof latestResidentMatch.similarity === 'number'
                     ? `${(latestResidentMatch.similarity * 100).toFixed(0)}% Match`
                     : 'Matched'}
@@ -978,50 +905,42 @@ export const RecognitionPage: React.FC = () => {
             </div>
 
             {latestResidentMatch?.resident ? (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-lg overflow-hidden border-2 border-slate-600 bg-slate-800 shrink-0 flex items-center justify-center shadow">
-                    <AuthenticatedImage
-                      src={residentsApi.getProfilePhotoUrl(latestResidentMatch.resident.id)}
-                      alt={latestResidentMatch.resident.fullName}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
-                    />
-                    <UserIcon size={24} className="text-slate-400" />
+              <div className="rec-result-region">
+                <div className="rec-identity">
+                <div className="rec-obs-photo">
+                  <AuthenticatedImage
+                    src={residentsApi.getProfilePhotoUrl(latestResidentMatch.resident.id)}
+                    alt={latestResidentMatch.resident.fullName}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                  <UserIcon size={18} aria-hidden="true" />
+                </div>
+                <div>
+                  <div className="rec-result-title">{latestResidentMatch.resident.fullName}</div>
+                  <div className="rec-obs-meta">
+                    {latestResidentMatch.resident.residentCode} • {latestResidentMatch.resident.roomGroup || activeResidentDetails?.roomGroup || 'Resident'}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-base font-bold text-slate-100 truncate">
-                      {latestResidentMatch.resident.fullName}
-                    </div>
-                    <div className="text-xs text-slate-400 font-mono mt-0.5">
-                      {latestResidentMatch.resident.residentCode} • {latestResidentMatch.resident.roomGroup || activeResidentDetails?.roomGroup || 'Resident'}
-                    </div>
-                    <div className="mt-1">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold ${
-                          activeResidentPresence === 'IN'
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                        }`}
-                      >
-                        {activeResidentPresence === 'IN' ? '● Currently INSIDE' : '○ Currently OUTSIDE'}
-                      </span>
-                    </div>
+                  <div>
+                    <span className={`gate-pill ${activeResidentPresence === 'IN' ? 'is-ok' : 'is-warn'}`}>
+                      {activeResidentPresence === 'IN' ? '● Currently INSIDE' : '○ Currently OUTSIDE'}
+                    </span>
                   </div>
                 </div>
+              </div>
 
                 {/* Direct Action Button based strictly on Resident Presence (Requirement 20) */}
-                <div className="pt-2 border-t border-slate-700/50 flex flex-col gap-2">
+                <div className="rec-result-region">
                   {activeResidentPresence === 'IN' ? (
                     <button
                       type="button"
                       onClick={() => handleInitiateConfirm(latestResidentMatch.resident, 'OUT')}
                       disabled={isConfirmingMovement}
-                      className="w-full px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-500 text-white shadow transition-all"
+                      className="btn btn-danger btn-lg"
                     >
-                      <LogOut size={18} />
+                      <LogOut size={16} aria-hidden="true" />
                       <span>MARK OUT (Exit)</span>
                     </button>
                   ) : (
@@ -1029,51 +948,47 @@ export const RecognitionPage: React.FC = () => {
                       type="button"
                       onClick={() => handleInitiateConfirm(latestResidentMatch.resident, 'IN')}
                       disabled={isConfirmingMovement}
-                      className="w-full px-4 py-3 rounded-lg font-bold text-sm flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white shadow transition-all"
+                      className="btn btn-primary btn-lg"
                     >
-                      <LogIn size={18} />
+                      <LogIn size={16} aria-hidden="true" />
                       <span>MARK IN (Entry)</span>
                     </button>
                   )}
-                  <span className="text-[11px] text-slate-400 text-center">
+                  <span className="rec-obs-note">
                     Resident is currently {activeResidentPresence === 'IN' ? 'inside' : 'outside'} — click to record {activeResidentPresence === 'IN' ? 'exit' : 'entry'}
                   </span>
                 </div>
               </div>
             ) : (
-              <div className="py-6 flex flex-col items-center justify-center text-center text-slate-500">
-                <CameraIcon size={32} className="mb-2 opacity-40 text-slate-400" />
-                <p className="text-sm font-semibold text-slate-300">Awaiting Resident at Gate</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-[240px]">
+              <div className="rec-empty">
+                <CameraIcon size={28} aria-hidden="true" />
+                <p className="rec-result-title">Awaiting Resident at Gate</p>
+                <p className="rec-obs-note">
                   When a resident stands in front of the camera, their details and Mark In / Out buttons appear here.
                 </p>
               </div>
             )}
           </div>
 
-          <div className="feed-card bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg flex flex-col h-[480px]">
-            {/* Feed Tabs Header */}
-            <div className="feed-header px-4 py-2.5 bg-slate-800/80 border-b border-slate-700/60 flex items-center justify-between">
-              <div className="flex items-center gap-2">
+          <div className="rec-panel rec-feed">
+            {/* Feed tabs */}
+            <div className="rec-panel-header">
+              <div className="rec-feed-tabs" role="tablist">
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={feedTab === 'observations'}
                   onClick={() => setFeedTab('observations')}
-                  className={`text-xs font-semibold px-2.5 py-1 rounded transition-all ${
-                    feedTab === 'observations'
-                      ? 'bg-slate-700 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                  className={`rec-feed-tab${feedTab === 'observations' ? ' is-active' : ''}`}
                 >
                   Observations ({observations.length})
                 </button>
                 <button
                   type="button"
+                  role="tab"
+                  aria-selected={feedTab === 'movements'}
                   onClick={() => setFeedTab('movements')}
-                  className={`text-xs font-semibold px-2.5 py-1 rounded transition-all ${
-                    feedTab === 'movements'
-                      ? 'bg-slate-700 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                  className={`rec-feed-tab${feedTab === 'movements' ? ' is-active' : ''}`}
                 >
                   Gate Feed ({recentMovements.length})
                 </button>
@@ -1082,10 +997,10 @@ export const RecognitionPage: React.FC = () => {
 
             {feedTab === 'movements' ? (
               /* Recent Gate Movement Decisions Feed (Requirement 35) */
-              <div className="feed-list p-3 overflow-y-auto flex-1 flex flex-col gap-2">
+              <div className="rec-list">
                 {recentMovements.length === 0 ? (
-                  <div className="text-center py-12 text-slate-500 text-xs flex flex-col items-center">
-                    <Clock size={32} className="mb-2 opacity-30" />
+                  <div className="rec-empty">
+                    <Clock size={28} aria-hidden="true" />
                     <p>No recent gate movements recorded</p>
                   </div>
                 ) : (
@@ -1094,30 +1009,15 @@ export const RecognitionPage: React.FC = () => {
                     const isIN = mov.movementType === 'IN';
 
                     return (
-                      <div
-                        key={mov.id}
-                        className="movement-feed-item p-2.5 rounded-lg bg-slate-800/50 border border-slate-700/50 flex items-center justify-between text-xs"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-slate-400 text-[11px]">{movTime}</span>
-                          <span className="font-semibold text-slate-200">
-                            {mov.resident?.fullName || mov.residentId}
-                          </span>
+                      <div key={mov.id} className="rec-obs-card">
+                        <div className="rec-obs-head">
+                          <div className="rec-obs-person">
+                            <span className="rec-obs-time">{movTime}</span>
+                            <span className="rec-obs-name">{mov.resident?.fullName || mov.residentId}</span>
+                          </div>
+                          <span className={`gate-pill ${isIN ? 'is-ok' : 'is-warn'}`}>{mov.movementType}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                              isIN
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                            }`}
-                          >
-                            {mov.movementType}
-                          </span>
-                          <span className="text-[11px] text-slate-400 truncate max-w-[90px]">
-                            {mov.camera?.name || 'Gate'}
-                          </span>
-                        </div>
+                        <div className="rec-obs-meta">{mov.camera?.name || 'Gate'}</div>
                       </div>
                     );
                   })
@@ -1126,16 +1026,16 @@ export const RecognitionPage: React.FC = () => {
             ) : (
               /* Scrollable Observations List */
               <div
-                className="feed-list p-3 overflow-y-auto flex-1 flex flex-col gap-2.5"
+                className="rec-list"
                 role="log"
                 aria-live="polite"
                 aria-label="Recognition events"
               >
               {observations.length === 0 ? (
-                <div className="text-center py-12 text-slate-500 text-xs flex flex-col items-center">
-                  <Eye size={32} className="mb-2 opacity-30" />
+                <div className="rec-empty">
+                  <Eye size={28} aria-hidden="true" />
                   <p>No recognition events yet</p>
-                  <p className="mt-1 text-slate-600">Start recognition to begin passive face identification</p>
+                  <p className="rec-obs-note">Start recognition to begin passive face identification</p>
                 </div>
               ) : (
                 observations.map((obs) => {
@@ -1145,34 +1045,32 @@ export const RecognitionPage: React.FC = () => {
                   const isQualityInsufficient = obs.classification === 'QUALITY_INSUFFICIENT';
 
                   const badgeClass = isMatch
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    ? 'is-ok'
                     : isUncertain
-                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                    ? 'is-warn'
                     : isQualityInsufficient
-                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                    : 'bg-purple-500/10 text-purple-400 border-purple-500/30';
+                    ? 'is-danger'
+                    : 'is-neutral';
 
                   const timeStr = new Date(obs.detectedAt).toLocaleTimeString([], { timeZone: 'Asia/Kolkata' });
 
                   return (
                     <div
                       key={obs.id}
-                      className="observation-card p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 flex flex-col gap-1.5 transition-all hover:border-slate-600"
+                      className="rec-obs-card"
                       data-testid={`observation-${obs.classification.toLowerCase()}`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`classification-badge text-[11px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider ${badgeClass}`}
-                        >
+                      <div className="rec-obs-head">
+                        <span className={`gate-pill classification-badge ${badgeClass}`}>
                           {obs.classification === 'QUALITY_INSUFFICIENT' ? 'QUALITY INSUFFICIENT' : obs.classification}
                         </span>
-                        <span className="text-[11px] text-slate-400 font-mono">{timeStr}</span>
+                        <span className="rec-obs-time">{timeStr}</span>
                       </div>
 
                       {/* Content based on Classification */}
                       {isMatch && obs.resident && (
-                        <div className="resident-match-info mt-1 flex items-start gap-2.5">
-                          <div className="w-10 h-10 rounded overflow-hidden border border-slate-700 bg-slate-800 shrink-0 flex items-center justify-center">
+                        <div className="rec-obs-person">
+                          <div className="rec-obs-photo">
                             <AuthenticatedImage
                               src={residentsApi.getProfilePhotoUrl(obs.resident.id)}
                               alt=""
@@ -1181,120 +1079,99 @@ export const RecognitionPage: React.FC = () => {
                                 (e.target as HTMLElement).style.display = 'none';
                               }}
                             />
-                            <UserIcon size={18} className="text-slate-500" />
+                            <UserIcon size={16} aria-hidden="true" />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-slate-200">
-                              {obs.resident.fullName}
-                            </div>
-                            <div className="text-xs text-slate-400 flex items-center justify-between mt-0.5">
+                          <div>
+                            <div className="rec-obs-name">{obs.resident.fullName}</div>
+                            <div className="rec-obs-meta">
                               <span>Code: {obs.resident.residentCode}</span>
                               {typeof obs.similarity === 'number' && (
-                                <span className="text-emerald-400 font-mono">
-                                  sim: {(obs.similarity * 100).toFixed(1)}%
-                                </span>
+                                <span>sim: {(obs.similarity * 100).toFixed(1)}%</span>
                               )}
                             </div>
                           </div>
                         </div>
                       )}
 
-                      {/* Supervised Movement Confirm Buttons */}
+                      {/* Supervised movement confirm buttons */}
                       {isMatch && obs.resident && canControl && (
-                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-700/50">
+                        <div className="rec-obs-actions">
                           <button
                             type="button"
                             onClick={() => handleInitiateConfirm(obs.resident, 'IN')}
                             disabled={isConfirmingMovement}
-                            className="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1"
                           >
-                            <LogIn size={12} />
+                            <LogIn size={12} aria-hidden="true" />
                             <span>Confirm Entry</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleInitiateConfirm(obs.resident, 'OUT')}
                             disabled={isConfirmingMovement}
-                            className="px-2.5 py-1 text-xs font-semibold rounded bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1"
                           >
-                            <LogOut size={12} />
+                            <LogOut size={12} aria-hidden="true" />
                             <span>Confirm Exit</span>
                           </button>
                         </div>
                       )}
 
                       {/* Movement Decision Status Banner */}
-                      <div className="movement-decision-block mt-2 pt-2 border-t border-slate-700/50 text-xs">
+                      <div className="rec-obs-decision">
                         {isMatch ? (
                           obs.movementDecision ? (
                             obs.movementDecision.status === 'MOVEMENT_CREATED' ? (
-                              <div className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                                <span>
-                                  Movement Decision: <strong>{obs.movementDecision.direction} RECORDED</strong> (Presence: {obs.movementDecision.currentPresence})
-                                </span>
-                              </div>
+                              <span className="gate-pill is-ok">
+                                Movement Decision: <strong>{obs.movementDecision.direction} RECORDED</strong> (Presence: {obs.movementDecision.currentPresence})
+                              </span>
                             ) : obs.movementDecision.status === 'ALREADY_IN' ? (
-                              <div className="font-semibold text-sky-400 flex items-center gap-1.5">
-                                <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
-                                <span>Already IN — duplicate suppressed</span>
-                              </div>
+                              <span className="gate-pill is-info">Already IN — duplicate suppressed</span>
                             ) : obs.movementDecision.status === 'ALREADY_OUT' ? (
-                              <div className="font-semibold text-sky-400 flex items-center gap-1.5">
-                                <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
-                                <span>Already OUT — duplicate suppressed</span>
-                              </div>
+                              <span className="gate-pill is-info">Already OUT — duplicate suppressed</span>
                             ) : obs.movementDecision.status === 'TRANSITION_SUPPRESSED' ? (
-                              <div className="font-semibold text-amber-400 flex items-center gap-1.5">
-                                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                                <span>Transition suppressed (rapid opposite movement)</span>
-                              </div>
+                              <span className="gate-pill is-warn">Transition suppressed (rapid opposite movement)</span>
                             ) : obs.movementDecision.status === 'AUTOMATION_DISABLED' ? (
-                              <div className="font-semibold text-slate-400 flex items-center gap-1.5">
-                                <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
-                                <span>Movement automation disabled — No movement recorded</span>
-                              </div>
+                              <span className="gate-pill is-neutral">Movement automation disabled — No movement recorded</span>
                             ) : obs.movementDecision.status === 'CAMERA_NOT_MOVEMENT_CAPABLE' ? (
-                              <div className="text-slate-400">
+                              <span className="rec-obs-note">
                                 Camera role {selectedCamera?.role || 'GENERAL'} — No movement action
-                              </div>
+                              </span>
                             ) : (
-                              <div className="text-slate-400">
+                              <span className="rec-obs-note">
                                 Decision: {obs.movementDecision.status}
-                              </div>
+                              </span>
                             )
                           ) : (
-                            <div className="text-slate-400">Movement Decision: Evaluating...</div>
+                            <span className="rec-obs-note">Movement Decision: Evaluating...</span>
                           )
                         ) : isUnknown ? (
-                          <div className="text-slate-400 font-medium">UNKNOWN No movement action</div>
+                          <span className="rec-obs-note">UNKNOWN No movement action</span>
                         ) : isUncertain ? (
-                          <div className="text-slate-400 font-medium">UNCERTAIN No movement action</div>
+                          <span className="rec-obs-note">UNCERTAIN No movement action</span>
                         ) : (
-                          <div className="text-slate-400 font-medium">QUALITY INSUFFICIENT No movement action</div>
+                          <span className="rec-obs-note">QUALITY INSUFFICIENT No movement action</span>
                         )}
                       </div>
 
                       {isUncertain && (
-                        <div className="uncertain-info text-xs text-amber-300/80 mt-0.5">
+                        <div className="rec-obs-note">
                           Ambiguous match or low candidate separation. Identity kept private.
                         </div>
                       )}
 
                       {isUnknown && (
-                        <div className="unknown-info text-xs text-slate-400 mt-0.5">
+                        <div className="rec-obs-note">
                           No enrolled hostel resident matched confidently.
                         </div>
                       )}
 
                       {isQualityInsufficient && (
-                        <div className="quality-insufficient-info text-xs text-rose-300/90 mt-0.5">
+                        <div className="rec-obs-note">
                           Face detected — quality insufficient ({obs.qualityReason || 'unusable frame'}). Biometric comparison omitted.
                         </div>
                       )}
 
                       {!obs.qualityUsable && obs.qualityReason && !isQualityInsufficient && (
-                        <div className="quality-warning text-[10px] text-rose-400 bg-rose-950/40 px-2 py-0.5 rounded border border-rose-900/50 mt-1">
+                        <div className="rec-obs-note">
                           Quality flag: {obs.qualityReason}
                         </div>
                       )}
@@ -1306,7 +1183,7 @@ export const RecognitionPage: React.FC = () => {
           )}
         </div>
       </div>
-    </div>
+      </div>
 
       {/* Override Reason Modal */}
       {overrideModalOpen && (
@@ -1317,33 +1194,32 @@ export const RecognitionPage: React.FC = () => {
           subtitle={`Overriding default direction to ${overrideDirection}`}
           size="md"
         >
-          <form onSubmit={handleOverrideSubmit} className="space-y-4">
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 rounded border border-amber-200 dark:border-amber-900 text-xs">
+          <form onSubmit={handleOverrideSubmit} className="rec-override-form">
+            <div className="rec-override-note">
               The camera role is set for the opposite direction. An audit reason is mandatory to record this movement override.
             </div>
 
             {overrideError && (
-              <div className="p-3 bg-rose-50 text-rose-700 text-xs rounded border border-rose-200">
+              <div className="rec-inline-error" role="alert">
                 {overrideError}
               </div>
             )}
 
-            <div>
-              <label htmlFor="gateOverrideReason" className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                Override Reason <span className="text-red-500">*</span>
+            <div className="rec-override-field">
+              <label htmlFor="gateOverrideReason">
+                Override Reason <span aria-hidden="true">*</span>
               </label>
               <textarea
                 id="gateOverrideReason"
                 value={overrideReason}
                 onChange={(e) => setOverrideReason(e.target.value)}
                 placeholder="e.g. Resident permitted to exit through entrance turnstile"
-                className="w-full px-3 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-1 focus:ring-primary focus:outline-none dark:bg-slate-800"
                 rows={3}
                 required
               />
             </div>
 
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+            <div className="rec-override-actions">
               <Button type="button" variant="outline" onClick={() => setOverrideModalOpen(false)}>
                 Cancel
               </Button>

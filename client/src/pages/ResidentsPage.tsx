@@ -19,6 +19,7 @@ import { ResidentListTable } from '../features/residents/ResidentListTable';
 import { ResidentCreateModal } from '../features/residents/ResidentCreateModal';
 import { FaceEnrollmentModal } from '../features/residents/FaceEnrollmentModal';
 import { Plus, RefreshCw, AlertCircle } from 'lucide-react';
+import '../styles/residents.css';
 
 export const ResidentsPage: React.FC = () => {
   const { user } = useAuth();

@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { Camera, Check, RefreshCw } from 'lucide-react';
+import { AlertCircle, Camera, Check, CheckCircle2, RefreshCw } from 'lucide-react';
 import { Modal } from '../../components/Modal';
 import { Button } from '../../components/Button';
 import { useToast } from '../../components/ToastContext';
@@ -8,6 +8,7 @@ import { camerasApi } from '../../api/cameras.api';
 import { biometricsApi, EnrollmentPose, EnrollmentStatusData } from '../../api/biometrics.api';
 import { ApiError } from '../../api/client';
 import { usePreviewStreamUrl } from '../../hooks/usePreviewStreamUrl';
+import '../../styles/residents.css';
 
 interface FaceEnrollmentModalProps {
   isOpen: boolean;
@@ -34,15 +35,17 @@ const POSE_STEPS: PoseStep[] = [
 
 const TOTAL_ANGLES = POSE_STEPS.length;
 
+// Each message states the problem and the next action. Wording only: the
+// quality gates themselves are decided by the server.
 const QUALITY_MESSAGES: Record<string, string> = {
-  MULTIPLE_FACES: 'Only one person should be visible.',
-  NO_FACE: 'No face found. Look at the camera and hold still.',
-  FACE_TOO_SMALL: 'Move closer to the camera.',
-  FACE_OFF_CENTER: 'Center your face inside the guide.',
-  TOO_BLURRY: 'The image is blurry. Hold still and capture again.',
-  TOO_DARK: 'Too dark. Improve the lighting.',
-  TOO_BRIGHT: 'Too bright. Reduce glare or backlight.',
-  LOW_DETECTION_CONFIDENCE: 'Face not detected clearly. Look straight at the camera.',
+  MULTIPLE_FACES: 'Only one person should be visible. Ask others to step out of the frame, then capture again.',
+  NO_FACE: 'No face found. Look at the camera and hold still, then capture again.',
+  FACE_TOO_SMALL: 'The face is too small in the frame. Move closer to the camera, then capture again.',
+  FACE_OFF_CENTER: 'The face is not centered. Move inside the guide, then capture again.',
+  TOO_BLURRY: 'The image is blurry. Hold still for a moment, then capture again.',
+  TOO_DARK: 'The image is too dark. Improve the lighting on the face, then capture again.',
+  TOO_BRIGHT: 'The image is too bright. Reduce glare or backlight, then capture again.',
+  LOW_DETECTION_CONFIDENCE: 'The face was not detected clearly. Look straight at the camera, then capture again.',
 };
 
 const SESSION_ENDED_MESSAGE =
@@ -53,11 +56,11 @@ const UNSUPPORTED_CAMERA_MESSAGE =
 type CameraMode = 'browser' | 'server' | 'none';
 type CameraPhase = 'idle' | 'requesting' | 'ready' | 'blocked';
 type Busy = 'starting' | 'capturing' | 'saving' | 'cancelling' | null;
-type Feedback = { kind: 'error' | 'success'; text: string } | null;
+type Feedback = { kind: 'error' | 'success'; title?: string; text: string } | null;
 type OverlayAction = 'retry-camera' | 'reload-preview';
 
 function qualityMessage(reason: string | null | undefined, pose: PoseStep): string {
-  if (reason === 'WRONG_POSE') return `The head angle does not match this step. ${pose.instruction}.`;
+  if (reason === 'WRONG_POSE') return `The head angle does not match this step. ${pose.instruction}, then capture again.`;
   return (reason && QUALITY_MESSAGES[reason]) || 'Capture was not accepted. Hold still for a moment, then capture again.';
 }
 
@@ -346,7 +349,11 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
     if (mode === 'browser') {
       const frame = videoRef.current ? grabFrame(videoRef.current) : null;
       if (!frame) {
-        setFeedback({ kind: 'error', text: 'The camera has not produced an image yet. Wait for the preview, then capture.' });
+        setFeedback({
+          kind: 'error',
+          title: 'Camera not ready',
+          text: 'The camera has not produced an image yet. Wait for the preview, then capture.',
+        });
         return;
       }
       imageBase64 = frame;
@@ -364,18 +371,37 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
       const data = res.data;
       if (data.sessionStatus) setSession(data.sessionStatus);
       if (data.sampleAccepted) {
+        const acceptedPoses = new Set<EnrollmentPose>([
+          ...(data.sessionStatus?.completedPoses ?? session?.completedPoses ?? []),
+          pose.key,
+        ]);
+        const upcoming = POSE_STEPS.find((p) => !acceptedPoses.has(p.key)) ?? null;
         setActiveKey(null);
-        setFeedback({ kind: 'success', text: `${pose.label} angle captured.` });
+        setFeedback({
+          kind: 'success',
+          title: `${pose.label} angle accepted`,
+          text: upcoming
+            ? `Next: ${upcoming.instruction}.`
+            : 'All angles captured. Save to activate the face profile.',
+        });
       } else {
-        setFeedback({ kind: 'error', text: qualityMessage(data.quality?.rejection_reason, pose) });
+        setFeedback({
+          kind: 'error',
+          title: 'Sample not accepted',
+          text: qualityMessage(data.quality?.rejection_reason, pose),
+        });
       }
     } catch (err) {
       if (err instanceof ApiError && (err.status === 404 || err.status === 410)) {
         setSession(null);
         setActiveKey(null);
-        setFeedback({ kind: 'error', text: SESSION_ENDED_MESSAGE });
+        setFeedback({ kind: 'error', title: 'Session expired', text: SESSION_ENDED_MESSAGE });
       } else {
-        setFeedback({ kind: 'error', text: describeApiError(err, 'Capture failed. Try again.') });
+        setFeedback({
+          kind: 'error',
+          title: 'Capture not completed',
+          text: describeApiError(err, 'Capture failed. Try again.'),
+        });
       }
     } finally {
       inFlightRef.current = false;
@@ -400,7 +426,11 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
       setSaveFailed(false);
     } catch (err) {
       setSession(null);
-      setFeedback({ kind: 'error', text: describeApiError(err, 'Could not start a new enrollment session. Try again.') });
+      setFeedback({
+        kind: 'error',
+        title: 'Could not start session',
+        text: describeApiError(err, 'Could not start a new enrollment session. Try again.'),
+      });
     } finally {
       inFlightRef.current = false;
       setBusy(null);
@@ -424,7 +454,14 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
       onSuccess({ ...resident, faceEnrollmentStatus: 'ENROLLED' });
     } catch (err) {
       setSaveFailed(true);
-      setFeedback({ kind: 'error', text: describeApiError(err, 'The enrollment could not be saved. Try again.') });
+      setFeedback({
+        kind: 'error',
+        title: 'Save failed',
+        text: describeApiError(
+          err,
+          'The enrollment could not be saved. Select Save again, or select Start over to capture all five angles again.'
+        ),
+      });
     } finally {
       inFlightRef.current = false;
       setBusy(null);
@@ -500,25 +537,28 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
 
   if (done) {
     return (
-      <Modal
-        isOpen
-        onClose={requestClose}
-        title={`Enroll Face — ${resident.fullName}`}
-        subtitle={`${resident.residentCode} • ${resident.roomGroup}`}
-        size="lg"
-        initialFocusRef={doneRef}
-      >
-        <div className="enroll-complete" role="status">
-          <span className="enroll-complete-icon" aria-hidden="true">
-            <Check size={22} />
-          </span>
-          <h3 className="enroll-complete-title">Face enrollment saved</h3>
-          <p className="enroll-complete-text">{`${resident.fullName}'s face profile is now active.`}</p>
-          <Button ref={doneRef} variant="primary" size="lg" onClick={onClose}>
-            Done
-          </Button>
-        </div>
-      </Modal>
+      <div className="enroll-scope">
+        <Modal
+          isOpen
+          onClose={requestClose}
+          title={`Enroll Face — ${resident.fullName}`}
+          subtitle={`${resident.residentCode} • ${resident.roomGroup}`}
+          size="lg"
+          initialFocusRef={doneRef}
+        >
+          <div className="enroll-complete" role="status">
+            <span className="enroll-complete-icon" aria-hidden="true">
+              <CheckCircle2 size={28} />
+            </span>
+            <h3 className="enroll-complete-title">Face enrollment saved</h3>
+            <p className="enroll-complete-text">{`${resident.fullName}'s face profile is now active.`}</p>
+            <p className="enroll-complete-meta">{`${TOTAL_ANGLES} of ${TOTAL_ANGLES} angles captured and saved.`}</p>
+            <Button ref={doneRef} variant="primary" size="lg" onClick={onClose}>
+              Done
+            </Button>
+          </div>
+        </Modal>
+      </div>
     );
   }
 
@@ -532,6 +572,7 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
   );
 
   return (
+    <div className="enroll-scope">
     <Modal
       isOpen
       onClose={requestClose}
@@ -633,7 +674,7 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
                       onClick={() => setActiveKey(pose.key)}
                     >
                       <span className="enroll-pose-mark" aria-hidden="true">
-                        {isDone ? <Check size={14} /> : isCurrent ? '●' : '○'}
+                        {isDone ? <Check size={14} /> : pose.stepNum}
                       </span>
                       <span aria-hidden="true">{pose.label}</span>
                     </button>
@@ -642,18 +683,39 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
               })}
             </ol>
 
-            <div
-              className="enroll-feedback"
-              data-kind={feedback?.kind ?? 'hint'}
-              role={feedback?.kind === 'error' ? 'alert' : 'status'}
-            >
-              {feedback?.text ?? defaultHint}
-            </div>
+            {feedback ? (
+              <div className="enroll-feedback" data-kind={feedback.kind} role={feedback.kind === 'error' ? 'alert' : 'status'}>
+                <span className="enroll-feedback-icon" aria-hidden="true">
+                  {feedback.kind === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+                </span>
+                <div className="enroll-feedback-body">
+                  {feedback.title && <span className="enroll-feedback-title">{feedback.title}</span>}
+                  <span>{feedback.text}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="enroll-feedback" data-kind="hint" role="status">
+                <div className="enroll-feedback-body">
+                  <span>{defaultHint}</span>
+                </div>
+              </div>
+            )}
 
             {initError && (
               <div className="enroll-feedback" data-kind="error" role="alert">
-                <span>{initError}</span>
-                <Button variant="outline" size="sm" onClick={retryInit} disabled={busy !== null}>
+                <span className="enroll-feedback-icon" aria-hidden="true">
+                  <AlertCircle size={18} />
+                </span>
+                <div className="enroll-feedback-body">
+                  <span>{initError}</span>
+                </div>
+                <Button
+                  className="enroll-feedback-action"
+                  variant="outline"
+                  size="sm"
+                  onClick={retryInit}
+                  disabled={busy !== null}
+                >
                   Try again
                 </Button>
               </div>
@@ -703,6 +765,7 @@ const EnrollmentDialog: React.FC<EnrollmentDialogProps> = ({ resident, onClose, 
         </div>
       </div>
     </Modal>
+    </div>
   );
 };
 

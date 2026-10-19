@@ -15,6 +15,7 @@ import { Button } from '../components/Button';
 import { AuthenticatedImage } from '../components/AuthenticatedImage';
 import { usePreviewStreamUrl } from '../hooks/usePreviewStreamUrl';
 import { formatTime } from '../utils/formatters';
+import '../styles/gate.css';
 import {
   Camera as CameraIcon,
   AlertTriangle,
@@ -95,19 +96,30 @@ function rememberObservation(seen: Map<string, SeenObservation>, id: string, ent
   }
 }
 
-function describeCameraError(err: unknown): string {
+// Labels come from the configured sourceType only. Browser capture is used solely for WEBCAM cameras.
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  WEBCAM: 'Webcam',
+  RTSP: 'RTSP',
+  SMART_CAMERA: 'Smart Cam',
+};
+
+function cameraSourceLabel(sourceType: string | undefined): string {
+  return sourceType ? SOURCE_TYPE_LABELS[sourceType] ?? sourceType : 'Camera';
+}
+
+function describeCameraError(err: unknown, deviceLabel: string): string {
   const name = (err as { name?: string } | null)?.name;
   switch (name) {
     case 'NotAllowedError':
     case 'SecurityError':
-      return 'Camera access was blocked. Allow camera access in the browser address bar, then select Start laptop camera.';
+      return `Camera access was blocked. Allow camera access in the browser address bar, then select Start ${deviceLabel}.`;
     case 'NotFoundError':
     case 'OverconstrainedError':
-      return 'No camera was found on this device.';
+      return `No ${deviceLabel} was found on this device.`;
     case 'NotReadableError':
-      return 'The camera is in use by another application.';
+      return `The ${deviceLabel} is in use by another application.`;
     default:
-      return err instanceof Error && err.message ? err.message : 'The laptop camera could not be started.';
+      return err instanceof Error && err.message ? err.message : `The ${deviceLabel} could not be started.`;
   }
 }
 
@@ -188,7 +200,8 @@ export const GatePage: React.FC = () => {
       setIsCameraActive(true);
     } catch (err: unknown) {
       console.warn('Webcam access error:', err);
-      setCameraError(describeCameraError(err));
+      // Browser capture only starts for WEBCAM-configured cameras, so the device label is "webcam".
+      setCameraError(describeCameraError(err, 'webcam'));
       setIsCameraActive(false);
     } finally {
       setIsStartingCamera(false);
@@ -536,10 +549,26 @@ export const GatePage: React.FC = () => {
     : 'Camera needs attention';
   const cameraPillTone = cameraHealthy ? 'is-ok' : isBrowserCamera ? 'is-neutral' : 'is-warn';
 
+  // Device wording is derived from the configured sourceType (e.g. "webcam" or "rtsp"), never assumed.
+  const deviceLabel = selectedCamera ? cameraSourceLabel(selectedCamera.sourceType).toLowerCase() : 'camera';
+  const sourceLabel = cameraSourceLabel(selectedCamera?.sourceType);
+  // Offline presentation applies whenever the stage shows a message instead of live media.
+  const isStageLive =
+    camerasLoaded && !camerasError && cameras.length > 0 && (isBrowserCamera ? isCameraActive : !streamError);
+  const recognitionChip =
+    recognitionState === 'RUNNING'
+      ? { tone: 'is-ok', label: 'Recognition running' }
+      : recognitionState === 'WORKER_UNAVAILABLE'
+      ? { tone: 'is-danger', label: 'Recognition unavailable' }
+      : { tone: 'is-neutral', label: 'Recognition stopped' };
+
   const renderRecorded = (name: string, direction: Direction, at: string | undefined, manual: boolean) => (
-    <div className="gate-result">
-      <div className="gate-result-icon is-success">
-        <Check size={26} />
+    <div className="gate-result is-success">
+      <div className="gate-result-head">
+        <span className="gate-result-kicker">Latest result</span>
+        <span className="gate-result-icon is-success">
+          <Check size={18} />
+        </span>
       </div>
       <h2 className="gate-recorded-name">{name}</h2>
       <p className={`gate-recorded-label ${direction === 'IN' ? 'is-in' : 'is-out'}`}>
@@ -628,7 +657,7 @@ export const GatePage: React.FC = () => {
   };
 
   const renderIdentity = (current: RecognitionObservation, resident: RecognitionResident) => (
-    <div className="gate-identity-panel">
+    <div className="gate-result is-info gate-identity-panel">
       <div className="gate-identity-status">
         <span className="gate-identity-status-label">
           <span className="gate-dot is-live" />
@@ -671,8 +700,11 @@ export const GatePage: React.FC = () => {
     text: string,
     action?: React.ReactNode
   ) => (
-    <div className="gate-result">
-      <div className={`gate-result-icon is-${tone}`}>{icon}</div>
+    <div className={`gate-result is-${tone}`}>
+      <div className="gate-result-head">
+        <span className="gate-result-kicker">Gate status</span>
+        <span className={`gate-result-icon is-${tone}`}>{icon}</span>
+      </div>
       <h2 className="gate-result-title">{title}</h2>
       <p className="gate-result-text">{text}</p>
       {action}
@@ -795,7 +827,7 @@ export const GatePage: React.FC = () => {
             />
             <div className="gate-live-badge">
               <span className="gate-dot is-live" />
-              <span>Live gate camera</span>
+              <span>Live {sourceLabel}</span>
             </div>
             <button type="button" onClick={stopLaptopCamera} className="gate-camera-overlay-button gate-corner-button">
               Turn off
@@ -832,12 +864,14 @@ export const GatePage: React.FC = () => {
       return (
         <div className="gate-stage-message">
           <CameraIcon size={44} />
-          <p className="gate-stage-title">{cameraError ? 'Laptop camera not started' : 'Laptop camera is off'}</p>
-          <p className="gate-stage-body" role={cameraError ? 'alert' : undefined}>
-            {cameraError ?? 'Start the laptop camera to resume automatic recognition at this gate.'}
-          </p>
+          <div className="gate-stage-copy">
+            <p className="gate-stage-title">{cameraError ? `${sourceLabel} not started` : `${sourceLabel} is off`}</p>
+            <p className="gate-stage-body" role={cameraError ? 'alert' : undefined}>
+              {cameraError ?? `Start the ${deviceLabel} to resume automatic recognition at this gate.`}
+            </p>
+          </div>
           <Button type="button" variant="primary" size="sm" onClick={startLaptopCamera}>
-            Start laptop camera
+            Start {deviceLabel}
           </Button>
         </div>
       );
@@ -868,21 +902,24 @@ export const GatePage: React.FC = () => {
 
   return (
     <div className="gate-page">
-      <div className="gate-header-card">
-        <div>
-          <div className="gate-header-title-row">
-            <h1 className="gate-title">Gate Operations</h1>
-            <span className="gate-camera-name">{selectedCamera?.name || 'Main Gate'}</span>
-            {selectedCamera && <span className="gate-pill is-info">Automatic IN / OUT</span>}
-            <span className={`gate-pill ${cameraPillTone}`}>
-              <span className={`gate-dot ${cameraHealthy ? 'is-live' : isBrowserCamera ? '' : 'is-warn'}`} />
-              {cameraStatusLabel}
-            </span>
-          </div>
-          <p className="gate-header-subtitle">Live resident movement and gate exceptions</p>
+      <div className="gate-topbar">
+        <div className="gate-topbar-main">
+          <h1 className="gate-title">Gate Operations</h1>
+          <span className="gate-topbar-divider" aria-hidden="true" />
+          <span className="gate-camera-name">{selectedCamera?.name || 'Gate camera'}</span>
+          {selectedCamera && <span className="gate-pill is-info">{sourceLabel}</span>}
+          {selectedCamera && <span className="gate-pill is-info">Automatic IN / OUT</span>}
+          <span className={`gate-pill ${cameraPillTone}`}>
+            <span className={`gate-dot ${cameraHealthy ? 'is-live' : isBrowserCamera ? '' : 'is-warn'}`} />
+            {cameraStatusLabel}
+          </span>
+          <span className={`gate-pill ${recognitionChip.tone}`} data-testid="gate-recognition-chip">
+            <span className={`gate-dot ${recognitionState === 'RUNNING' ? 'is-live' : recognitionChip.tone === 'is-danger' ? 'is-warn' : ''}`} />
+            {recognitionChip.label}
+          </span>
         </div>
 
-        <div className="gate-header-summary">
+        <div className="gate-topbar-actions">
           {cameras.length > 1 && (
             <div className="gate-camera-select-wrap">
               <label htmlFor="gate-camera-select" className="gate-count-label">
@@ -903,7 +940,7 @@ export const GatePage: React.FC = () => {
             </div>
           )}
 
-          <div className="gate-presence-summary">
+          <div className="gate-counts" aria-label="Resident presence">
             <div className="gate-count">
               <span className="gate-count-label">Total</span>
               <span className="gate-count-value">{presenceCounts?.totalResidents ?? '—'}</span>
@@ -941,9 +978,9 @@ export const GatePage: React.FC = () => {
         </div>
       </div>
 
-      <div className="gate-operations-layout">
+      <div className="gate-ops">
         <section className="gate-panel gate-camera-col" aria-label="Gate camera feed">
-          <div className="gate-camera-stage">{renderStage()}</div>
+          <div className={`gate-camera-stage${isStageLive ? '' : ' is-offline'}`}>{renderStage()}</div>
         </section>
 
         <section className="gate-panel gate-action-col" aria-label="Recognition result">
@@ -955,10 +992,30 @@ export const GatePage: React.FC = () => {
           <div className="gate-result-region" aria-live="polite" aria-atomic="true">
             {renderActionPanel()}
           </div>
+          {!isStageLive && (
+            <ul className="gate-checklist" aria-label="Gate readiness">
+              <li>
+                <span className="gate-checklist-label">Camera</span>
+                <span className="gate-checklist-value">{cameraStatusLabel}</span>
+              </li>
+              <li>
+                <span className="gate-checklist-label">Recognition</span>
+                <span className="gate-checklist-value">{recognitionChip.label}</span>
+              </li>
+              <li>
+                <span className="gate-checklist-label">Source</span>
+                <span className="gate-checklist-value">{sourceLabel}</span>
+              </li>
+              <li>
+                <span className="gate-checklist-label">Movements</span>
+                <span className="gate-checklist-value">Automatic IN / OUT</span>
+              </li>
+            </ul>
+          )}
         </section>
       </div>
 
-      <section className="gate-panel" aria-labelledby="gate-activity-heading">
+      <section className="gate-panel gate-activity" aria-labelledby="gate-activity-heading">
         <div className="gate-panel-header">
           <h2 id="gate-activity-heading" className="gate-panel-title">
             Recent activity

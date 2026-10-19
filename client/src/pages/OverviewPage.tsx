@@ -24,6 +24,24 @@ import {
   Video,
   CheckCircle2,
 } from 'lucide-react';
+import '../styles/overview.css';
+
+type ReadinessTone = 'ok' | 'attention' | 'neutral';
+
+const READINESS_LABEL: Record<ReadinessTone, string> = {
+  ok: 'Complete',
+  attention: 'Needs attention',
+  neutral: 'No data',
+};
+
+const ReadinessMark: React.FC<{ tone: ReadinessTone }> = ({ tone }) => (
+  <span className="overview-check-mark">
+    {tone === 'ok' && <CheckCircle2 size={16} aria-hidden="true" />}
+    {tone === 'attention' && <AlertCircle size={16} aria-hidden="true" />}
+    {tone === 'neutral' && <span className="overview-check-dot" aria-hidden="true" />}
+    <span className="sr-only">{READINESS_LABEL[tone]}</span>
+  </span>
+);
 
 export const OverviewPage: React.FC = () => {
   const { user } = useAuth();
@@ -128,13 +146,20 @@ export const OverviewPage: React.FC = () => {
     : 'Residents Currently Outside';
   const outsideStatusLabel = isAfterReturnDeadline ? 'Not Returned' : 'Outside';
 
+  // Readiness marks are derived from the same counts shown in each row.
+  const enrollmentTone: ReadinessTone =
+    totalResidents === 0 ? 'neutral' : enrolledCount >= totalResidents ? 'ok' : 'attention';
+  const cameraTone: ReadinessTone =
+    cameras.length === 0 ? 'neutral' : onlineCameras === cameras.length ? 'ok' : 'attention';
+  const cameraAttentionTone: ReadinessTone = cameraAttentionCount > 0 ? 'attention' : 'ok';
+
   // Guard role is redirected directly to Gate
   if (user?.role === 'GUARD') {
     return <Navigate to="/gate" replace />;
   }
 
   return (
-    <div className="overview-page flex flex-col gap-7 max-w-7xl mx-auto w-full">
+    <div className="overview-page">
       <PageHeader
         title={isWarden ? 'Warden Dashboard' : 'Admin Overview'}
         subtitle={
@@ -156,68 +181,66 @@ export const OverviewPage: React.FC = () => {
       />
 
       {error && (
-        <div className="p-4 bg-red-50 text-red-800 text-sm rounded-lg border border-red-200 flex items-center gap-2.5">
-          <AlertCircle size={18} className="shrink-0" />
+        <div className="alert-banner alert-banner-error" role="alert">
+          <AlertCircle size={18} />
           <span>{error}</span>
         </div>
       )}
 
-      {/* 4 Large Operational Metric Cards */}
+      {/* Operational metric cards */}
       <div className="overview-stats-row">
         {/* Total Residents */}
-        <Link
-          to="/residents"
-          className="overview-stat-card overview-stat-card-link group"
-        >
-          <div className="flex items-center justify-between text-slate-600">
-            <span className="text-[15px] font-semibold text-slate-700">Residents</span>
-            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              <Users size={20} />
-            </div>
+        <Link to="/residents" className="overview-stat-card overview-stat-card-link">
+          <div className="overview-stat-head">
+            <span className="overview-stat-label">Residents</span>
+            <Users size={18} className="overview-stat-icon is-blue" />
           </div>
-          <div className="flex items-end justify-between gap-3">
+          <div className="overview-stat-foot">
             <span className="overview-stat-value">{totalResidents}</span>
-            <span className="text-sm font-semibold text-blue-700 group-hover:text-blue-800 flex items-center gap-1">
-              View residents <ArrowRight size={15} />
+            <span className="overview-stat-link">
+              View residents <ArrowRight size={14} />
             </span>
           </div>
         </Link>
 
         {/* Inside Hostel */}
         <div className="overview-stat-card">
-          <div className="flex items-center justify-between text-slate-600">
-            <span className="text-[15px] font-semibold text-slate-600">Inside</span>
-            <LogIn size={20} className="text-emerald-600" />
+          <div className="overview-stat-head">
+            <span className="overview-stat-label">Inside</span>
+            <LogIn size={18} className="overview-stat-icon is-emerald" />
           </div>
-          <div>
+          <div className="overview-stat-foot">
             <span className="overview-stat-value">{currentlyIn}</span>
           </div>
         </div>
 
         {/* Outside Hostel */}
         <div className="overview-stat-card">
-          <div className="flex items-center justify-between text-slate-600">
-            <span className="text-[15px] font-semibold text-slate-600">Outside</span>
-            <LogOut size={20} className="text-amber-600" />
+          <div className="overview-stat-head">
+            <span className="overview-stat-label">Outside</span>
+            <LogOut size={18} className="overview-stat-icon is-amber" />
           </div>
-          <div>
+          <div className="overview-stat-foot">
             <span className="overview-stat-value">{currentlyOut}</span>
           </div>
         </div>
 
         {/* Return Deadline */}
         <div className="overview-stat-card">
-          <div className="flex items-center justify-between text-slate-600">
-            <span className="text-[15px] font-semibold text-slate-600">
+          <div className="overview-stat-head">
+            <span className="overview-stat-label">
               {!hasScopedReturnDeadline
                 ? 'Return Deadlines'
                 : isAfterReturnDeadline
                 ? 'Not Returned'
                 : 'Return Deadline'}
             </span>
-            <Clock size={20} className={isAfterReturnDeadline ? 'text-red-600' : 'text-blue-600'} />
+            <Clock
+              size={18}
+              className={`overview-stat-icon ${isAfterReturnDeadline ? 'is-red' : 'is-blue'}`}
+            />
           </div>
-          <div>
+          <div className={`overview-stat-foot${!hasScopedReturnDeadline ? ' is-stacked' : ''}`}>
             <span className="overview-stat-value">
               {!hasScopedReturnDeadline
                 ? 'Varies'
@@ -226,36 +249,30 @@ export const OverviewPage: React.FC = () => {
                 : returnDeadlineLabel}
             </span>
             {!hasScopedReturnDeadline && (
-              <span className="block text-sm font-medium text-slate-500 mt-2">
-                Set separately for each hostel
-              </span>
+              <span className="overview-stat-note">Set separately for each hostel</span>
             )}
           </div>
         </div>
       </div>
 
       <div
-        className={`rounded-xl border px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-          isAfterReturnDeadline
-            ? 'bg-red-50 border-red-200 text-red-900'
-            : 'bg-blue-50 border-blue-200 text-blue-900'
-        }`}
+        className={`overview-notice ${isAfterReturnDeadline ? 'is-alert' : 'is-info'}`}
       >
-        <div className="flex items-start gap-3">
+        <div className="overview-notice-body">
           {isAfterReturnDeadline ? (
-            <AlertCircle size={20} className="mt-0.5 shrink-0 text-red-600" />
+            <AlertCircle size={18} className="overview-notice-icon" />
           ) : (
-            <Clock size={20} className="mt-0.5 shrink-0 text-blue-600" />
+            <Clock size={18} className="overview-notice-icon" />
           )}
-          <div>
-            <div className="font-bold text-[15px]">
+          <div className="overview-notice-text">
+            <div className="overview-notice-title">
               {!hasScopedReturnDeadline
                 ? 'Each hostel has its own return deadline'
                 : isAfterReturnDeadline
                 ? `${currentlyOut} ${currentlyOut === 1 ? 'resident has' : 'residents have'} not returned`
                 : `Return deadline is ${returnDeadlineLabel}`}
             </div>
-            <div className="text-sm mt-0.5 opacity-80">
+            <div className="overview-notice-detail">
               {!hasScopedReturnDeadline
                 ? 'Open Hostels to review or change the deadline for each hostel. Presence counts above include all hostels in your organization.'
                 : isAfterReturnDeadline
@@ -266,57 +283,56 @@ export const OverviewPage: React.FC = () => {
         </div>
         <Link
           to={!hasScopedReturnDeadline ? '/facilities' : '/residents'}
-          className="resident-quick-link whitespace-nowrap"
+          className="resident-quick-link overview-notice-link"
         >
-          {!hasScopedReturnDeadline ? 'Manage hostel deadlines' : 'Open resident list'} <ArrowRight size={15} />
+          {!hasScopedReturnDeadline ? 'Manage hostel deadlines' : 'Open resident list'} <ArrowRight size={14} />
         </Link>
       </div>
 
-      {/* Main Content: Live presence, recent gate activity, pending face enrollments */}
+      {/* Main Content: Live presence, recent gate activity, operational readiness */}
       <div className="overview-content-row">
         {/* Left Column: Residents Currently Outside & Recent Gate Activity */}
         <div className="overview-main-col">
-          {/* Residents Currently Outside */}
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <LogOut size={18} className="text-amber-600" />
-                <h3 className="text-lg font-bold text-slate-900">{outsideSectionTitle}</h3>
+          <section className="overview-panel" aria-labelledby="overview-outside-title">
+            <div className="overview-panel-head">
+              <div className="overview-panel-title">
+                <LogOut size={17} className="overview-title-icon is-amber" />
+                <h3 id="overview-outside-title">{outsideSectionTitle}</h3>
               </div>
-              <span className="text-sm font-semibold px-3 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
+              <span className="overview-count-pill">
                 {currentlyOut} {outsideStatusLabel}
               </span>
             </div>
 
-            <div className="overflow-x-auto">
-              {outsideResidents.length === 0 ? (
-                <div className="p-8 text-center text-slate-500 text-[15px]">
-                  {isAfterReturnDeadline
-                    ? 'All residents have returned to the hostel.'
-                    : 'All residents are currently inside the hostel.'}
-                </div>
-              ) : (
-                <table className="w-full text-left text-[15px] border-collapse">
+            {outsideResidents.length === 0 ? (
+              <div className="overview-empty">
+                {isAfterReturnDeadline
+                  ? 'All residents have returned to the hostel.'
+                  : 'All residents are currently inside the hostel.'}
+              </div>
+            ) : (
+              <div className="overview-table-wrap">
+                <table className="overview-table">
                   <thead>
-                    <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/70 text-sm">
-                      <th className="py-3.5 px-6 font-semibold">Resident</th>
-                      <th className="py-3.5 px-6 font-semibold">Room</th>
-                      <th className="py-3.5 px-6 font-semibold">Last Out</th>
-                      <th className="py-3.5 px-6 font-semibold">Phone</th>
-                      <th className="py-3.5 px-6 font-semibold text-right">Status</th>
+                    <tr>
+                      <th scope="col">Resident</th>
+                      <th scope="col">Room</th>
+                      <th scope="col">Last Out</th>
+                      <th scope="col">Phone</th>
+                      <th scope="col" className="is-right">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {outsideResidents.map((res) => (
-                      <tr key={res.id} className="hover:bg-slate-50/70 transition-colors h-16">
-                        <td className="py-3.5 px-6 font-semibold text-slate-900">
-                          <div>
-                            <span>{res.fullName}</span>
-                            <span className="block text-xs font-mono text-slate-500 font-normal">{res.residentCode}</span>
+                      <tr key={res.id}>
+                        <td>
+                          <div className="overview-person">
+                            <span className="overview-person-name">{res.fullName}</span>
+                            <span className="overview-person-code">{res.residentCode}</span>
                           </div>
                         </td>
-                        <td className="py-3.5 px-6 text-slate-700 font-medium">{res.roomGroup}</td>
-                        <td className="py-3.5 px-6 text-slate-600 text-sm">
+                        <td className="overview-cell-strong">{res.roomGroup}</td>
+                        <td className="is-numeric">
                           {res.presence?.lastMovementTime
                             ? new Date(res.presence.lastMovementTime).toLocaleTimeString([], {
                                 hour: '2-digit',
@@ -324,11 +340,9 @@ export const OverviewPage: React.FC = () => {
                               })
                             : '—'}
                         </td>
-                        <td className="py-3.5 px-6 text-slate-600 text-sm">
-                          {res.contactPhone || '—'}
-                        </td>
-                        <td className="py-3.5 px-6 text-right">
-                          <span className="inline-flex items-center px-3 py-1 rounded-md text-sm font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                        <td className="is-numeric">{res.contactPhone || '—'}</td>
+                        <td className="is-right">
+                          <span className="overview-status-pill is-amber">
                             <span className="sr-only">OUT</span>
                             <span>{outsideStatusLabel}</span>
                           </span>
@@ -337,32 +351,30 @@ export const OverviewPage: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          </section>
 
-          {/* Recent Gate Activity Table */}
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-slate-900">Recent Gate Activity</h3>
-              <span className="text-sm text-slate-500 font-medium">Live Movement Log</span>
+          {/* Recent Gate Activity */}
+          <section className="overview-panel" aria-labelledby="overview-activity-title">
+            <div className="overview-panel-head">
+              <h3 id="overview-activity-title">Recent Gate Activity</h3>
+              <span className="overview-panel-caption">Live Movement Log</span>
             </div>
 
-            <div className="overflow-x-auto flex-1">
-              {recentMovements.length === 0 ? (
-                <div className="p-8 text-center text-slate-500 text-[15px]">
-                  No recent gate movements recorded today.
-                </div>
-              ) : (
-                <table className="w-full text-left text-[15px] border-collapse">
+            {recentMovements.length === 0 ? (
+              <div className="overview-empty">No recent gate movements recorded today.</div>
+            ) : (
+              <div className="overview-table-wrap">
+                <table className="overview-table">
                   <thead>
-                    <tr className="border-b border-slate-200 text-slate-600 bg-slate-50/70 text-sm">
-                      <th className="py-3.5 px-6 font-semibold">Time</th>
-                      <th className="py-3.5 px-6 font-semibold">Resident</th>
-                      <th className="py-3.5 px-6 font-semibold text-right">Movement</th>
+                    <tr>
+                      <th scope="col">Time</th>
+                      <th scope="col">Resident</th>
+                      <th scope="col" className="is-right">Movement</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody>
                     {recentMovements.map((mov) => {
                       const time = new Date(mov.timestamp).toLocaleTimeString([], {
                         hour: '2-digit',
@@ -371,23 +383,19 @@ export const OverviewPage: React.FC = () => {
                       const isIN = mov.direction === 'IN';
 
                       return (
-                        <tr key={mov.id} className="hover:bg-slate-50/70 transition-colors h-16">
-                          <td className="py-3.5 px-6 font-mono text-slate-500 text-sm">{time}</td>
-                          <td className="py-3.5 px-6 font-semibold text-slate-900">
-                            <div>
-                              <span>{mov.fullName || mov.residentId}</span>
+                        <tr key={mov.id}>
+                          <td className="is-numeric is-muted">{time}</td>
+                          <td>
+                            <div className="overview-person">
+                              <span className="overview-person-name">{mov.fullName || mov.residentId}</span>
                               {mov.residentCode && (
-                                <span className="block text-xs font-mono text-slate-500 font-normal">{mov.residentCode}</span>
+                                <span className="overview-person-code">{mov.residentCode}</span>
                               )}
                             </div>
                           </td>
-                          <td className="py-3.5 px-6 text-right">
+                          <td className="is-right">
                             <span
-                              className={`inline-flex items-center px-3 py-1 rounded-md text-sm font-semibold ${
-                                isIN
-                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                                  : 'bg-amber-50 text-amber-800 border border-amber-200'
-                              }`}
+                              className={`overview-status-pill ${isIN ? 'is-emerald' : 'is-amber'}`}
                             >
                               {isIN ? 'Entered' : 'Left'}
                             </span>
@@ -397,75 +405,76 @@ export const OverviewPage: React.FC = () => {
                     })}
                   </tbody>
                 </table>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          </section>
         </div>
 
         {/* Right Column: Role-specific operational panel */}
-        <div className="overview-side-col flex flex-col gap-4">
+        <div className="overview-side-col">
           {isWarden ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between gap-6">
-              <div>
-                <div className="flex items-center gap-2.5 text-amber-600 mb-2">
-                  <ShieldAlert size={20} />
-                  <h3 className="text-lg font-bold text-slate-900">Residents Needing Enrollment</h3>
+            <section className="overview-panel" aria-labelledby="overview-enrollment-title">
+              <div className="overview-panel-head">
+                <div className="overview-panel-title">
+                  <ShieldAlert size={17} className="overview-title-icon is-amber" />
+                  <h3 id="overview-enrollment-title">Residents Needing Enrollment</h3>
                 </div>
-                <p className="text-[15px] text-slate-600 leading-relaxed mt-2">
+              </div>
+              <div className="overview-panel-body">
+                <p className="overview-body-text">
                   {notEnrolledCount} {notEnrolledCount === 1 ? 'resident still needs' : 'residents still need'} face enrollment.
                 </p>
+                <Link to="/residents" className="overview-block-link">
+                  <Button variant="primary" size="md" rightIcon={<ArrowRight size={16} />}>
+                    Open Resident Roster
+                  </Button>
+                </Link>
               </div>
-
-              <Link to="/residents">
-                <Button variant="primary" size="md" className="w-full justify-center h-11 text-[15px] font-semibold" rightIcon={<ArrowRight size={16} />}>
-                  Open Resident Roster
-                </Button>
-              </Link>
-            </div>
+            </section>
           ) : (
-            <>
-              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-                <div className="flex items-center gap-2.5 mb-4">
-                  <CheckCircle2 size={20} className="text-emerald-600" />
-                  <h3 className="text-lg font-bold text-slate-900">Operational Readiness</h3>
-                </div>
-
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-600">Face enrollment</span>
-                    <span className="font-semibold text-slate-900">
-                      {enrolledCount} / {totalResidents}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <span className="text-slate-600">Cameras online</span>
-                    <span className="font-semibold text-slate-900">
-                      {onlineCameras} / {cameras.length}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-slate-600">Camera attention</span>
-                    <span className={`font-semibold ${cameraAttentionCount > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
-                      {cameraAttentionCount}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 mt-5">
-                  <Link to="/residents">
-                    <Button variant="outline" size="sm" className="w-full justify-center">
-                      Residents
-                    </Button>
-                  </Link>
-                  <Link to="/cameras">
-                    <Button variant="primary" size="sm" className="w-full justify-center" leftIcon={<Video size={14} />}>
-                      Cameras
-                    </Button>
-                  </Link>
+            <section className="overview-panel" aria-labelledby="overview-readiness-title">
+              <div className="overview-panel-head">
+                <div className="overview-panel-title">
+                  <CheckCircle2 size={17} className="overview-title-icon is-emerald" />
+                  <h3 id="overview-readiness-title">Operational Readiness</h3>
                 </div>
               </div>
 
-            </>
+              <ul className="overview-checklist">
+                <li className={`overview-check is-${enrollmentTone}`}>
+                  <ReadinessMark tone={enrollmentTone} />
+                  <span className="overview-check-label">Face enrollment</span>
+                  <span className="overview-check-value">
+                    {enrolledCount} / {totalResidents}
+                  </span>
+                </li>
+                <li className={`overview-check is-${cameraTone}`}>
+                  <ReadinessMark tone={cameraTone} />
+                  <span className="overview-check-label">Cameras online</span>
+                  <span className="overview-check-value">
+                    {onlineCameras} / {cameras.length}
+                  </span>
+                </li>
+                <li className={`overview-check is-${cameraAttentionTone}`}>
+                  <ReadinessMark tone={cameraAttentionTone} />
+                  <span className="overview-check-label">Camera attention</span>
+                  <span className="overview-check-value">{cameraAttentionCount}</span>
+                </li>
+              </ul>
+
+              <div className="overview-panel-actions">
+                <Link to="/residents" className="overview-action-link">
+                  <Button variant="outline" size="sm">
+                    Residents
+                  </Button>
+                </Link>
+                <Link to="/cameras" className="overview-action-link">
+                  <Button variant="primary" size="sm" leftIcon={<Video size={14} />}>
+                    Cameras
+                  </Button>
+                </Link>
+              </div>
+            </section>
           )}
 
           {/* Diagnostics Section retained for automated contracts, not normal UI */}

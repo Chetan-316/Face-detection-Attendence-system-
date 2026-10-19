@@ -1,0 +1,1125 @@
+/* ==========================================================================
+   Gate Operations and Gate Monitor (Recognition) density layout.
+   Every rule is scoped to .gate-page or .recognition-page so nothing leaks
+   into the shared components owned by index.css.
+   ========================================================================== */
+
+.gate-page,
+.recognition-page {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.gate-page *,
+.recognition-page * {
+  box-sizing: border-box;
+}
+
+/* ---- Shared status chip language ------------------------------------------ */
+
+.gate-page .gate-pill,
+.recognition-page .gate-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.gate-page .gate-pill.is-ok,
+.recognition-page .gate-pill.is-ok {
+  background: var(--success-subtle);
+  border-color: var(--success-border);
+  color: #166534;
+}
+
+.gate-page .gate-pill.is-warn,
+.recognition-page .gate-pill.is-warn {
+  background: var(--warning-subtle);
+  border-color: var(--warning-border);
+  color: #92400E;
+}
+
+.gate-page .gate-pill.is-danger,
+.recognition-page .gate-pill.is-danger {
+  background: var(--danger-subtle);
+  border-color: var(--danger-border);
+  color: #991B1B;
+}
+
+.gate-page .gate-pill.is-info,
+.recognition-page .gate-pill.is-info {
+  background: var(--primary-subtle);
+  border-color: #BFDBFE;
+  color: #1E40AF;
+}
+
+.gate-page .gate-pill.is-neutral,
+.recognition-page .gate-pill.is-neutral {
+  background: #F1F5F9;
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-dot,
+.recognition-page .gate-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.gate-page .gate-dot.is-live,
+.recognition-page .gate-dot.is-live {
+  background: var(--success-500);
+}
+
+.gate-page .gate-dot.is-warn,
+.recognition-page .gate-dot.is-warn {
+  background: var(--warning-500);
+}
+
+.gate-page .gate-dot.is-live,
+.recognition-page .gate-dot.is-live {
+  animation: gate-pulse 2s ease-in-out infinite;
+}
+
+@keyframes gate-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ---- Top bar: title, camera identity, status, counts, actions ------------- */
+
+.gate-page .gate-topbar,
+.recognition-page .rec-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.gate-page .gate-topbar-main,
+.recognition-page .rec-topbar-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.gate-page .gate-title,
+.recognition-page .rec-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recognition-page .rec-title-sub {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.gate-page .gate-camera-name,
+.recognition-page .rec-camera-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gate-page .gate-topbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-subtle);
+}
+
+.gate-page .gate-topbar-actions,
+.recognition-page .rec-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.gate-page .gate-counts {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.gate-page .gate-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-surface);
+}
+
+.gate-page .gate-count + .gate-count {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.gate-page .gate-count-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.gate-page .gate-count-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.gate-page .gate-count-value.is-in {
+  color: #166534;
+}
+
+.gate-page .gate-count-value.is-out {
+  color: #92400E;
+}
+
+.gate-page .gate-camera-select-wrap,
+.recognition-page .rec-camera-select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gate-page .gate-camera-select,
+.recognition-page .rec-camera-select {
+  height: 32px;
+  min-width: 180px;
+  max-width: 260px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* ---- Main two-column operations area --------------------------------------- */
+
+.gate-page .gate-ops,
+.recognition-page .rec-ops {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.gate-page .gate-panel,
+.recognition-page .rec-panel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  min-width: 0;
+}
+
+.gate-page .gate-camera-col,
+.recognition-page .rec-camera-col {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gate-page .gate-action-col,
+.recognition-page .rec-result-col {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* Camera stage: 16:9 when live, compact strip when offline. */
+.gate-page .gate-camera-stage,
+.recognition-page .rec-stage {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  max-height: 46vh;
+  width: 100%;
+  background: #0B1220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.gate-page .gate-camera-stage.is-offline,
+.recognition-page .rec-stage.is-offline {
+  aspect-ratio: auto;
+  max-height: none;
+  min-height: 0;
+  background: #F8FAFC;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.gate-page .gate-stage-media,
+.recognition-page .rec-stage-media {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.gate-page .gate-stage-message,
+.recognition-page .rec-stage-message {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  width: 100%;
+  text-align: left;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.gate-page .gate-stage-message > svg,
+.recognition-page .rec-stage-message > svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.gate-page .gate-stage-copy,
+.recognition-page .rec-stage-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.gate-page .gate-stage-title,
+.recognition-page .rec-stage-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gate-page .gate-stage-body,
+.recognition-page .rec-stage-body {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-live-badge,
+.recognition-page .rec-live-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gate-page .gate-camera-overlay-button,
+.recognition-page .rec-overlay-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(15, 23, 42, 0.72);
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gate-page .gate-camera-overlay-button:hover:not(:disabled),
+.recognition-page .rec-overlay-button:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.gate-page .gate-camera-overlay-button:disabled,
+.recognition-page .rec-overlay-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.gate-page .gate-corner-button,
+.recognition-page .rec-corner-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.gate-page .gate-scan-bar,
+.recognition-page .rec-scan-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.gate-page .gate-scan-status,
+.recognition-page .rec-scan-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Result column header and dominant latest result. */
+.gate-page .gate-result-region,
+.recognition-page .rec-result-region {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.gate-page .gate-result,
+.recognition-page .rec-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border-subtle);
+  border-top: 4px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.gate-page .gate-result.is-success,
+.recognition-page .rec-result.is-success { border-top-color: var(--success-500); }
+.gate-page .gate-result.is-warn,
+.recognition-page .rec-result.is-warn { border-top-color: var(--warning-500); }
+.gate-page .gate-result.is-danger,
+.recognition-page .rec-result.is-danger { border-top-color: var(--danger-500); }
+.gate-page .gate-result.is-info,
+.recognition-page .rec-result.is-info { border-top-color: var(--primary-500); }
+.gate-page .gate-result.is-ready,
+.recognition-page .rec-result.is-ready { border-top-color: var(--success-500); }
+
+.gate-page .gate-result-head,
+.recognition-page .rec-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gate-page .gate-result-kicker,
+.recognition-page .rec-result-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.gate-page .gate-result-icon,
+.recognition-page .rec-result-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #F1F5F9;
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-result-icon.is-success { background: var(--success-subtle); color: #166534; }
+.gate-page .gate-result-icon.is-warn { background: var(--warning-subtle); color: #92400E; }
+.gate-page .gate-result-icon.is-danger { background: var(--danger-subtle); color: #991B1B; }
+.gate-page .gate-result-icon.is-ready { background: var(--success-subtle); color: #166534; }
+
+.gate-page .gate-result-title,
+.recognition-page .rec-result-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.gate-page .gate-result-text,
+.recognition-page .rec-result-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-recorded-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.gate-page .gate-recorded-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.gate-page .gate-recorded-label.is-in { color: #166534; }
+.gate-page .gate-recorded-label.is-out { color: #92400E; }
+
+.gate-page .gate-recorded-time {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-ready-line {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Identity block (resident identified, decision pending). */
+.gate-page .gate-identity-panel,
+.recognition-page .rec-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gate-page .gate-identity-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.gate-page .gate-identity-status-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary-500);
+  cursor: pointer;
+}
+
+.gate-page .gate-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gate-page .gate-identity-photo {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #F1F5F9;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.gate-page .gate-identity-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gate-page .gate-identity-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gate-page .gate-identity-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gate-page .gate-identity-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-identity-presence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gate-page .gate-action-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Notices shown under a result. */
+.gate-page .gate-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: #F8FAFC;
+}
+
+.gate-page .gate-notice.is-info { background: var(--primary-subtle); border-color: #BFDBFE; }
+.gate-page .gate-notice.is-warn { background: var(--warning-subtle); border-color: var(--warning-border); }
+.gate-page .gate-notice.is-neutral { background: #F8FAFC; }
+
+.gate-page .gate-notice-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gate-page .gate-notice-body {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-full-width {
+  width: 100%;
+}
+
+.gate-page .gate-inline-error,
+.recognition-page .rec-inline-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-subtle);
+  border: 1px solid var(--danger-border);
+  color: #991B1B;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.gate-page .gate-inline-error-band {
+  margin: 0 12px;
+}
+
+/* Status checklist used by the offline result column. */
+.gate-page .gate-checklist,
+.recognition-page .rec-checklist {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gate-page .gate-checklist li,
+.recognition-page .rec-checklist li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: #F8FAFC;
+  min-width: 0;
+}
+
+.gate-page .gate-checklist-label,
+.recognition-page .rec-checklist-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.gate-page .gate-checklist-value,
+.recognition-page .rec-checklist-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ---- Recent activity / feed panels ---------------------------------------- */
+
+.gate-page .gate-activity,
+.recognition-page .rec-feed {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.gate-page .gate-panel-header,
+.recognition-page .rec-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.gate-page .gate-panel-title,
+.recognition-page .rec-panel-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.gate-page .gate-empty,
+.recognition-page .rec-empty {
+  margin: 0;
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.gate-page .gate-table-wrap,
+.recognition-page .rec-list {
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 260px;
+}
+
+.gate-page .gate-table-wrap .data-table th,
+.gate-page .gate-table-wrap .data-table td {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.gate-page .gate-cell-right {
+  text-align: right;
+}
+
+.gate-page .gate-cell-strong {
+  font-weight: 600;
+}
+
+.gate-page .gate-mono {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.gate-page .gate-spin,
+.recognition-page .rec-spin {
+  animation: gate-spin 0.9s linear infinite;
+}
+
+@keyframes gate-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Recognition: summary strip, metrics, observation cards ---------------- */
+
+.recognition-page .rec-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.recognition-page .rec-summary-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  min-width: 0;
+}
+
+.recognition-page .rec-summary-cell + .rec-summary-cell {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.recognition-page .rec-summary-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.recognition-page .rec-summary-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.recognition-page .rec-count-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.recognition-page .rec-count-line strong {
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.recognition-page .rec-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--border-subtle);
+}
+
+.recognition-page .rec-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.recognition-page .rec-metric + .rec-metric {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.recognition-page .rec-metric-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.recognition-page .rec-metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.recognition-page .rec-telemetry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recognition-page .rec-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: #F8FAFC;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recognition-page .rec-notice strong {
+  display: block;
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-bottom: 1px;
+}
+
+.recognition-page .rec-feed-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: #F1F5F9;
+}
+
+.recognition-page .rec-feed-tab {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.recognition-page .rec-feed-tab.is-active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.recognition-page .rec-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  max-height: 420px;
+}
+
+.recognition-page .rec-obs-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+}
+
+.recognition-page .rec-obs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.recognition-page .rec-obs-time {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.recognition-page .rec-obs-person {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recognition-page .rec-obs-photo {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #F1F5F9;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.recognition-page .rec-obs-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.recognition-page .rec-obs-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.recognition-page .rec-obs-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recognition-page .rec-obs-decision {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.recognition-page .rec-obs-note {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.recognition-page .rec-obs-actions {
+  display: flex;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.recognition-page .rec-obs-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.recognition-page .rec-obs-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.recognition-page .rec-override-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recognition-page .rec-override-note {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-subtle);
+  border: 1px solid var(--warning-border);
+  color: #92400E;
+  font-size: 12px;
+}
+
+.recognition-page .rec-override-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recognition-page .rec-override-field label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.recognition-page .rec-override-field textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.recognition-page .rec-override-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* ---- Responsive: 1366x768 keeps the activity list scrollable, not the page ---- */
+
+@media (max-width: 1100px) {
+  .gate-page .gate-ops,
+  .recognition-page .rec-ops {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gate-page .gate-camera-stage,
+  .recognition-page .rec-stage {
+    max-height: none;
+  }
+
+  .recognition-page .rec-summary,
+  .recognition-page .rec-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .gate-page .gate-checklist {
+    grid-template-columns: 1fr;
+  }
+
+  .gate-page .gate-identity-name {
+    white-space: normal;
+  }
+}

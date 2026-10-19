@@ -180,7 +180,7 @@ export const StaffPage: React.FC = () => {
         title="Staff"
         subtitle="Create Warden and Guard accounts, assign hostels, and manage staff access."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="page-header-actions">
             <Button
               variant="outline"
               onClick={fetchData}
@@ -218,45 +218,50 @@ export const StaffPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="table-container bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+      <div className="table-container">
         {isLoading ? (
-          <div className="p-8 text-center text-slate-500">Loading staff accounts...</div>
+          <div className="state-panel" role="status">
+            <span className="spinner-inline" aria-hidden="true" />
+            <p className="state-panel-text">Loading staff accounts...</p>
+          </div>
         ) : staff.length === 0 ? (
-          <div className="p-10 text-center">
-            <Users size={34} className="text-slate-400 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-slate-900">No staff accounts yet</h3>
-            <p className="text-sm text-slate-500 mt-1">Add a Warden or Guard to get started.</p>
+          <div className="state-panel">
+            <span className="state-panel-icon" aria-hidden="true">
+              <Users size={34} />
+            </span>
+            <h3 className="state-panel-title">No staff accounts yet</h3>
+            <p className="state-panel-text">Add a Warden or Guard to get started.</p>
           </div>
         ) : (
-          <table className="data-table w-full">
+          <table className="data-table">
             <thead>
               <tr>
                 <th>Staff Member</th>
                 <th>Role</th>
                 <th>Hostel</th>
                 <th>Status</th>
-                <th className="text-right">Actions</th>
+                <th className="cell-end">Actions</th>
               </tr>
             </thead>
             <tbody>
               {staff.map((member) => (
                 <tr key={member.id}>
                   <td>
-                    <div className="font-semibold text-slate-900">{member.fullName}</div>
-                    <div className="text-sm text-slate-500 mt-0.5">
+                    <div className="cell-primary">{member.fullName}</div>
+                    <div className="cell-meta">
                       @{member.username}{member.email ? ` • ${member.email}` : ''}
                     </div>
                   </td>
                   <td>
                     <Badge type="role" value={member.role} />
                   </td>
-                  <td className="text-slate-700">
+                  <td className="cell-secondary">
                     {member.hostel?.name || 'Not assigned'}
                   </td>
                   <td>
                     <Badge type="status" value={member.status} />
                   </td>
-                  <td className="text-right">
+                  <td className="cell-end">
                     <div className="staff-row-actions">
                       <Button variant="outline" size="sm" onClick={() => openEdit(member)} leftIcon={<Edit2 size={14} />}>
                         Edit
@@ -291,7 +296,7 @@ export const StaffPage: React.FC = () => {
         subtitle={editing ? `@${editing.username}` : undefined}
         size="md"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="modal-actions-bar">
             <Button variant="outline" onClick={() => {
               setEditing(null);
               resetForm();
@@ -304,7 +309,7 @@ export const StaffPage: React.FC = () => {
           </div>
         }
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="modal-form-grid">
           <Input
             label="Full Name"
             value={fullName}
@@ -336,7 +341,7 @@ export const StaffPage: React.FC = () => {
           />
         </div>
         {formError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="alert-banner alert-banner-error" role="alert">
             {formError}
           </div>
         )}
@@ -349,7 +354,7 @@ export const StaffPage: React.FC = () => {
         subtitle={statusChangingFor?.fullName}
         size="sm"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="modal-actions-bar">
             <Button variant="outline" onClick={() => setStatusChangingFor(null)} disabled={isSubmitting}>
               Cancel
             </Button>
@@ -364,10 +369,8 @@ export const StaffPage: React.FC = () => {
         }
       >
         <div
-          className={`rounded-lg border px-4 py-3 text-sm ${
-            statusChangingFor?.status === 'ACTIVE'
-              ? 'border-amber-200 bg-amber-50 text-amber-900'
-              : 'border-blue-200 bg-blue-50 text-blue-900'
+          className={`alert-banner ${
+            statusChangingFor?.status === 'ACTIVE' ? 'alert-banner-warning' : 'alert-banner-info'
           }`}
         >
           {statusChangingFor?.status === 'ACTIVE'
@@ -382,7 +385,7 @@ export const StaffPage: React.FC = () => {
         subtitle={resettingPasswordFor ? resettingPasswordFor.fullName : undefined}
         size="sm"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="modal-actions-bar">
             <Button variant="outline" onClick={() => setResettingPasswordFor(null)} disabled={isSubmitting}>
               Cancel
             </Button>
@@ -402,7 +405,7 @@ export const StaffPage: React.FC = () => {
           required
         />
         {formError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="alert-banner alert-banner-error" role="alert">
             {formError}
           </div>
         )}
@@ -415,7 +418,7 @@ export const StaffPage: React.FC = () => {
         subtitle="Create a Warden or Guard account for a hostel."
         size="md"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="modal-actions-bar">
             <Button
               variant="outline"
               onClick={() => {
@@ -437,7 +440,7 @@ export const StaffPage: React.FC = () => {
           </div>
         }
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="modal-form-grid">
           <Input
             label="Full Name"
             value={fullName}
@@ -486,12 +489,12 @@ export const StaffPage: React.FC = () => {
           />
         </div>
 
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 mt-2">
+        <div className="alert-banner alert-banner-info">
           Wardens can manage residents and reports. Guards are limited to the Gate workflow.
         </div>
 
         {formError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 mt-3">
+          <div className="alert-banner alert-banner-error" role="alert">
             {formError}
           </div>
         )}

@@ -175,7 +175,7 @@ export const LoginPage: React.FC = () => {
               variant="primary"
               size="lg"
               isLoading={isLoading}
-              className="w-full mt-4"
+              className="login-submit"
             >
               Sign In
             </Button>

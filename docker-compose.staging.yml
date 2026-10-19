@@ -60,6 +60,33 @@ services:
       - no-new-privileges:true
     logging: *logging
 
+  # Operator-triggered only (profile "ops"). Seeds an EMPTY pravahax_staging database once.
+  # Never publishes ports; runs on the internal data network. See docs/instabox-staging-runbook.md section 10.
+  seed:
+    profiles: ["ops"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: seed
+    image: pravahax-seed:staging
+    restart: "no"
+    command: ["node_modules/.bin/tsx", "scripts/safe-seed.ts"]
+    environment:
+      NODE_ENV: production
+      APP_ENV: staging
+      # Empty defaults on purpose: Compose validates this block even when the profile is not active.
+      # scripts/lib/safe-seed-guard.ts refuses an empty or non-staging SAFE_SEED_DATABASE_URL.
+      SAFE_SEED_DATABASE_URL: ${SAFE_SEED_DATABASE_URL:-}
+      SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - data
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
   api:
     build:
       context: .
@@ -101,6 +128,9 @@ services:
         source: ${MODELS_HOST_DIR:?set MODELS_HOST_DIR in .env.staging}
         target: /models
         read_only: true
+      # Named volume: profile photos survive container recreation and image rebuilds.
+      # Ownership is seeded from the image (node:node), so no host chown is needed.
+      - profile_photos:/app/data
     depends_on:
       db:
         condition: service_healthy
@@ -148,3 +178,5 @@ networks:
 volumes:
   pg_data:
     name: pravahax-staging-pg-data
+  profile_photos:
+    name: pravahax-staging-profile-photos

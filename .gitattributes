@@ -1,0 +1,7 @@
+# Container and host-run deployment files must be LF: they execute inside Linux containers and on Debian hosts.
+*.sh text eol=lf
+*.mjs text eol=lf
+deploy/** text eol=lf
+Dockerfile text eol=lf
+docker-compose*.yml text eol=lf
+.dockerignore text eol=lf

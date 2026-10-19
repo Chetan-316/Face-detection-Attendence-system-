@@ -10,6 +10,7 @@ import { camerasApi } from '../api/cameras.api';
 import { facilitiesApi, Facility, FacilityLocation } from '../api/facilities.api';
 import { CameraEntity, CameraDiagnostics, CameraTestResult } from '../types/camera.types';
 import { usePreviewStreamUrl } from '../hooks/usePreviewStreamUrl';
+import '../styles/cameras.css';
 import {
   Video,
   VideoOff,
@@ -25,7 +26,6 @@ import {
   ChevronDown,
   ChevronUp,
   CircleHelp,
-  MapPin,
   ArrowRight,
   Trash2,
 } from 'lucide-react';
@@ -608,12 +608,80 @@ export const CamerasPage: React.FC = () => {
     return 'General Monitoring';
   };
   const cameraTypeLabel = (sourceType: CameraEntity['sourceType']) => {
-    if (sourceType === 'RTSP') return 'IP / Network Camera';
-    if (sourceType === 'WEBCAM') return 'Browser / USB Webcam';
-    return 'Smart / Edge Camera (legacy)';
+    if (sourceType === 'RTSP') return 'RTSP (IP camera)';
+    if (sourceType === 'WEBCAM') return 'Local webcam (development)';
+    return 'Smart camera (legacy)';
   };
 
   const previewStreamUrl = usePreviewStreamUrl(isStreaming && !isWebcamPreviewActive ? selectedCamera?.id : null);
+
+  const isWebcamCamera = selectedCamera?.sourceType === 'WEBCAM';
+  const effectiveHealth = selectedCamera
+    ? (selectedCamera.id === diagnostics?.cameraId && diagnostics?.healthStatus
+        ? diagnostics.healthStatus
+        : selectedCamera.healthStatus)
+    : null;
+  const isStreamingNow = isStreaming || isWebcamPreviewActive;
+  const offlineNow = !isStreamingNow && effectiveHealth !== 'ONLINE';
+  // When the camera is offline, the admin's next step is the connection test, so it becomes the emphasized action.
+  const startVariant = offlineNow && isAdmin ? 'outline' : 'primary';
+  const testVariant = offlineNow && isAdmin ? 'primary' : 'outline';
+  const lastSeenValue =
+    (selectedCamera && diagnostics?.cameraId === selectedCamera.id ? diagnostics.lastSeenAt : null) ??
+    selectedCamera?.lastSeenAt ??
+    null;
+
+  const formatLastSeen = (value: string | null | undefined) => {
+    if (!value) return 'Never reported';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Not available';
+    return date.toLocaleString([], {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata',
+    });
+  };
+
+  const healthLabel = (status: CameraEntity['healthStatus'] | null) =>
+    status === 'ONLINE' ? 'Online' : status === 'DEGRADED' ? 'Needs attention' : 'Offline';
+
+  // Compact placeholder shown in the preview frame until a live feed is running.
+  const renderPreviewPlaceholder = () => {
+    if (!selectedCamera) return null;
+    if (isWebcamCamera) {
+      return (
+        <div className="cam-preview-empty">
+          <div className="cam-preview-empty-title">Local webcam preview is off</div>
+          <p className="cam-preview-empty-text">
+            Local development only. Open the Local development section below to start it.
+          </p>
+        </div>
+      );
+    }
+    if (effectiveHealth === 'ONLINE') {
+      return (
+        <div className="cam-preview-empty">
+          <div className="cam-preview-empty-title">Preview is stopped</div>
+          <p className="cam-preview-empty-text">Start the live preview to confirm the camera view and positioning.</p>
+        </div>
+      );
+    }
+    const isDegraded = effectiveHealth === 'DEGRADED';
+    return (
+      <div className="cam-preview-empty is-offline">
+        <div className="cam-preview-empty-title">{isDegraded ? 'Camera needs attention' : 'Camera offline'}</div>
+        <p className="cam-preview-empty-text">
+          {isDegraded
+            ? 'The camera is reconnecting. Check the network, then refresh status.'
+            : 'No video has reached PRAVAHAx from this camera. Check its power and network, then test the connection.'}
+          {!isAdmin && ' Ask an administrator to check the connection.'}
+        </p>
+        <div className="cam-preview-empty-meta">Last seen: {formatLastSeen(lastSeenValue)}</div>
+      </div>
+    );
+  };
 
   if (user?.role === 'GUARD') {
     return <Navigate to="/gate" replace />;
@@ -653,411 +721,342 @@ export const CamerasPage: React.FC = () => {
         }
       />
 
-      <div className="camera-help-card">
-        <CircleHelp size={20} className="shrink-0 mt-0.5" />
+      <div className="cam-setup-note">
+        <CircleHelp size={16} />
         <div>
-          <strong>Camera setup:</strong> production IP cameras require a reachable RTSP stream URL,
-          plus credentials when the camera requires them. Browser / USB webcams use this computer directly
-          and do not need an IP address.
+          <strong>Camera setup:</strong> IP cameras need a reachable RTSP stream URL, plus credentials when the
+          camera requires them. Browser webcams are for local development only.
         </div>
       </div>
 
-      {/* Main Grid: Left Camera Cards | Right Video Monitor */}
-      <div className="cameras-layout">
-        {/* Left Column: Camera Devices List */}
-        <div className="camera-list-pane">
-          <div className="pane-header">
-            <h3 className="pane-title">Camera Setup</h3>
-            <span className="camera-count-badge">{cameras.length} {cameras.length === 1 ? 'Camera' : 'Cameras'}</span>
+      <div className="cam-layout">
+        {/* Left: camera list */}
+        <section className="cam-pane cam-list-pane" aria-label="Camera list">
+          <div className="cam-pane-header">
+            <h3 className="cam-pane-title">Camera list</h3>
+            <span className="cam-count">
+              {cameras.length} {cameras.length === 1 ? 'camera' : 'cameras'}
+            </span>
           </div>
 
           {isLoading && cameras.length === 0 ? (
-            <div className="loading-state">
-              <RefreshCw size={24} className="animate-spin" />
+            <div className="cam-loading">
+              <RefreshCw size={16} className="animate-spin" />
               <span>Loading cameras...</span>
             </div>
           ) : cameras.length === 0 ? (
-            <div className="empty-state-card">
-              <VideoOff size={36} className="empty-icon" />
-              <h4>No Cameras Added</h4>
-              <p>Add a gate IP camera or webcam to start previewing the live feed.</p>
+            <div className="cam-empty">
+              <VideoOff size={24} className="cam-muted" />
+              <div className="cam-empty-title">No cameras added</div>
+              <p className="cam-empty-text">Add a gate IP camera to start previewing its live feed.</p>
               {canManageCameras && (
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm mt-3"
-                  onClick={openRegisterModal}
-                >
+                <button type="button" className="btn btn-primary btn-sm" onClick={openRegisterModal}>
                   <Plus size={14} />
-                  <span>Add First Camera</span>
+                  <span>Add first camera</span>
                 </button>
               )}
             </div>
           ) : (
-            <div className="camera-card-list">
+            <div className="cam-list">
               {cameras.map((camera) => {
                 const isSelected = camera.id === selectedCameraId;
-                const isOnline = camera.healthStatus === 'ONLINE';
-                const isDegraded = camera.healthStatus === 'DEGRADED';
+                const dotClass =
+                  camera.healthStatus === 'ONLINE'
+                    ? 'is-online'
+                    : camera.healthStatus === 'DEGRADED'
+                    ? 'is-degraded'
+                    : 'is-offline';
 
                 return (
                   <button
                     type="button"
                     key={camera.id}
-                    className={`camera-item-card ${isSelected ? 'is-selected' : ''}`}
+                    className={`cam-list-item ${isSelected ? 'is-selected' : ''}`}
                     onClick={() => handleSelectCamera(camera)}
+                    aria-pressed={isSelected}
                   >
-                    <div className="camera-item-header">
-                      <div className="camera-name-group">
-                        <span
-                          className={`camera-status-indicator ${
-                            isOnline ? 'is-online' : isDegraded ? 'is-degraded' : 'is-offline'
-                          }`}
-                        />
-                        <span className="camera-name">{camera.name}</span>
-                      </div>
-                      <Badge value={camera.healthStatus} size="sm" />
-                    </div>
-
-                    <div className="camera-item-meta">
-                      <span className="meta-tag">{cameraTypeLabel(camera.sourceType)}</span>
-                      <span className="meta-tag role-tag">{cameraPurposeLabel(camera.role)}</span>
-                      {camera.location && (
-                        <span className="meta-tag location-tag">
-                          <MapPin size={11} />
-                          {camera.location.name}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="camera-item-footer">
-                      <span className="device-hint">
-                        {camera.healthStatus === 'ONLINE'
-                          ? 'Ready'
-                          : camera.healthStatus === 'DEGRADED'
-                          ? 'Needs attention'
-                          : 'Not connected'}
+                    <span className="cam-list-row">
+                      <span className="cam-list-name">
+                        <span className={`cam-dot ${dotClass}`} aria-hidden="true" />
+                        <span>{camera.name}</span>
                       </span>
-                      {isSelected && <span className="active-view-label">Viewing</span>}
-                    </div>
+                      <Badge value={camera.healthStatus} size="sm" />
+                    </span>
+                    <span className="cam-list-meta">
+                      {cameraTypeLabel(camera.sourceType)} · {cameraPurposeLabel(camera.role)}
+                      {camera.location?.name ? ` · ${camera.location.name}` : ''}
+                    </span>
                   </button>
                 );
               })}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Right Column: Live Video Monitor & Telemetry */}
-        <div className="camera-monitor-pane">
-          {selectedCamera ? (
-            <div className="monitor-container">
-              {/* Monitor Top Bar */}
-              <div className="monitor-header">
-                <div className="monitor-title-group">
-                  <div className="camera-icon-wrapper">
-                    <Video size={18} />
-                  </div>
-                  <div>
-                    <h3 className="selected-camera-title">{selectedCamera.name}</h3>
-                    <div className="selected-camera-sub">
-                      <span>{cameraTypeLabel(selectedCamera.sourceType)}</span>
-                      <span className="separator">•</span>
-                      <span>{cameraPurposeLabel(selectedCamera.role)}</span>
-                      {selectedCamera.location?.name && (
-                        <>
-                          <span className="separator">•</span>
-                          <span>{selectedCamera.location.name}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
+        {/* Right: selected camera detail */}
+        {selectedCamera ? (
+          <section className="cam-pane cam-detail" aria-label={`Details for ${selectedCamera.name}`}>
+            <header className="cam-detail-header">
+              <div>
+                <h2 className="cam-detail-title">{selectedCamera.name}</h2>
+                <div className="cam-detail-subtitle">{cameraTypeLabel(selectedCamera.sourceType)}</div>
+              </div>
+              {isAdmin && (
+                <div className="cam-detail-header-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => openEditModal(selectedCamera)}
+                    title="Edit camera configuration"
+                  >
+                    <Edit2 size={14} />
+                    <span>Edit</span>
+                  </button>
                 </div>
+              )}
+            </header>
 
-                <div className="monitor-status-badges flex items-center gap-2">
-                  <Badge
-                    value={
-                      (selectedCamera.id === diagnostics?.cameraId && diagnostics?.healthStatus)
-                        ? diagnostics.healthStatus
-                        : selectedCamera.healthStatus
-                    }
-                    size="md"
-                  />
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => openEditModal(selectedCamera)}
-                      title="Edit camera configuration"
-                    >
-                      <Edit2 size={14} />
-                      <span>Edit</span>
-                    </button>
-                  )}
+            <dl className="cam-facts">
+              <div className="cam-fact">
+                <dt className="cam-label">Status</dt>
+                <dd className="cam-value">{healthLabel(effectiveHealth)}</dd>
+              </div>
+              <div className="cam-fact">
+                <dt className="cam-label">Preview</dt>
+                <dd className="cam-value">{isStreamingNow ? 'Running' : 'Stopped'}</dd>
+              </div>
+              <div className="cam-fact">
+                <dt className="cam-label">Last seen</dt>
+                <dd className="cam-value">{formatLastSeen(lastSeenValue)}</dd>
+              </div>
+              <div className="cam-fact">
+                <dt className="cam-label">Location</dt>
+                <dd className="cam-value">{selectedCamera.location?.name || 'Not assigned'}</dd>
+              </div>
+              <div className="cam-fact">
+                <dt className="cam-label">Purpose</dt>
+                <dd className="cam-value">{cameraPurposeLabel(selectedCamera.role)}</dd>
+              </div>
+              <div className="cam-fact">
+                <dt className="cam-label">Source</dt>
+                <dd className="cam-value">{cameraTypeLabel(selectedCamera.sourceType)}</dd>
+              </div>
+              <div className="cam-fact">
+                <dt className="cam-label">Enabled</dt>
+                <dd className="cam-value">{selectedCamera.isEnabled ? 'Enabled' : 'Disabled'}</dd>
+              </div>
+            </dl>
+
+            {effectiveHealth === 'DEGRADED' && (
+              <div className="cam-banner is-warning" role="status">
+                <RefreshCw size={16} className="animate-spin" />
+                <div>
+                  <strong>Connection issue:</strong> Reconnecting to camera stream...
                 </div>
               </div>
+            )}
 
-              {/* Reconnection In-Progress Banner */}
-              {((selectedCamera.id === diagnostics?.cameraId && diagnostics?.healthStatus)
-                ? diagnostics.healthStatus
-                : selectedCamera.healthStatus) === 'DEGRADED' && (
-                <div className="p-3 rounded-lg border mb-3 flex items-center gap-2 bg-amber-50 border-amber-200 text-amber-900">
-                  <RefreshCw size={16} className="animate-spin text-amber-600 shrink-0" />
-                  <div className="text-sm">
-                    <strong>Connection issue:</strong> Reconnecting to camera stream...
-                  </div>
+            {streamError && (
+              <div className="cam-banner is-danger" role="alert">
+                <AlertCircle size={16} />
+                <div>
+                  <strong>Notice:</strong> {streamError}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Error Message Banner */}
-              {streamError && (
-                <div className="stream-error-banner">
-                  <AlertCircle size={18} />
-                  <div className="error-text">
-                    <strong>Notice:</strong> {streamError}
-                  </div>
+            {webcamError && (
+              <div className="cam-banner is-danger" role="alert">
+                <AlertCircle size={16} />
+                <div>
+                  <strong>Browser webcam:</strong> {webcamError}
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Webcam Error Banner */}
-              {webcamError && (
-                <div className="stream-error-banner">
-                  <AlertCircle size={18} />
-                  <div className="error-text">
-                    <strong>Laptop Camera:</strong> {webcamError}
-                  </div>
-                </div>
-              )}
-
-              {/* Connection Test Result Banner */}
-              {testResult && (
-                <div
-                  className={`p-3 rounded-lg border mb-3 flex items-center gap-2 ${
-                    testResult.reachable
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      : 'bg-red-50 border-red-200 text-red-700'
-                  }`}
-                >
+            {testResult && (
+              <div className={`cam-banner ${testResult.reachable ? 'is-success' : 'is-danger'}`} role="status">
+                {testResult.reachable ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                <div>
                   {testResult.reachable ? (
-                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                    <>
+                      <strong>Connection successful.</strong> The camera is reachable and ready to use.
+                    </>
                   ) : (
-                    <AlertCircle size={18} className="text-red-600 shrink-0" />
+                    testResult.message || 'Could not connect. Check camera address, credentials and network.'
                   )}
-                  <div className="text-sm">
-                    {testResult.reachable ? (
-                      <span>
-                        <strong>Connection successful.</strong> The camera is reachable and ready to use.
-                      </span>
-                    ) : (
-                      <span>{testResult.message || 'Could not connect. Check camera address, credentials and network.'}</span>
-                    )}
-                  </div>
                 </div>
-              )}
-
-              {/* Video preview */}
-              <div className="video-screen-frame">
-                {isWebcamPreviewActive ? (
-                  <div className="video-player-wrapper">
-                    <video
-                      ref={(el) => {
-                        videoRef.current = el;
-                        if (el && localStreamRef.current && el.srcObject !== localStreamRef.current) {
-                          el.srcObject = localStreamRef.current;
-                          el.play().catch(() => {});
-                        }
-                      }}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="live-preview-image object-contain"
-                    />
-                    <div className="hud-overlay pointer-events-none">
-                      <div className="hud-top-left">
-                        <span className="live-indicator">
-                          <span className="pulse-dot" />
-                          <span>LIVE PREVIEW</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ) : isStreaming ? (
-                  <div className="video-player-wrapper">
-                    <img
-                      src={previewStreamUrl || undefined}
-                      alt={`Live Preview of ${selectedCamera.name}`}
-                      className="live-preview-image"
-                      onError={() => {
-                        setStreamError('Preview stream connection interrupted. Please restart stream.');
-                      }}
-                    />
-                    <div className="hud-overlay pointer-events-none">
-                      <div className="hud-top-left">
-                        <span className="live-indicator">
-                          <span className="pulse-dot" />
-                          <span>LIVE PREVIEW</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="video-placeholder">
-                    <div className="placeholder-content">
-                      <div className="placeholder-icon-box">
-                        <VideoOff size={44} className="placeholder-icon" />
-                      </div>
-                      <h4>Preview is not running</h4>
-                      <p>
-                        {selectedCamera.sourceType === 'WEBCAM'
-                          ? 'Use the laptop camera button below to confirm the view and positioning.'
-                          : 'Start the live preview below to confirm the camera view and positioning.'}
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
+            )}
 
-              {/* Contextual camera actions */}
-              <div className="monitor-controls-toolbar">
-                <div className="camera-actions-primary">
-                  {selectedCamera.sourceType === 'WEBCAM' ? (
+            {/* Preview: compact placeholder until a live feed is running */}
+            <div className={`cam-preview ${isStreamingNow ? 'is-live' : ''}`}>
+              {isWebcamPreviewActive ? (
+                <>
+                  <video
+                    ref={(el) => {
+                      videoRef.current = el;
+                      if (el && localStreamRef.current && el.srcObject !== localStreamRef.current) {
+                        el.srcObject = localStreamRef.current;
+                        el.play().catch(() => {});
+                      }
+                    }}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="cam-preview-media"
+                  />
+                  <span className="cam-preview-live-tag">
+                    <span className="cam-live-dot" aria-hidden="true" />
+                    <span>LIVE PREVIEW</span>
+                  </span>
+                </>
+              ) : isStreaming ? (
+                <>
+                  <img
+                    src={previewStreamUrl || undefined}
+                    alt={`Live preview of ${selectedCamera.name}`}
+                    className="cam-preview-media"
+                    onError={() => {
+                      setStreamError('Preview stream connection interrupted. Please restart stream.');
+                    }}
+                  />
+                  <span className="cam-preview-live-tag">
+                    <span className="cam-live-dot" aria-hidden="true" />
+                    <span>LIVE PREVIEW</span>
+                  </span>
+                </>
+              ) : (
+                renderPreviewPlaceholder()
+              )}
+            </div>
+
+            {/* Primary actions: one emphasized action per state */}
+            <div className="cam-actions">
+              <div className="cam-actions-group">
+                {!isWebcamCamera &&
+                  (isStreaming ? (
                     <Button
                       type="button"
-                      variant={isWebcamPreviewActive ? 'danger' : 'primary'}
-                      size="md"
-                      onClick={isWebcamPreviewActive ? stopWebcamPreview : startWebcamPreview}
-                      leftIcon={<Video size={16} />}
-                    >
-                      {isWebcamPreviewActive ? 'Stop Laptop Camera' : 'Use Laptop Camera'}
-                    </Button>
-                  ) : isStreaming ? (
-                    <Button
-                      type="button"
-                      variant="danger"
+                      variant="outline"
                       size="md"
                       onClick={handleStopStream}
                       disabled={isActionPending}
                       leftIcon={<Square size={16} />}
                     >
-                      Stop Preview
+                      Stop preview
                     </Button>
                   ) : (
                     <Button
                       type="button"
-                      variant="primary"
+                      variant={startVariant}
                       size="md"
                       onClick={handleStartStream}
                       disabled={isActionPending}
                       leftIcon={<Play size={16} />}
                     >
-                      Start Live Preview
+                      Start live preview
                     </Button>
-                  )}
+                  ))}
 
-                  {(isStreaming || isWebcamPreviewActive) && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="md"
-                      onClick={handleCaptureSnapshot}
-                      disabled={isActionPending}
-                      leftIcon={<CameraIcon size={16} />}
-                    >
-                      Take Snapshot
-                    </Button>
-                  )}
+                {isStreamingNow && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="md"
+                    onClick={handleCaptureSnapshot}
+                    disabled={isActionPending}
+                    leftIcon={<CameraIcon size={16} />}
+                  >
+                    Take snapshot
+                  </Button>
+                )}
 
-                  {isAdmin && selectedCamera.sourceType !== 'WEBCAM' && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="md"
-                      onClick={handleTestConnection}
-                      disabled={isTestingConnection}
-                      leftIcon={<Wifi size={16} className={isTestingConnection ? 'animate-spin' : ''} />}
-                    >
-                      {isTestingConnection ? 'Testing...' : 'Test Connection'}
-                    </Button>
-                  )}
-                </div>
-
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => fetchDiagnostics(selectedCamera.id)}
-                  leftIcon={<RefreshCw size={14} />}
-                >
-                  Refresh Status
-                </Button>
-              </div>
-
-              {/* Camera status summary */}
-              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <span className="text-xs font-semibold text-slate-500 block mb-1">Camera Status</span>
-                    <span className="text-sm font-bold text-slate-900">
-                      {((diagnostics?.healthStatus || selectedCamera.healthStatus) === 'ONLINE')
-                        ? 'Online'
-                        : (diagnostics?.healthStatus || selectedCamera.healthStatus) === 'DEGRADED'
-                        ? 'Needs attention'
-                        : 'Offline'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold text-slate-500 block mb-1">Preview</span>
-                    <span className="text-sm font-bold text-slate-900">
-                      {isStreaming || isWebcamPreviewActive ? 'Running' : 'Stopped'}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs font-semibold text-slate-500 block mb-1">Last Seen</span>
-                    <span className="text-sm font-bold text-slate-900">
-                      {diagnostics?.lastSeenAt
-                        ? new Date(diagnostics.lastSeenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })
-                        : 'Not available'}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowAdvancedDiagnostics(!showAdvancedDiagnostics)}
-                  className="mt-4 w-full flex items-center justify-between border-t border-slate-100 pt-3 text-sm font-semibold text-slate-600 hover:text-slate-900"
-                >
-                  <span>Advanced diagnostics</span>
-                  {showAdvancedDiagnostics ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </button>
-
-                {showAdvancedDiagnostics && (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 text-sm">
-                    <div className="rounded-lg bg-slate-50 p-3">
-                      <span className="text-xs text-slate-500 block">Stream rate</span>
-                      <span className="font-semibold text-slate-800">{diagnostics?.fps ?? 0} FPS</span>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-3">
-                      <span className="text-xs text-slate-500 block">Resolution</span>
-                      <span className="font-semibold text-slate-800">
-                        {diagnostics?.resolution
-                          ? `${diagnostics.resolution.width} × ${diagnostics.resolution.height}`
-                          : 'Not available'}
-                      </span>
-                    </div>
-                    <div className="rounded-lg bg-slate-50 p-3">
-                      <span className="text-xs text-slate-500 block">Frames captured</span>
-                      <span className="font-semibold text-slate-800">{diagnostics?.totalFramesCaptured ?? 0}</span>
-                    </div>
-                  </div>
+                {isAdmin && !isWebcamCamera && (
+                  <Button
+                    type="button"
+                    variant={testVariant}
+                    size="md"
+                    onClick={handleTestConnection}
+                    disabled={isTestingConnection}
+                    leftIcon={<Wifi size={16} className={isTestingConnection ? 'animate-spin' : ''} />}
+                  >
+                    {isTestingConnection ? 'Testing...' : 'Test connection'}
+                  </Button>
                 )}
               </div>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => fetchDiagnostics(selectedCamera.id)}
+                leftIcon={<RefreshCw size={14} />}
+              >
+                Refresh status
+              </Button>
             </div>
-          ) : (
-            <div className="no-selection-screen">
-              <Video size={48} className="no-selection-icon" />
-              <h3>Select a Camera</h3>
-              <p>Choose a camera from the list to view its status and live preview.</p>
-            </div>
-          )}
-        </div>
+
+            {/* Secondary: local development webcam, only for webcam-type cameras */}
+            {isWebcamCamera && (
+              <details className="cam-disclosure">
+                <summary>Local development: browser webcam</summary>
+                <div className="cam-disclosure-body">
+                  <p className="cam-disclosure-note">
+                    Uses the camera on this computer through the browser, for development only. It is not used for
+                    production gates and needs camera permission in this browser.
+                  </p>
+                  <div className="cam-actions-group">
+                    <Button
+                      type="button"
+                      variant={isWebcamPreviewActive ? 'outline' : 'secondary'}
+                      size="sm"
+                      onClick={isWebcamPreviewActive ? stopWebcamPreview : startWebcamPreview}
+                      leftIcon={<Video size={14} />}
+                    >
+                      {isWebcamPreviewActive ? 'Stop browser webcam' : 'Start browser webcam'}
+                    </Button>
+                  </div>
+                </div>
+              </details>
+            )}
+
+            {/* Secondary: diagnostics, collapsed by default */}
+            <details
+              className="cam-disclosure"
+              open={showAdvancedDiagnostics}
+              onToggle={(e) => setShowAdvancedDiagnostics(e.currentTarget.open)}
+            >
+              <summary>Diagnostics</summary>
+              <div className="cam-disclosure-body">
+                <dl className="cam-diag-grid">
+                  <div>
+                    <dt className="cam-label">Stream rate</dt>
+                    <dd className="cam-value">{diagnostics?.fps ?? 0} FPS</dd>
+                  </div>
+                  <div>
+                    <dt className="cam-label">Resolution</dt>
+                    <dd className="cam-value">
+                      {diagnostics?.resolution
+                        ? `${diagnostics.resolution.width} × ${diagnostics.resolution.height}`
+                        : 'Not available'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="cam-label">Frames captured</dt>
+                    <dd className="cam-value">{diagnostics?.totalFramesCaptured ?? 0}</dd>
+                  </div>
+                </dl>
+              </div>
+            </details>
+          </section>
+        ) : (
+          <section className="cam-pane cam-empty cam-detail-empty">
+            <Video size={24} className="cam-muted" />
+            <div className="cam-empty-title">Select a camera</div>
+            <p className="cam-empty-text">Choose a camera from the list to see its status and live preview.</p>
+          </section>
+        )}
       </div>
 
       {/* Snapshot Preview Modal */}
@@ -1253,7 +1252,7 @@ export const CamerasPage: React.FC = () => {
                           }}
                         >
                           <option value="RTSP">IP / Network Camera (RTSP)</option>
-                          <option value="WEBCAM">Browser / USB Webcam (this device)</option>
+                          <option value="WEBCAM">Local development: browser webcam (this device)</option>
                         </select>
                       </div>
 
@@ -1300,7 +1299,7 @@ export const CamerasPage: React.FC = () => {
                     <div className="camera-step-copy">
                       {newCameraSourceType === 'RTSP'
                         ? 'Enter the full RTSP stream URL. The backend must be able to reach that address over the network.'
-                        : 'This webcam is captured by the current browser. It does not need an IP address or cloud-side webcam device.'}
+                        : 'Local development only. This webcam is captured by the current browser and does not need an IP address. Production gates use RTSP cameras.'}
                     </div>
 
                     <div className="camera-step-summary">

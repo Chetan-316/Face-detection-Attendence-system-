@@ -5,6 +5,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { Input } from '../components/Input';
+import { Badge } from '../components/Badge';
 import { useToast } from '../components/ToastContext';
 import { Building2, Camera, MapPin, Plus, RefreshCw, Shield, Users } from 'lucide-react';
 
@@ -210,7 +211,7 @@ export const FacilitiesPage: React.FC = () => {
         title="Hostels"
         subtitle="Create hostels, set return deadlines, and manage gates and locations."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="page-header-actions">
             <Button
               variant="outline"
               onClick={fetchFacilities}
@@ -252,43 +253,35 @@ export const FacilitiesPage: React.FC = () => {
       </div>
 
       {isLoading ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500">
-          Loading hostels...
+        <div className="card state-panel" role="status">
+          <span className="spinner-inline" aria-hidden="true" />
+          <p className="state-panel-text">Loading hostels...</p>
         </div>
       ) : facilities.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-10 text-center">
-          <Building2 size={38} className="text-slate-400 mx-auto mb-3" />
-          <h3 className="text-lg font-bold text-slate-900">No hostels yet</h3>
-          <p className="text-sm text-slate-500 mt-1">
+        <div className="card state-panel">
+          <span className="state-panel-icon" aria-hidden="true">
+            <Building2 size={38} />
+          </span>
+          <h3 className="state-panel-title">No hostels yet</h3>
+          <p className="state-panel-text">
             Add the first hostel before creating staff, cameras, or residents.
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="hostel-grid">
           {facilities.map((facility) => (
-            <div
-              key={facility.id}
-              className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm flex flex-col gap-4"
-            >
-              <div className="flex items-start justify-between gap-3">
+            <article key={facility.id} className="hostel-card">
+              <header className="hostel-card-header">
                 <div className="min-w-0">
-                  <h3 className="text-lg font-bold text-slate-900 truncate">{facility.name}</h3>
-                  <span className="text-sm font-mono text-blue-700">{facility.code}</span>
+                  <h3 className="hostel-card-title">{facility.name}</h3>
+                  <span className="hostel-card-code">{facility.code}</span>
                 </div>
-                <span
-                  className={`inline-flex px-2.5 py-1 rounded-md text-sm font-semibold border ${
-                    facility.isActive
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-slate-50 text-slate-600 border-slate-200'
-                  }`}
-                >
-                  {facility.isActive ? 'Active' : 'Inactive'}
-                </span>
-              </div>
+                <Badge type="status" value={facility.isActive ? 'ACTIVE' : 'INACTIVE'} />
+              </header>
 
-              <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 flex items-center justify-between text-sm">
-                <span className="text-blue-800 font-medium">Return deadline</span>
-                <span className="font-bold text-blue-900">
+              <div className="hostel-card-deadline">
+                <span className="font-medium">Return deadline</span>
+                <span className="font-semibold">
                   {new Date(`1970-01-01T${minutesToTime(facility.returnDeadlineMinutes)}:00`).toLocaleTimeString([], {
                     hour: 'numeric',
                     minute: '2-digit',
@@ -296,54 +289,58 @@ export const FacilitiesPage: React.FC = () => {
                 </span>
               </div>
 
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <Users size={16} className="text-slate-500 mb-1.5" />
-                  <div className="font-bold text-slate-900">{facility.residentCount || 0}</div>
-                  <div className="text-xs text-slate-500">Residents</div>
+              <div className="hostel-card-stats">
+                <div className="hostel-stat">
+                  <span className="hostel-stat-label">
+                    <Users size={14} aria-hidden="true" />
+                    Residents
+                  </span>
+                  <span className="hostel-stat-value">{facility.residentCount || 0}</span>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <Shield size={16} className="text-slate-500 mb-1.5" />
-                  <div className="font-bold text-slate-900">{facility.staffCount || 0}</div>
-                  <div className="text-xs text-slate-500">Staff</div>
+                <div className="hostel-stat">
+                  <span className="hostel-stat-label">
+                    <Shield size={14} aria-hidden="true" />
+                    Staff
+                  </span>
+                  <span className="hostel-stat-value">{facility.staffCount || 0}</span>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <Camera size={16} className="text-slate-500 mb-1.5" />
-                  <div className="font-bold text-slate-900">{facility.cameraCount || 0}</div>
-                  <div className="text-xs text-slate-500">Cameras</div>
+                <div className="hostel-stat">
+                  <span className="hostel-stat-label">
+                    <Camera size={14} aria-hidden="true" />
+                    Cameras
+                  </span>
+                  <span className="hostel-stat-value">{facility.cameraCount || 0}</span>
                 </div>
               </div>
 
-              <div className="pt-1 space-y-2">
+              <div className="hostel-card-actions">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => openLocations(facility)}
-                  className="w-full justify-center"
+                  className="hostel-card-wide"
                   leftIcon={<MapPin size={14} />}
                 >
                   Gates & Locations
                 </Button>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openEdit(facility)}
-                    className="w-full justify-center"
-                  >
-                    Edit Hostel
-                  </Button>
-                  <Button
-                    variant={facility.isActive ? 'ghost' : 'secondary'}
-                    size="sm"
-                    onClick={() => setStatusFacility(facility)}
-                    className="w-full justify-center"
-                  >
-                    {facility.isActive ? 'Deactivate' : 'Reactivate'}
-                  </Button>
-                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openEdit(facility)}
+                  className="hostel-card-action"
+                >
+                  Edit Hostel
+                </Button>
+                <Button
+                  variant={facility.isActive ? 'ghost' : 'secondary'}
+                  size="sm"
+                  onClick={() => setStatusFacility(facility)}
+                  className="hostel-card-action"
+                >
+                  {facility.isActive ? 'Deactivate' : 'Reactivate'}
+                </Button>
               </div>
-            </div>
+            </article>
           ))}
         </div>
       )}
@@ -355,7 +352,7 @@ export const FacilitiesPage: React.FC = () => {
         subtitle="Create a new hostel and set its default return deadline."
         size="sm"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="modal-actions-bar">
             <Button
               variant="outline"
               onClick={() => {
@@ -396,7 +393,7 @@ export const FacilitiesPage: React.FC = () => {
           required
         />
         {formError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="alert-banner alert-banner-error" role="alert">
             {formError}
           </div>
         )}
@@ -409,32 +406,32 @@ export const FacilitiesPage: React.FC = () => {
         subtitle={locationFacility ? locationFacility.name : undefined}
         size="lg"
         footer={
-          <div className="flex justify-end w-full">
+          <div className="modal-actions-bar">
             <Button variant="outline" onClick={() => setLocationFacility(null)} disabled={isSubmitting}>
               Close
             </Button>
           </div>
         }
       >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <h3 className="text-base font-bold text-slate-900 mb-3">Configured Locations</h3>
+        <div className="hostel-locations-layout">
+          <section>
+            <h3 className="section-heading">Configured Locations</h3>
             {isLoadingLocations ? (
-              <div className="text-sm text-slate-500 py-4">Loading locations...</div>
+              <div className="state-panel" role="status">
+                <span className="spinner-inline" aria-hidden="true" />
+                <p className="state-panel-text">Loading locations...</p>
+              </div>
             ) : locations.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-300 p-5 text-sm text-slate-500">
-                No gates or locations have been configured yet.
+              <div className="state-panel state-panel-compact">
+                <p className="state-panel-text">No gates or locations have been configured yet.</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <ul className="location-list">
                 {locations.map((location) => (
-                  <div
-                    key={location.id}
-                    className="rounded-lg border border-slate-200 bg-white p-3 flex items-center justify-between gap-3"
-                  >
+                  <li key={location.id} className="location-row">
                     <div className="min-w-0">
-                      <div className="font-semibold text-slate-900">{location.name}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">
+                      <div className="location-name">{location.name}</div>
+                      <div className="location-type">
                         {location.code} • {location.locationType.replaceAll('_', ' ')}
                       </div>
                     </div>
@@ -445,56 +442,58 @@ export const FacilitiesPage: React.FC = () => {
                     >
                       {location.isActive ? 'Deactivate' : 'Reactivate'}
                     </Button>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
-          </div>
+          </section>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-base font-bold text-slate-900 mb-3">Add Gate / Location</h3>
-            <Input
-              label="Name"
-              value={locationName}
-              onChange={(e) => setLocationName(e.target.value)}
-              placeholder="Example: Main Gate"
-            />
-            <Input
-              label="Code"
-              value={locationCode}
-              onChange={(e) => setLocationCode(e.target.value.toUpperCase())}
-              placeholder="Example: MAIN-GATE"
-            />
-            <div className="form-group">
-              <label className="form-label" htmlFor="location-type">Type</label>
-              <select
-                id="location-type"
-                className="form-select"
-                value={locationType}
-                onChange={(e) => setLocationType(e.target.value as FacilityLocation['locationType'])}
+          <section>
+            <h3 className="section-heading">Add Gate / Location</h3>
+            <div className="location-add-panel">
+              <Input
+                label="Name"
+                value={locationName}
+                onChange={(e) => setLocationName(e.target.value)}
+                placeholder="Example: Main Gate"
+              />
+              <Input
+                label="Code"
+                value={locationCode}
+                onChange={(e) => setLocationCode(e.target.value.toUpperCase())}
+                placeholder="Example: MAIN-GATE"
+              />
+              <div className="form-group">
+                <label className="form-label" htmlFor="location-type">Type</label>
+                <select
+                  id="location-type"
+                  className="form-select"
+                  value={locationType}
+                  onChange={(e) => setLocationType(e.target.value as FacilityLocation['locationType'])}
+                >
+                  <option value="GATE">Gate</option>
+                  <option value="ENTRANCE">Entrance</option>
+                  <option value="COMMON_AREA">Common Area</option>
+                </select>
+              </div>
+
+              {locationError && (
+                <div className="alert-banner alert-banner-error location-add-alert" role="alert">
+                  {locationError}
+                </div>
+              )}
+
+              <Button
+                variant="primary"
+                onClick={handleCreateLocation}
+                isLoading={isSubmitting}
+                className="location-add-submit"
+                leftIcon={<Plus size={15} />}
               >
-                <option value="GATE">Gate</option>
-                <option value="ENTRANCE">Entrance</option>
-                <option value="COMMON_AREA">Common Area</option>
-              </select>
+                Add Location
+              </Button>
             </div>
-
-            {locationError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 mb-3">
-                {locationError}
-              </div>
-            )}
-
-            <Button
-              variant="primary"
-              onClick={handleCreateLocation}
-              isLoading={isSubmitting}
-              className="w-full justify-center"
-              leftIcon={<Plus size={15} />}
-            >
-              Add Location
-            </Button>
-          </div>
+          </section>
         </div>
       </Modal>
 
@@ -505,7 +504,7 @@ export const FacilitiesPage: React.FC = () => {
         subtitle={statusFacility?.name}
         size="sm"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="modal-actions-bar">
             <Button
               variant="outline"
               onClick={() => setStatusFacility(null)}
@@ -523,11 +522,7 @@ export const FacilitiesPage: React.FC = () => {
           </div>
         }
       >
-        <div className={`rounded-lg border px-4 py-3 text-sm ${
-          statusFacility?.isActive
-            ? 'border-amber-200 bg-amber-50 text-amber-900'
-            : 'border-blue-200 bg-blue-50 text-blue-900'
-        }`}>
+        <div className={`alert-banner ${statusFacility?.isActive ? 'alert-banner-warning' : 'alert-banner-info'}`}>
           {statusFacility?.isActive
             ? 'A hostel can be deactivated only after active residents and staff are moved or deactivated and enabled cameras are handled.'
             : 'Reactivating this hostel makes it available again for resident, staff, and camera assignment.'}
@@ -541,7 +536,7 @@ export const FacilitiesPage: React.FC = () => {
         subtitle={editing ? `${editing.name} • ${editing.code}` : undefined}
         size="sm"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="modal-actions-bar">
             <Button
               variant="outline"
               onClick={() => {
@@ -579,7 +574,7 @@ export const FacilitiesPage: React.FC = () => {
           required
         />
         {formError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="alert-banner alert-banner-error" role="alert">
             {formError}
           </div>
         )}

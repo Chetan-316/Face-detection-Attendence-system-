@@ -1,0 +1,511 @@
+/* ==========================================================================
+   Residents page and face enrollment dialog.
+
+   Scoping:
+   - .residents-page wraps the residents list page only.
+   - .enroll-scope wraps the face enrollment dialog. That dialog is also
+     opened from the resident detail page, so it cannot rely on .residents-page.
+   Shared classes (.btn-*, .badge-*, .filter-*, .enroll-*, .modal-*, .data-table)
+   are owned by index.css and the shared components. Rules here only adjust
+   layout and density inside these two scopes.
+   ========================================================================== */
+
+/* ---- Page header ------------------------------------------------------- */
+
+.residents-page .page-header {
+  margin-bottom: 20px;
+}
+
+/* ---- Filter bar --------------------------------------------------------
+   Search, selects and the clear button share one 44px control height.
+   Selects keep a fixed basis so they line up in a single row at 1366px.
+   The search box takes the remaining width. */
+
+.residents-page .filter-bar-card {
+  padding: 12px 14px;
+}
+
+.residents-page .filter-bar-row {
+  gap: 10px;
+  align-items: center;
+}
+
+.residents-page .filter-search-wrap {
+  flex: 1 1 200px;
+  min-width: 200px;
+}
+
+.residents-page .filter-search-input {
+  height: 44px;
+  padding: 0 32px 0 40px;
+  font-size: 14px;
+}
+
+.residents-page .filter-item {
+  flex: 0 1 148px;
+  min-width: 136px;
+}
+
+.residents-page .filter-item--wide {
+  flex-basis: 190px;
+}
+
+.residents-page .filter-select {
+  height: 44px;
+  padding: 0 12px;
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+
+.residents-page .btn-filter-reset {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 12px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* ---- Residents table ---------------------------------------------------
+   Fixed layout with explicit column widths keeps the table inside the
+   1366px content area. The Resident column takes the remaining width. */
+
+.residents-page .table-container {
+  border-radius: var(--radius-lg);
+}
+
+.residents-page .residents-table {
+  width: 100%;
+  table-layout: fixed;
+  min-width: 800px;
+  font-size: 14px;
+}
+
+.residents-page .residents-table th,
+.residents-page .residents-table td {
+  padding: 12px 14px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.residents-page .residents-table thead th {
+  height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+  background: #F8FAFC;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.residents-page .residents-table tbody td {
+  height: 64px;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.residents-page .residents-table tbody tr:hover {
+  background: var(--bg-surface-hover);
+}
+
+.residents-page .residents-table .col-actions {
+  text-align: right;
+}
+
+.residents-page .residents-table .badge {
+  white-space: nowrap;
+}
+
+/* Resident cell: avatar, name and code */
+
+.residents-page .resident-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.residents-page .resident-avatar {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #F1F5F9;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.residents-page .resident-avatar-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.residents-page .resident-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.residents-page .resident-name {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.residents-page button.resident-name:hover {
+  color: var(--primary-500);
+}
+
+.residents-page .resident-code {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Row actions: one primary action per row, the rest secondary.
+   Buttons wrap inside the cell instead of overflowing it. */
+
+.residents-page .resident-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
+.residents-page .resident-actions .btn {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.residents-page .resident-readonly {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.residents-page .pagination-bar {
+  padding: 12px 4px 0;
+}
+
+@media (max-width: 768px) {
+  .residents-page .filter-search-wrap {
+    flex: 1 1 100%;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .residents-page .filter-item {
+    flex: 1 1 calc(50% - 5px);
+    min-width: 0;
+    width: auto;
+  }
+
+  .residents-page .filter-item--wide {
+    flex-basis: calc(50% - 5px);
+  }
+
+  .residents-page .btn-filter-reset {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
+
+/* ==========================================================================
+   Face enrollment dialog (.enroll-scope)
+   ========================================================================== */
+
+.enroll-scope .modal-header {
+  padding: 16px 22px;
+}
+
+.enroll-scope .modal-title {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.enroll-scope .modal-subtitle {
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.enroll-scope .modal-body {
+  padding: 18px 22px;
+}
+
+.enroll-scope .modal-footer {
+  padding: 12px 22px;
+}
+
+.enroll-scope .enroll {
+  gap: 14px;
+}
+
+.enroll-scope .enroll-notice {
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Two columns: camera on the left, steps and feedback on the right.
+   The camera is capped in height so the whole dialog fits 1366x768
+   without scrolling. */
+
+.enroll-scope .enroll-layout {
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 22px;
+}
+
+.enroll-scope .enroll-stage-col,
+.enroll-scope .enroll-steps-col {
+  gap: 10px;
+}
+
+.enroll-scope .enroll-stage {
+  max-height: 300px;
+  border-radius: 10px;
+}
+
+@media (min-height: 900px) {
+  .enroll-scope .enroll-stage {
+    max-height: 360px;
+  }
+}
+
+.enroll-scope .enroll-hint {
+  font-size: 12px;
+}
+
+/* Step heading */
+
+.enroll-scope .enroll-step-count {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--primary-500);
+}
+
+.enroll-scope .enroll-instruction {
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.enroll-scope .enroll-progress {
+  height: 6px;
+}
+
+/* Step indicator: five numbered tiles, same size and label position.
+   Done = green check, current = filled blue number, pending = outline. */
+
+.enroll-scope .enroll-pose-list {
+  gap: 6px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.enroll-scope .enroll-pose {
+  min-height: 68px;
+  padding: 8px 4px;
+  gap: 6px;
+  justify-content: center;
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.enroll-scope .enroll-pose:not(:disabled):hover {
+  border-color: var(--text-secondary);
+}
+
+.enroll-scope .enroll-pose-mark {
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  border: 1px solid var(--border-medium);
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.enroll-scope .enroll-pose[data-state="pending"]:disabled {
+  opacity: 1;
+  background: #FAFBFC;
+  color: var(--text-muted);
+}
+
+.enroll-scope .enroll-pose[data-state="done"] {
+  border-color: var(--success-border);
+  background: var(--success-subtle);
+  color: #166534;
+}
+
+.enroll-scope .enroll-pose[data-state="done"] .enroll-pose-mark {
+  border-color: var(--success-500);
+  background: var(--success-500);
+  color: #ffffff;
+}
+
+.enroll-scope .enroll-pose[aria-current="step"] {
+  border-color: var(--primary-500);
+  background: var(--primary-subtle);
+  color: var(--primary-600);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--primary-500) inset;
+}
+
+.enroll-scope .enroll-pose[aria-current="step"] .enroll-pose-mark {
+  border-color: var(--primary-500);
+  background: var(--primary-500);
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+/* Sample feedback: colored panel, icon, title, and the next action */
+
+.enroll-scope .enroll-feedback {
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-height: 60px;
+  padding: 10px 12px;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.enroll-scope .enroll-feedback-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.enroll-scope .enroll-feedback-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.enroll-scope .enroll-feedback-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.enroll-scope .enroll-feedback-action {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.enroll-scope .enroll-feedback[data-kind="error"] .enroll-feedback-icon,
+.enroll-scope .enroll-feedback[data-kind="error"] .enroll-feedback-title {
+  color: #B91C1C;
+}
+
+.enroll-scope .enroll-feedback[data-kind="success"] .enroll-feedback-icon,
+.enroll-scope .enroll-feedback[data-kind="success"] .enroll-feedback-title {
+  color: #15803D;
+}
+
+.enroll-scope .enroll-feedback[data-kind="hint"] {
+  color: var(--text-secondary);
+}
+
+/* Actions */
+
+.enroll-scope .enroll-actions {
+  flex-wrap: nowrap;
+  gap: 10px;
+}
+
+.enroll-scope .enroll-primary {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.enroll-scope .enroll-confirm {
+  padding: 12px 14px;
+  gap: 8px;
+}
+
+.enroll-scope .enroll-confirm-title {
+  font-size: 14px;
+}
+
+.enroll-scope .enroll-confirm-text {
+  font-size: 13px;
+}
+
+.enroll-scope .enroll-overlay-title {
+  font-size: 15px;
+}
+
+.enroll-scope .enroll-footer {
+  font-size: 13px;
+}
+
+/* Completion state */
+
+.enroll-scope .enroll-complete {
+  padding: 28px 16px 20px;
+  gap: 10px;
+}
+
+.enroll-scope .enroll-complete-icon {
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--success-border);
+}
+
+.enroll-scope .enroll-complete-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.enroll-scope .enroll-complete-meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+  .enroll-scope .enroll-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .enroll-scope .enroll-stage {
+    max-height: none;
+  }
+
+  .enroll-scope .enroll-pose-list {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .enroll-scope .enroll-footer {
+    flex-direction: row;
+    align-items: center;
+  }
+}

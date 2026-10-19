@@ -22,9 +22,6 @@ import { formatDateTime } from '../utils/formatters';
 import {
   ArrowLeft,
   User,
-  Home,
-  Phone,
-  Mail,
   Clock,
   Shield,
   ScanFace,
@@ -132,9 +129,9 @@ export const ResidentDetailPage: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="resident-detail-page">
-        <div className="skeleton-line w-40 mb-4" />
-        <div className="skeleton-card h-64" />
+      <div className="resident-detail-page resident-detail-stack" aria-busy="true">
+        <div className="skeleton-line resident-skeleton-title" />
+        <div className="skeleton-card resident-skeleton-body" />
       </div>
     );
   }
@@ -145,7 +142,7 @@ export const ResidentDetailPage: React.FC = () => {
         <Link to="/residents" className="btn-back">
           <ArrowLeft size={16} /> Back to Residents
         </Link>
-        <div className="alert-banner alert-banner-error mt-4" role="alert">
+        <div className="alert-banner alert-banner-error resident-error-alert" role="alert">
           <AlertCircle size={20} className="alert-icon" />
           <span>{error || 'Resident not found'}</span>
         </div>
@@ -158,10 +155,10 @@ export const ResidentDetailPage: React.FC = () => {
   const isFaceEnrolled = resident.faceEnrollmentStatus === 'ENROLLED';
 
   return (
-    <div className="resident-detail-page space-y-6">
+    <div className="resident-detail-page resident-detail-stack">
       <PageHeader
         breadcrumb={
-          <Link to="/residents" className="btn-back flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800">
+          <Link to="/residents" className="btn-back">
             <ArrowLeft size={14} /> Back to Resident Roster
           </Link>
         }
@@ -169,7 +166,7 @@ export const ResidentDetailPage: React.FC = () => {
         subtitle={`Resident Code: ${resident.residentCode}`}
         actions={
           canManage && (
-            <div className="flex items-center gap-2">
+            <div className="page-header-actions">
               {resident.status === 'ACTIVE' ? (
                 <Button
                   variant="danger"
@@ -221,7 +218,7 @@ export const ResidentDetailPage: React.FC = () => {
       </div>
 
       {canManage && (
-        <div className="flex justify-end -mt-3">
+        <div className="resident-correct-row">
           <Button
             variant="outline"
             size="sm"
@@ -234,96 +231,90 @@ export const ResidentDetailPage: React.FC = () => {
       )}
 
       {/* Onboarding Checklist Summary */}
-      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-        <span className="text-sm font-semibold text-slate-700 block mb-3">
-          Resident Profile Status
-        </span>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white border border-slate-200 shadow-sm">
-            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+      <section className="resident-status-panel" aria-label="Resident profile status">
+        <h2 className="section-heading">Resident Profile Status</h2>
+        <div className="resident-status-grid">
+          <div className="resident-status-item">
+            <CheckCircle2 size={18} className="resident-status-icon is-positive" aria-hidden="true" />
             <div>
-              <span className="font-semibold block text-slate-800">Personal Details</span>
-              <span className="text-emerald-700 font-medium">Complete</span>
+              <span className="resident-status-label">Personal Details</span>
+              <span className="resident-status-value is-positive">Complete</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white border border-slate-200 shadow-sm">
+          <div className="resident-status-item">
             {hasProfilePhoto ? (
-              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+              <CheckCircle2 size={18} className="resident-status-icon is-positive" aria-hidden="true" />
             ) : (
-              <XCircle size={18} className="text-amber-600 shrink-0" />
+              <XCircle size={18} className="resident-status-icon is-warning" aria-hidden="true" />
             )}
             <div>
-              <span className="font-semibold block text-slate-800">Profile Photo</span>
-              <span className={hasProfilePhoto ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
+              <span className="resident-status-label">Profile Photo</span>
+              <span className={`resident-status-value ${hasProfilePhoto ? 'is-positive' : 'is-warning'}`}>
                 {hasProfilePhoto ? 'Photo Attached' : 'Missing Photo'}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-white border border-slate-200 shadow-sm">
+          <div className="resident-status-item">
             {isFaceEnrolled ? (
-              <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+              <CheckCircle2 size={18} className="resident-status-icon is-positive" aria-hidden="true" />
             ) : (
-              <XCircle size={18} className="text-slate-400 shrink-0" />
+              <XCircle size={18} className="resident-status-icon is-muted" aria-hidden="true" />
             )}
             <div>
-              <span className="font-semibold block text-slate-800">Face Enrollment</span>
-              <span className={isFaceEnrolled ? 'text-emerald-700 font-medium' : 'text-slate-500'}>
+              <span className="resident-status-label">Face Enrollment</span>
+              <span className={`resident-status-value ${isFaceEnrolled ? 'is-positive' : 'is-muted'}`}>
                 {isFaceEnrolled ? 'Enrolled' : 'Not Enrolled'}
               </span>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="overview-details-grid grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="overview-details-grid resident-detail-grid">
         {/* Profile Card */}
         <Card title="Resident Information" subtitle="Primary identity and hostel assignment">
-          <div className="flex items-start gap-4 mb-4">
-            <div className="w-20 h-20 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 flex items-center justify-center">
+          <div className="resident-identity">
+            <div className="resident-photo">
               <AuthenticatedImage
                 src={typeof residentsApi.getProfilePhotoUrl === 'function' ? residentsApi.getProfilePhotoUrl(resident.id) : `/api/v1/residents/${resident.id}/profile-photo`}
                 alt={resident.fullName}
-                className="w-full h-full object-cover"
+                className="resident-photo-img"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = 'none';
                 }}
               />
-              <User size={32} className="text-slate-400" />
+              <User size={32} className="resident-photo-placeholder" aria-hidden="true" />
             </div>
 
-            <div className="flex-1 min-w-0">
-              <span className="text-xs text-slate-500 block">Full Name</span>
-              <h3 className="font-bold text-base text-slate-900 truncate">
-                {resident.fullName}
-              </h3>
-              <span className="text-xs font-mono text-blue-600 font-medium block mt-0.5">
-                {resident.residentCode}
-              </span>
-              <div className="mt-1">
+            <div className="resident-identity-text">
+              <span className="resident-field-label">Full Name</span>
+              <h3 className="resident-name">{resident.fullName}</h3>
+              <span className="resident-code">{resident.residentCode}</span>
+              <div className="resident-identity-status">
                 <Badge type="status" value={resident.status} />
               </div>
             </div>
           </div>
 
-          <div className="detail-dl space-y-2 text-sm">
-            <div className="detail-row flex justify-between py-1 border-t border-slate-100">
-              <span className="detail-dt text-slate-500">Room / Group</span>
-              <span className="detail-dd font-medium">{resident.roomGroup}</span>
+          <div className="detail-dl">
+            <div className="detail-row">
+              <span className="detail-dt">Room / Group</span>
+              <span className="detail-dd">{resident.roomGroup}</span>
             </div>
-            <div className="detail-row flex justify-between py-1 border-t border-slate-100">
-              <span className="detail-dt text-slate-500">Hostel</span>
+            <div className="detail-row">
+              <span className="detail-dt">Hostel</span>
               <span className="detail-dd">
                 {resident.hostel?.name ? `${resident.hostel.name} (${resident.hostel.code})` : 'Assigned Hostel'}
               </span>
             </div>
-            <div className="detail-row flex justify-between py-1 border-t border-slate-100">
-              <span className="detail-dt text-slate-500">Contact Phone</span>
+            <div className="detail-row">
+              <span className="detail-dt">Contact Phone</span>
               <span className="detail-dd">{resident.contactPhone || '—'}</span>
             </div>
-            <div className="detail-row flex justify-between py-1 border-t border-slate-100">
-              <span className="detail-dt text-slate-500">Contact Email</span>
+            <div className="detail-row">
+              <span className="detail-dt">Contact Email</span>
               <span className="detail-dd">{resident.contactEmail || '—'}</span>
             </div>
           </div>
@@ -331,16 +322,16 @@ export const ResidentDetailPage: React.FC = () => {
 
         {/* Biometrics and Security Scope */}
         <Card title="Face Enrollment" subtitle="Resident recognition setup">
-          <div className="biometric-status-card p-4 rounded-xl border border-slate-200 bg-white">
-            <div className="biometric-status-header flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ScanFace size={18} className="text-blue-600" />
-                <span className="font-semibold text-sm text-slate-900">Enrollment Status</span>
+          <div className="biometric-status-card">
+            <div className="biometric-status-header">
+              <div className="biometric-status-label">
+                <ScanFace size={18} className="biometric-status-icon" aria-hidden="true" />
+                <span className="biometric-status-title">Enrollment Status</span>
               </div>
               <Badge type="enrollment" value={resident.faceEnrollmentStatus} />
             </div>
             {canManage && (
-              <div className="biometric-actions-row flex items-center gap-2 mt-4 pt-3 border-t border-slate-200">
+              <div className="biometric-actions-row">
                 <Button
                   variant="primary"
                   size="sm"
@@ -363,13 +354,13 @@ export const ResidentDetailPage: React.FC = () => {
             )}
           </div>
 
-          <div className="detail-timestamp-bar mt-6 pt-3 border-t border-slate-200 flex justify-between items-center text-xs text-slate-500">
-            <div className="flex items-center gap-1">
-              <Clock size={13} />
+          <div className="detail-timestamp-bar">
+            <div className="detail-timestamp-item">
+              <Clock size={13} aria-hidden="true" />
               <span>Created: {formatDateTime(resident.createdAt)}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <Shield size={13} />
+            <div className="detail-timestamp-item">
+              <Shield size={13} aria-hidden="true" />
               <span>Updated: {formatDateTime(resident.updatedAt)}</span>
             </div>
           </div>
@@ -378,39 +369,40 @@ export const ResidentDetailPage: React.FC = () => {
 
       <Card title="Recent Movement History" subtitle="Latest verified hostel entry and exit events">
         {recentMovements.length === 0 ? (
-          <p className="text-sm text-slate-500 py-4">No movement history recorded yet.</p>
+          <div className="state-panel state-panel-compact">
+            <p className="state-panel-text">No movement history recorded yet.</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
+          <div className="resident-movement-scroll">
+            <table className="data-table">
               <thead>
-                <tr className="border-b border-slate-200 text-left text-slate-500">
-                  <th className="py-3 pr-4 font-semibold">Date & Time</th>
-                  <th className="py-3 pr-4 font-semibold">Movement</th>
-                  <th className="py-3 pr-4 font-semibold">Gate</th>
-                  <th className="py-3 font-semibold">Record</th>
+                <tr>
+                  <th>Date & Time</th>
+                  <th>Movement</th>
+                  <th>Gate</th>
+                  <th>Record</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {recentMovements.map((movement) => (
                   <tr key={movement.id}>
-                    <td className="py-3 pr-4 text-slate-600">
+                    <td className="cell-secondary cell-nowrap">
                       {formatDateTime(movement.timestamp)}
                     </td>
-                    <td className="py-3 pr-4">
-                      <span className={`inline-flex px-2.5 py-1 rounded-md text-xs font-semibold ${
-                        movement.direction === 'IN'
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                    <td>
+                      <span className={`badge badge-sm ${
+                        movement.direction === 'IN' ? 'badge-presence-in' : 'badge-presence-out'
                       }`}>
-                        {movement.direction === 'IN' ? 'Entered' : 'Left'}
+                        <span className="badge-dot" aria-hidden="true" />
+                        <span>{movement.direction === 'IN' ? 'Entered' : 'Left'}</span>
                       </span>
                     </td>
-                    <td className="py-3 pr-4 text-slate-700">{movement.gateName || 'Gate'}</td>
-                    <td className="py-3">
+                    <td className="cell-secondary">{movement.gateName || 'Gate'}</td>
+                    <td>
                       {movement.isCorrection ? (
-                        <span className="text-xs font-semibold text-blue-700">Corrected</span>
+                        <span className="badge badge-sm badge-correction">Corrected</span>
                       ) : (
-                        <span className="text-xs font-semibold text-slate-500">Verified</span>
+                        <span className="badge badge-sm badge-neutral">Verified</span>
                       )}
                     </td>
                   </tr>
@@ -428,7 +420,7 @@ export const ResidentDetailPage: React.FC = () => {
         subtitle={`${resident.fullName} • currently ${isCurrentlyIn ? 'Inside hostel' : 'Outside hostel'}`}
         size="sm"
         footer={
-          <div className="flex justify-end gap-2 w-full">
+          <div className="modal-actions-bar">
             <Button
               variant="outline"
               onClick={() => setIsCorrectionOpen(false)}
@@ -447,39 +439,39 @@ export const ResidentDetailPage: React.FC = () => {
           </div>
         }
       >
-        <div className="space-y-4">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="modal-form-stack">
+          <div className="alert-banner alert-banner-warning">
             Use this only when a genuine gate IN / OUT movement was missed. The correction is added to the audit history; existing movement records are not deleted.
           </div>
 
-          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-            <span className="block text-xs font-semibold text-slate-500 mb-1">Correct presence to</span>
-            <span className="font-bold text-slate-900">
+          <div className="modal-note">
+            <span className="modal-note-label">Correct presence to</span>
+            <span className="modal-note-value">
               {isCurrentlyIn ? 'Outside hostel' : 'Inside hostel'}
             </span>
           </div>
 
-          <div>
-            <label htmlFor="correction-time" className="block text-sm font-semibold text-slate-700 mb-1.5">
+          <div className="form-group">
+            <label htmlFor="correction-time" className="form-label">
               When did the missed movement happen?
             </label>
             <input
               id="correction-time"
               type="datetime-local"
-              className="form-control w-full"
+              className="form-control"
               value={correctionTime}
               max={new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16)}
               onChange={(e) => setCorrectionTime(e.target.value)}
             />
           </div>
 
-          <div>
-            <label htmlFor="correction-reason" className="block text-sm font-semibold text-slate-700 mb-1.5">
+          <div className="form-group">
+            <label htmlFor="correction-reason" className="form-label">
               Reason
             </label>
             <textarea
               id="correction-reason"
-              className="form-control w-full min-h-24"
+              className="form-control correction-reason-input"
               placeholder="Example: Resident returned through the gate but the camera event was missed."
               value={correctionReason}
               onChange={(e) => setCorrectionReason(e.target.value)}
@@ -487,7 +479,7 @@ export const ResidentDetailPage: React.FC = () => {
           </div>
 
           {correctionError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <div className="alert-banner alert-banner-error" role="alert">
               {correctionError}
             </div>
           )}

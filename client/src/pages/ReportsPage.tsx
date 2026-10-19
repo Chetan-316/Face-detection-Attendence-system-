@@ -41,6 +41,7 @@ import {
   RefreshCw,
   ShieldAlert,
 } from 'lucide-react';
+import '../styles/reports.css';
 
 type ReportTab = 'attendance' | 'movement' | 'residents';
 
@@ -127,6 +128,31 @@ export const ReportsPage: React.FC = () => {
     }
     return {};
   };
+
+  // Segmented date-range control (one track, one active segment)
+  const renderDateSegments = (
+    value: string,
+    options: { key: string; label: string }[],
+    onSelect: (key: string) => void,
+    groupLabelId: string
+  ) => (
+    <div className="reports-segmented" role="group" aria-labelledby={groupLabelId}>
+      {options.map((option) => {
+        const isActive = value === option.key;
+        return (
+          <button
+            key={option.key}
+            type="button"
+            className={`reports-segment${isActive ? ' is-active' : ''}`}
+            aria-pressed={isActive}
+            onClick={() => onSelect(option.key)}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   // ----------------------------------------------------
   // FETCH ATTENDANCE DATA
@@ -336,7 +362,7 @@ export const ReportsPage: React.FC = () => {
       />
 
       {/* Primary Tab Navigation */}
-      <div className="reports-tab-nav mb-6 flex border-b border-border" role="tablist" aria-label="Report sections">
+      <div className="reports-tab-nav flex border-b border-border" role="tablist" aria-label="Report sections">
         <button
           type="button"
           className={`tab-btn px-5 py-2.5 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
@@ -626,90 +652,84 @@ export const ReportsPage: React.FC = () => {
           aria-labelledby="report-tab-movement"
         >
           {/* Current Presence Cards */}
-          <div className="metrics-grid mb-6">
-            <Card className="metric-card">
-              <div className="metric-header">
-                <span className="metric-label">Currently Inside</span>
-                <div className="metric-icon-wrap icon-emerald">
-                  <LogIn size={18} />
+          <div className="reports-presence-row">
+            <Card className="reports-presence-card">
+              <div className="reports-presence-head">
+                <span className="reports-presence-label">Currently Inside</span>
+                <span className="reports-presence-icon is-emerald">
+                  <LogIn size={16} />
+                </span>
+              </div>
+              <div className="reports-presence-body">
+                <span className="reports-presence-value is-emerald">
+                  {presenceSummary?.insideCount ?? 0}
+                </span>
+                <div className="reports-presence-meta">
+                  <span>{presenceSummary?.insideRate ?? 0}% of residents in hostel</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setActiveTab('residents')}
+                    leftIcon={<Users size={14} />}
+                  >
+                    Browse Residents
+                  </Button>
                 </div>
-              </div>
-              <div className="metric-value text-emerald">
-                {presenceSummary?.insideCount ?? 0}
-              </div>
-              <div className="metric-footer flex flex-col gap-3 items-start">
-                <span>{presenceSummary?.insideRate ?? 0}% of residents in hostel</span>
-                <Button
-                  size="md"
-                  variant="outline"
-                  onClick={() => setActiveTab('residents')}
-                  leftIcon={<Users size={15} />}
-                >
-                  Browse Residents
-                </Button>
               </div>
             </Card>
 
-            <Card className="metric-card">
-              <div className="metric-header">
-                <span className="metric-label">Currently Outside</span>
-                <div className="metric-icon-wrap icon-amber">
-                  <LogOut size={18} />
+            <Card className="reports-presence-card">
+              <div className="reports-presence-head">
+                <span className="reports-presence-label">Currently Outside</span>
+                <span className="reports-presence-icon is-amber">
+                  <LogOut size={16} />
+                </span>
+              </div>
+              <div className="reports-presence-body">
+                <span className="reports-presence-value is-amber">
+                  {presenceSummary?.outsideCount ?? 0}
+                </span>
+                <div className="reports-presence-meta">
+                  <span>{presenceSummary?.outsideRate ?? 0}% outside premises</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={fetchCurrentlyOutside}
+                    isLoading={outsideLoading}
+                    leftIcon={<Eye size={14} />}
+                  >
+                    View Outside Residents
+                  </Button>
                 </div>
-              </div>
-              <div className="metric-value text-amber">
-                {presenceSummary?.outsideCount ?? 0}
-              </div>
-              <div className="metric-footer flex flex-col gap-3 items-start">
-                <span>{presenceSummary?.outsideRate ?? 0}% outside premises</span>
-                <Button
-                  size="md"
-                  variant="outline"
-                  onClick={fetchCurrentlyOutside}
-                  isLoading={outsideLoading}
-                  leftIcon={<Eye size={15} />}
-                >
-                  View Outside Residents
-                </Button>
               </div>
             </Card>
           </div>
 
           {/* Movement Filters */}
-          <div className="report-filter-bar mb-6 p-4 bg-surface border border-border rounded-lg flex flex-wrap gap-4 items-end justify-between">
-            <div className="flex flex-wrap gap-4 items-end">
-              <div className="filter-group">
-                <label className="block text-xs font-semibold text-secondary mb-1">Date Range</label>
-                <div className="flex gap-1">
-                  {[
+          <div className="report-filter-bar reports-filter-bar">
+            <div className="reports-filter-fields">
+              <div className="filter-group reports-field">
+                <span id="movement-date-range-label" className="reports-field-label">Date Range</span>
+                {renderDateSegments(
+                  movDateRange,
+                  [
                     { key: 'today', label: 'Today' },
                     { key: 'last7', label: 'Last 7 Days' },
                     { key: 'custom', label: 'Custom' },
-                  ].map((r) => (
-                    <button
-                      key={r.key}
-                      type="button"
-                      className={`btn-filter px-3 py-1.5 text-xs rounded border transition-colors ${
-                        movDateRange === r.key
-                          ? 'bg-primary text-white border-primary'
-                          : 'bg-surface text-secondary border-border hover:bg-surface-hover'
-                      }`}
-                      onClick={() => {
-                        setMovDateRange(r.key);
-                        setMovPage(1);
-                      }}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
+                  ],
+                  (key) => {
+                    setMovDateRange(key);
+                    setMovPage(1);
+                  },
+                  'movement-date-range-label'
+                )}
               </div>
 
-              <div className="filter-group">
-                <label htmlFor="movement-direction-filter" className="block text-xs font-semibold text-secondary mb-1">Movement</label>
+              <div className="filter-group reports-field">
+                <label htmlFor="movement-direction-filter" className="reports-field-label">Movement</label>
                 <select
                   id="movement-direction-filter"
-                  className="input-field text-xs py-1.5 px-3 border border-border rounded"
+                  className="form-control reports-control reports-control-select"
                   value={movDirection}
                   onChange={(e) => {
                     setMovDirection(e.target.value);
@@ -722,31 +742,32 @@ export const ReportsPage: React.FC = () => {
                 </select>
               </div>
 
-              <div className="filter-group">
-                <label htmlFor="movement-resident-search" className="block text-xs font-semibold text-secondary mb-1">Resident Search</label>
-                <div className="relative">
+              <div className="filter-group reports-field">
+                <label htmlFor="movement-resident-search" className="reports-field-label">Resident Search</label>
+                <div className="reports-search-field">
                   <input
                     id="movement-resident-search"
                     type="text"
                     placeholder="Search name or code..."
-                    className="input-field text-xs py-1.5 pl-8 pr-3 border border-border rounded"
+                    className="form-control reports-control reports-control-search"
                     value={movSearch}
                     onChange={(e) => {
                       setMovSearch(e.target.value);
                       setMovPage(1);
                     }}
                   />
-                  <Search size={14} className="absolute left-2.5 top-2 text-muted" />
+                  <Search size={14} className="reports-search-icon" />
                 </div>
               </div>
 
               {movDateRange === 'custom' && (
-                <div className="flex gap-2 items-center">
-                  <div>
-                    <label className="block text-xs text-secondary mb-1">From</label>
+                <div className="reports-custom-dates">
+                  <div className="filter-group reports-field">
+                    <label htmlFor="report-movement-from" className="reports-field-label">From</label>
                     <input
+                      id="report-movement-from"
                       type="date"
-                      className="input-field text-xs py-1.5 px-2 border border-border rounded"
+                      className="form-control reports-control reports-control-date"
                       value={movCustomFrom}
                       onChange={(e) => {
                         setMovCustomFrom(e.target.value);
@@ -754,11 +775,12 @@ export const ReportsPage: React.FC = () => {
                       }}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs text-secondary mb-1">To</label>
+                  <div className="filter-group reports-field">
+                    <label htmlFor="report-movement-to" className="reports-field-label">To</label>
                     <input
+                      id="report-movement-to"
                       type="date"
-                      className="input-field text-xs py-1.5 px-2 border border-border rounded"
+                      className="form-control reports-control reports-control-date"
                       value={movCustomTo}
                       onChange={(e) => {
                         setMovCustomTo(e.target.value);
@@ -774,6 +796,7 @@ export const ReportsPage: React.FC = () => {
               <Button
                 variant="outline"
                 size="sm"
+                className="reports-export-btn"
                 onClick={handleExportMovement}
                 leftIcon={<Download size={14} />}
               >
@@ -782,33 +805,33 @@ export const ReportsPage: React.FC = () => {
             )}
           </div>
 
-          <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-            Current presence is derived from the latest verified entry or exit. Staff corrections remain clearly marked for audit.
-          </div>
-
           {/* Movement Table */}
-          <Card title="Movement History" subtitle="Verified hostel entry and exit events">
+          <Card
+            className="reports-table-card"
+            title="Movement History"
+            subtitle="Verified hostel entry and exit events. Current presence comes from the latest verified entry or exit; staff corrections stay marked for audit."
+          >
             {movError && (
-              <div className="alert-banner alert-banner-error mb-4" role="alert">
+              <div className="alert-banner alert-banner-error reports-alert" role="alert">
                 <AlertCircle size={18} />
                 <span>{movError}</span>
               </div>
             )}
 
             {movLoading ? (
-              <p className="text-sm text-muted py-8 text-center">Loading movement history...</p>
+              <p className="reports-state">Loading movement history...</p>
             ) : movements.length === 0 ? (
-              <div className="py-10 text-center">
-                <ArrowRightLeft size={28} className="mx-auto text-slate-300 mb-3" />
-                <p className="text-base font-semibold text-slate-700">No movement records found</p>
-                <p className="text-sm text-slate-500 mt-1">
+              <div className="reports-empty">
+                <ArrowRightLeft size={28} className="reports-empty-icon" />
+                <p className="reports-empty-title">No movement records found</p>
+                <p className="reports-empty-text">
                   Try a wider date range or clear the resident search.
                 </p>
               </div>
             ) : (
               <>
                 <div className="table-responsive">
-                  <table className="data-table">
+                  <table className="data-table reports-table">
                     <thead>
                       <tr>
                         <th>Time</th>
@@ -824,14 +847,14 @@ export const ReportsPage: React.FC = () => {
                     <tbody>
                       {movements.map((ev) => (
                         <tr key={ev.id}>
-                          <td className="font-mono text-xs">
+                          <td className="reports-numeric">
                             {new Date(ev.timestamp).toLocaleTimeString([], {
                               hour: '2-digit',
                               minute: '2-digit',
                               second: '2-digit',
                             })}
                           </td>
-                          <td className="font-medium">{ev.residentCode}</td>
+                          <td className="reports-code">{ev.residentCode}</td>
                           <td>{ev.fullName}</td>
                           <td>{ev.roomGroup}</td>
                           <td>
@@ -844,7 +867,7 @@ export const ReportsPage: React.FC = () => {
                             </span>
                           </td>
                           <td>{ev.gateName}</td>
-                          <td className="text-xs text-secondary">{movementSourceLabel(ev.source)}</td>
+                          <td className="reports-muted">{movementSourceLabel(ev.source)}</td>
                           <td>
                             {ev.isCorrection ? (
                               <span className="badge badge-sm badge-info">Corrected</span>
@@ -858,7 +881,7 @@ export const ReportsPage: React.FC = () => {
                   </table>
                 </div>
 
-                <div className="mt-4 flex justify-end">
+                <div className="reports-pagination">
                   <Pagination
                     currentPage={movPage}
                     totalPages={movTotalPages}
@@ -897,11 +920,11 @@ export const ReportsPage: React.FC = () => {
           ) : (
             <>
               {/* Resident Search Bar */}
-              <div className="resident-search-bar mb-6 p-4 bg-surface border border-border rounded-lg">
-                <label htmlFor="resident-report-search" className="block text-xs font-semibold text-secondary mb-2">
+              <div className="resident-search-bar reports-resident-search">
+                <label htmlFor="resident-report-search" className="reports-field-label">
                   Select Resident to Inspect
                 </label>
-                <div className="relative max-w-md">
+                <div className="reports-search-field">
                   <input
                     id="resident-report-search"
                     type="text"
@@ -910,14 +933,14 @@ export const ReportsPage: React.FC = () => {
                     aria-expanded={residentSearchResults.length > 0}
                     aria-controls="resident-report-suggestions"
                     placeholder="Type name or resident code..."
-                    className="input-field text-sm py-2 pl-9 pr-4 w-full border border-border rounded"
+                    className="form-control reports-control reports-control-wide"
                     value={residentSearch}
                     onChange={(e) => {
                       setResidentSearch(e.target.value);
                       searchResidents(e.target.value);
                     }}
                   />
-                  <Search size={16} className="absolute left-3 top-2.5 text-muted" />
+                  <Search size={16} className="reports-search-icon" />
 
                   {/* Dropdown Suggestions */}
                   {residentSearchResults.length > 0 && (
@@ -925,7 +948,7 @@ export const ReportsPage: React.FC = () => {
                       id="resident-report-suggestions"
                       role="listbox"
                       aria-label="Resident search suggestions"
-                      className="resident-autocomplete-dropdown absolute left-0 right-0 top-full mt-1 bg-surface border border-border rounded shadow-lg z-20 max-h-60 overflow-y-auto"
+                      className="resident-autocomplete-dropdown"
                     >
                       {residentSearchResults.map((r) => (
                         <button
@@ -933,7 +956,7 @@ export const ReportsPage: React.FC = () => {
                           role="option"
                           aria-selected="false"
                           key={r.id}
-                          className="autocomplete-item w-full text-left p-2.5 hover:bg-surface-hover cursor-pointer border-b border-border last:border-none flex justify-between items-center"
+                          className="autocomplete-item reports-option"
                           onClick={() => {
                             setResidentSearch(`${r.fullName} (${r.residentCode})`);
                             setResidentSearchResults([]);
@@ -941,10 +964,10 @@ export const ReportsPage: React.FC = () => {
                           }}
                         >
                           <div>
-                            <span className="font-medium text-sm">{r.fullName}</span>
-                            <span className="text-xs text-secondary ml-2">({r.residentCode})</span>
+                            <span className="reports-option-name">{r.fullName}</span>
+                            <span className="reports-option-code">({r.residentCode})</span>
                           </div>
-                          <span className="text-xs text-muted">Room {r.roomGroup}</span>
+                          <span className="reports-option-room">Room {r.roomGroup}</span>
                         </button>
                       ))}
                     </div>
@@ -953,53 +976,51 @@ export const ReportsPage: React.FC = () => {
               </div>
 
               {resSummaryLoading ? (
-                <p className="text-sm text-muted py-8 text-center">Loading resident summary...</p>
+                <p className="reports-state">Loading resident summary...</p>
               ) : resSummaryError ? (
-                <div className="alert-banner alert-banner-error mb-4" role="alert">
+                <div className="alert-banner alert-banner-error reports-alert" role="alert">
                   <AlertCircle size={18} />
                   <span>{resSummaryError}</span>
                 </div>
               ) : !residentSummary ? (
                 <Card>
-                  <div className="py-12 text-center text-muted">
-                    <Users size={36} className="mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No resident selected. Search above to view summary.</p>
+                  <div className="reports-empty">
+                    <Users size={28} className="reports-empty-icon" />
+                    <p className="reports-empty-text">No resident selected. Search above to view summary.</p>
                   </div>
                 </Card>
               ) : (
-                <div className="resident-summary-content space-y-6">
+                <div className="resident-summary-content reports-summary">
                   {/* Resident Header Profile Card */}
                   <Card>
-                    <div className="flex flex-wrap justify-between items-start gap-4">
+                    <div className="reports-profile">
                       <div>
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-xl font-bold">{residentSummary.fullName}</h3>
+                        <div className="reports-profile-title">
+                          <h3 className="reports-profile-name">{residentSummary.fullName}</h3>
                           <Badge type="status" value={residentSummary.status} />
                         </div>
-                        <p className="text-sm text-secondary mt-1">
-                          Code: <span className="font-semibold">{residentSummary.residentCode}</span> · Room: <span className="font-semibold">{residentSummary.roomGroup}</span> · Hostel: <span className="font-semibold">{residentSummary.hostelName}</span>
+                        <p className="reports-profile-meta">
+                          Code: <span className="reports-profile-value">{residentSummary.residentCode}</span> · Room: <span className="reports-profile-value">{residentSummary.roomGroup}</span> · Hostel: <span className="reports-profile-value">{residentSummary.hostelName}</span>
                         </p>
                       </div>
 
-                      <div className="flex gap-4 items-center">
-                        <div className="text-right">
-                          <span className="text-xs text-secondary block">Current Presence</span>
+                      <div className="reports-profile-status">
+                        <div className="reports-profile-block">
+                          <span className="reports-profile-label">Current Presence</span>
                           <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                              residentSummary.currentPresence === 'IN'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : 'bg-amber-100 text-amber-800'
+                            className={`reports-presence-pill ${
+                              residentSummary.currentPresence === 'IN' ? 'is-in' : 'is-out'
                             }`}
                           >
                             {residentSummary.currentPresence === 'IN' ? 'Inside Hostel' : 'Outside Hostel'}
                           </span>
                         </div>
-                        <div className="text-right border-l border-border pl-4">
-                          <span className="text-xs text-secondary block">Last Movement</span>
-                          <span className="text-sm font-semibold text-primary">
+                        <div className="reports-profile-block has-divider">
+                          <span className="reports-profile-label">Last Movement</span>
+                          <span className="reports-profile-last">
                             {residentSummary.lastMovementDirection || 'No movement'}
                           </span>
-                          <span className="text-xs text-muted block">
+                          <span className="reports-profile-time">
                             {residentSummary.lastMovementTime
                               ? new Date(residentSummary.lastMovementTime).toLocaleString()
                               : 'No movement recorded'}
@@ -1009,50 +1030,52 @@ export const ReportsPage: React.FC = () => {
                     </div>
                   </Card>
 
-                  <div className="grid grid-cols-1 gap-6">
-                    <Card title="Movement Timeline" subtitle="Recent verified gate movements">
-                      {residentSummary.recentMovements.length === 0 ? (
-                        <p className="text-xs text-muted py-4">No gate movements found.</p>
-                      ) : (
-                        <div className="table-responsive">
-                          <table className="data-table text-xs">
-                            <thead>
-                              <tr>
-                                <th>Time</th>
-                                <th>Direction</th>
-                                <th>Gate</th>
-                                <th>Source</th>
+                  <Card
+                    className="reports-table-card"
+                    title="Movement Timeline"
+                    subtitle="Recent verified gate movements"
+                  >
+                    {residentSummary.recentMovements.length === 0 ? (
+                      <p className="reports-state">No gate movements found.</p>
+                    ) : (
+                      <div className="table-responsive">
+                        <table className="data-table reports-table">
+                          <thead>
+                            <tr>
+                              <th>Time</th>
+                              <th>Direction</th>
+                              <th>Gate</th>
+                              <th>Source</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {residentSummary.recentMovements.map((mov) => (
+                              <tr key={mov.id}>
+                                <td className="reports-numeric">
+                                  {new Date(mov.timestamp).toLocaleDateString()} {' '}
+                                  {new Date(mov.timestamp).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </td>
+                                <td>
+                                  <span
+                                    className={`badge badge-sm badge-${
+                                      mov.direction === 'IN' ? 'success' : 'amber'
+                                    }`}
+                                  >
+                                    {mov.direction === 'IN' ? 'Entered' : 'Left'}
+                                  </span>
+                                </td>
+                                <td>{mov.gateName}</td>
+                                <td className="reports-muted">{movementSourceLabel(mov.source)}</td>
                               </tr>
-                            </thead>
-                            <tbody>
-                              {residentSummary.recentMovements.map((mov) => (
-                                <tr key={mov.id}>
-                                  <td className="font-mono">
-                                    {new Date(mov.timestamp).toLocaleDateString()} {' '}
-                                    {new Date(mov.timestamp).toLocaleTimeString([], {
-                                      hour: '2-digit',
-                                      minute: '2-digit',
-                                    })}
-                                  </td>
-                                  <td>
-                                    <span
-                                      className={`badge badge-sm badge-${
-                                        mov.direction === 'IN' ? 'success' : 'amber'
-                                      }`}
-                                    >
-                                      {mov.direction === 'IN' ? 'Entered' : 'Left'}
-                                    </span>
-                                  </td>
-                                  <td>{mov.gateName}</td>
-                                  <td className="text-muted">{movementSourceLabel(mov.source)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </Card>
-                  </div>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </Card>
                 </div>
               )}
             </>

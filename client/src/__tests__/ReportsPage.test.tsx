@@ -220,6 +220,18 @@ describe('Reports presence and movement workflow', () => {
     });
   });
 
+  it('shows the active date range as one segmented control', async () => {
+    renderReports();
+
+    await waitFor(() => {
+      expect(reportsApi.getMovements).toHaveBeenCalledTimes(1);
+    });
+
+    expect(screen.getByRole('group', { name: 'Date Range' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Today' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Last 7 Days' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('exports the visible movement report', async () => {
     renderReports();
 

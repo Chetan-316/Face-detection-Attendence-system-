@@ -38,10 +38,18 @@ COPY src/modules/biometrics/workers ./src/modules/biometrics/workers
 COPY deploy/staging ./deploy/staging
 RUN python3 -m venv /opt/pravahax-venv \
  && /opt/pravahax-venv/bin/pip install --no-cache-dir -r src/modules/biometrics/workers/requirements.txt \
- && chmod 0755 deploy/staging/migrate.sh
+ && chmod 0755 deploy/staging/migrate.sh \
+ && mkdir -p /app/data/profile-photos \
+ && chown -R node:node /app/data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "dist/src/index.js"]
+
+# Operator-only seed image: runtime plus the seed tooling, which the API image does not carry.
+FROM runtime AS seed
+COPY scripts/safe-seed.ts ./scripts/
+COPY scripts/lib ./scripts/lib
+CMD ["node_modules/.bin/tsx", "scripts/safe-seed.ts"]

@@ -485,23 +485,23 @@ export const AttendancePage: React.FC = () => {
       case 'PRESENT':
       case 'CORRECTED_PRESENT':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-            <CheckCircle2 size={13} className="text-emerald-600" />
+          <span className="badge badge-sm badge-presence-in">
+            <CheckCircle2 size={13} aria-hidden="true" />
             <span>Present</span>
           </span>
         );
       case 'ABSENT':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-800 border border-red-200">
-            <XCircle size={13} className="text-red-600" />
+          <span className="badge badge-sm badge-absent">
+            <XCircle size={13} aria-hidden="true" />
             <span>Absent</span>
           </span>
         );
       case 'NOT_RECORDED':
       default:
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            <HelpCircle size={13} className="text-slate-400" />
+          <span className="badge badge-sm badge-neutral">
+            <HelpCircle size={13} aria-hidden="true" />
             <span>Not Recorded</span>
           </span>
         );
@@ -515,12 +515,12 @@ export const AttendancePage: React.FC = () => {
   const streamUrl = usePreviewStreamUrl(activeLiveCameraId || null, streamRetryKey);
 
   return (
-    <div className="attendance-page max-w-7xl mx-auto space-y-6">
+    <div className="attendance-page attendance-stack">
       <PageHeader
         title="Hostel Attendance"
         subtitle="Run attendance sessions, monitor live marking, and review resident records."
         actions={
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="page-header-actions">
             <Button
               type="button"
               variant="outline"
@@ -546,18 +546,18 @@ export const AttendancePage: React.FC = () => {
 
       {/* Main Content Area */}
       {isLoading ? (
-        <div className="py-24 text-center bg-white rounded-xl border border-slate-200 shadow-sm">
-          <RefreshCw size={32} className="animate-spin text-blue-600 mx-auto mb-3" />
-          <p className="text-slate-500 text-sm">Loading attendance sessions...</p>
+        <div className="card state-panel" role="status">
+          <span className="spinner-inline" aria-hidden="true" />
+          <p className="state-panel-text">Loading attendance sessions...</p>
         </div>
       ) : sessions.length === 0 ? (
         /* Empty State */
-        <div className="attendance-empty-panel bg-white border border-slate-200 rounded-xl p-12 text-center max-w-xl mx-auto my-8 shadow-sm">
-          <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 border border-blue-100">
-            <CheckSquare size={28} />
+        <div className="attendance-empty-panel">
+          <div className="attendance-empty-icon">
+            <CheckSquare size={28} aria-hidden="true" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">Hostel Attendance</h2>
-          <p className="text-base text-slate-600 mb-6 leading-relaxed">
+          <h2 className="attendance-empty-title">Hostel Attendance</h2>
+          <p className="attendance-empty-text">
             No attendance session is active.
             <br />
             Start attendance when you are ready to conduct roll call.
@@ -567,7 +567,7 @@ export const AttendancePage: React.FC = () => {
               type="button"
               onClick={() => setIsCreateModalOpen(true)}
               aria-label="Start Attendance"
-              className="btn btn-primary btn-md inline-flex items-center gap-2"
+              className="btn btn-primary btn-md"
             >
               <Play size={18} />
               <span>Start Attendance</span>
@@ -575,13 +575,13 @@ export const AttendancePage: React.FC = () => {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="attendance-layout-grid">
           {/* Left Column: Sessions List */}
-          <div className="lg:col-span-1 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-700 px-1">
+          <div className="attendance-sessions-col">
+            <h2 className="section-heading">
               Attendance Sessions
             </h2>
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm divide-y divide-slate-100">
+            <div className="attendance-session-list">
               {sessions.map((s) => {
                 const isSelected = s.id === selectedSessionId;
                 const isActive = s.status === 'ACTIVE';
@@ -591,26 +591,25 @@ export const AttendancePage: React.FC = () => {
                     key={s.id}
                     type="button"
                     onClick={() => handleSelectSession(s.id)}
-                    className={`w-full text-left p-3.5 transition flex flex-col gap-1 ${
-                      isSelected ? 'bg-blue-50/80 border-l-4 border-blue-600' : 'hover:bg-slate-50'
-                    }`}
+                    className={`attendance-session-item ${isSelected ? 'is-selected' : ''}`}
+                    aria-current={isSelected ? 'true' : undefined}
                   >
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-slate-900 text-sm truncate">{s.title}</span>
+                    <div className="attendance-session-row">
+                      <span className="attendance-session-title">{s.title}</span>
                       <span
-                        className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                        className={`badge badge-sm ${
                           isActive
-                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            ? 'badge-presence-in'
                             : isClosed
-                            ? 'bg-slate-100 text-slate-700'
-                            : 'bg-amber-50 text-amber-800 border border-amber-200'
+                            ? 'badge-neutral'
+                            : 'badge-presence-out'
                         }`}
                       >
                         {s.status}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                      <Calendar size={13} />
+                    <div className="attendance-session-meta">
+                      <Calendar size={13} aria-hidden="true" />
                       <span>{new Date(s.attendanceDate).toLocaleDateString()}</span>
                     </div>
                   </button>
@@ -620,31 +619,31 @@ export const AttendancePage: React.FC = () => {
           </div>
 
           {/* Right Column: Selected/Active Session Card & Roster */}
-          <div className="lg:col-span-3 space-y-6">
+          <div className="attendance-main-col">
             {activeSessionData ? (
               <>
                 {/* Active Session Overview Banner */}
-                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-5">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div className="card attendance-session-card">
+                  <div className="attendance-session-header">
                     <div>
-                      <div className="flex items-center gap-3">
-                        <h2 className="text-22px font-bold text-slate-900">{activeSessionData.title}</h2>
+                      <div className="attendance-session-heading">
+                        <h2 className="attendance-session-name">{activeSessionData.title}</h2>
                         <span
-                          className={`text-xs px-3 py-1 rounded-full font-semibold ${
+                          className={`badge badge-md ${
                             activeSessionData.status === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              ? 'badge-presence-in'
                               : activeSessionData.status === 'CLOSED'
-                              ? 'bg-slate-100 text-slate-700'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                              ? 'badge-neutral'
+                              : 'badge-presence-out'
                           }`}
                         >
                           Status: {activeSessionData.status}
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-slate-600">
-                        <span className="flex items-center gap-1.5">
-                          <Calendar size={15} className="text-slate-400" />
+                      <div className="attendance-session-meta-row">
+                        <span className="attendance-meta-item">
+                          <Calendar size={15} aria-hidden="true" />
                           {new Date(activeSessionData.attendanceDate).toLocaleDateString(undefined, {
                             weekday: 'short',
                             year: 'numeric',
@@ -652,8 +651,8 @@ export const AttendancePage: React.FC = () => {
                             day: 'numeric',
                           })}
                         </span>
-                        <span className="flex items-center gap-1.5">
-                          <Clock size={15} className="text-slate-400" />
+                        <span className="attendance-meta-item">
+                          <Clock size={15} aria-hidden="true" />
                           {new Date(activeSessionData.startTime).toLocaleTimeString([], {
                             hour: '2-digit',
                             minute: '2-digit',
@@ -665,8 +664,8 @@ export const AttendancePage: React.FC = () => {
                             })}`}
                         </span>
                         {activeCameraObj && (
-                          <span className="flex items-center gap-1.5">
-                            <CameraIcon size={15} className="text-slate-400" />
+                          <span className="attendance-meta-item">
+                            <CameraIcon size={15} aria-hidden="true" />
                             {activeCameraObj.name}
                           </span>
                         )}
@@ -675,13 +674,13 @@ export const AttendancePage: React.FC = () => {
 
                     {/* Operational Action Controls */}
                     {canManage && (
-                      <div className="flex items-center gap-3">
+                      <div className="attendance-session-actions">
                         {activeSessionData.status === 'DRAFT' && (
                           <button
                             type="button"
                             onClick={handleStartSession}
                             disabled={isSubmitting}
-                            className="btn btn-primary btn-sm bg-emerald-600 hover:bg-emerald-700"
+                            className="btn btn-success btn-sm"
                           >
                             <Play size={16} />
                             <span>Start Session</span>
@@ -704,30 +703,30 @@ export const AttendancePage: React.FC = () => {
 
                   {/* Summary Metric Counters */}
                   {stats && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                      <div className="p-4 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-center">
-                        <span className="block text-sm font-semibold text-emerald-800">
+                    <div className="attendance-counters">
+                      <div className="attendance-counter is-present">
+                        <span className="attendance-counter-label">
                           Present
                         </span>
-                        <span className="text-4xl font-bold text-emerald-900 mt-1 block leading-none">
+                        <span className="attendance-counter-value">
                           {stats.presentCount}
                         </span>
                       </div>
-                      <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-xl text-center">
-                        <span className="block text-sm font-semibold text-amber-800">
+                      <div className="attendance-counter is-pending">
+                        <span className="attendance-counter-label">
                           Pending
                           <span className="sr-only">Remaining</span>
                         </span>
-                        <span className="text-4xl font-bold text-amber-900 mt-1 block leading-none">
+                        <span className="attendance-counter-value">
                           {stats.remainingCount}
                         </span>
                       </div>
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center">
-                        <span className="block text-sm font-semibold text-slate-700">
+                      <div className="attendance-counter is-total">
+                        <span className="attendance-counter-label">
                           Total
                           <span className="sr-only">Expected</span>
                         </span>
-                        <span className="text-4xl font-bold text-slate-900 mt-1 block leading-none">
+                        <span className="attendance-counter-value">
                           {stats.expectedResidents}
                         </span>
                       </div>
@@ -739,40 +738,32 @@ export const AttendancePage: React.FC = () => {
                 {activeSessionData.status === 'ACTIVE' && (
                   <div className="attendance-active-layout">
                     {/* Live Camera Feed Card */}
-                    <div className="attendance-camera-col bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                    <div className="attendance-camera-col">
                       {/* Camera Control Toolbar Header */}
-                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-slate-800 flex items-center gap-1.5">
-                            <CameraIcon size={14} className="text-slate-500" />
+                      <div className="attendance-camera-toolbar">
+                        <div className="attendance-camera-heading">
+                          <span className="attendance-camera-title">
+                            <CameraIcon size={14} aria-hidden="true" />
                             {cameraMode === 'DEVICE' ? 'Browser Device Webcam' : activeCameraObj?.name || 'Attendance Camera'}
                           </span>
 
-                          {/* Pulsing Status Dot */}
+                          {/* Stream Status Pill */}
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${
+                            className={`attendance-live-pill ${
                               streamStatus === 'CONNECTED'
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                ? 'is-connected'
                                 : streamStatus === 'LOADING'
-                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                : 'bg-red-50 text-red-700 border border-red-200'
+                                ? 'is-loading'
+                                : 'is-offline'
                             }`}
                           >
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                streamStatus === 'CONNECTED'
-                                  ? 'bg-emerald-500 animate-pulse'
-                                  : streamStatus === 'LOADING'
-                                  ? 'bg-amber-500'
-                                  : 'bg-red-500'
-                              }`}
-                            />
+                            <span className="attendance-live-dot" aria-hidden="true" />
                             {streamStatus === 'CONNECTED' ? 'Live' : streamStatus === 'LOADING' ? 'Connecting' : 'Offline'}
                           </span>
                         </div>
 
                         {/* Camera Switcher & Mode Toggles */}
-                        <div className="flex items-center gap-2">
+                        <div className="attendance-camera-controls">
                           {cameras.length > 1 && cameraMode === 'BACKEND' && (
                             <select
                               aria-label="Attendance camera"
@@ -781,7 +772,7 @@ export const AttendancePage: React.FC = () => {
                                 setSelectedLiveCameraId(e.target.value);
                                 setStreamStatus('LOADING');
                               }}
-                              className="min-h-10 text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white font-medium focus:ring-2 focus:ring-blue-500"
+                              className="form-select attendance-camera-select"
                               title="Switch active camera"
                             >
                               {cameras.map((c) => (
@@ -803,17 +794,17 @@ export const AttendancePage: React.FC = () => {
                                 setStreamStatus('LOADING');
                               }
                             }}
-                            className="min-h-10 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+                            className="btn btn-outline btn-sm"
                             title="Toggle between Server Camera Stream and Direct Browser Webcam"
                           >
-                            <Video size={13} />
+                            <Video size={14} aria-hidden="true" />
                             <span>{cameraMode === 'DEVICE' ? 'Switch to Server Camera' : 'Use Direct Webcam'}</span>
                           </button>
                         </div>
                       </div>
 
                       {/* Video Viewport Container */}
-                      <div className="relative bg-slate-900 flex items-center justify-center overflow-hidden min-h-[360px] sm:min-h-[400px] flex-1">
+                      <div className="attendance-viewport">
                         {cameraMode === 'DEVICE' ? (
                           /* Direct HTML5 Web Browser Camera Stream */
                           <>
@@ -822,19 +813,19 @@ export const AttendancePage: React.FC = () => {
                               autoPlay
                               playsInline
                               muted
-                              className="w-full h-full object-cover"
+                              className="attendance-video"
                             />
                             {deviceCameraError && (
-                              <div className="absolute inset-0 bg-slate-900/90 flex flex-col items-center justify-center p-6 text-center text-slate-200 gap-3">
-                                <VideoOff size={40} className="text-red-400" />
+                              <div className="attendance-viewport-overlay is-strong">
+                                <VideoOff size={40} className="attendance-overlay-icon" aria-hidden="true" />
                                 <div>
-                                  <p className="font-semibold text-white text-base">Camera Access Restricted</p>
-                                  <p className="text-xs text-slate-400 mt-1 max-w-sm">{deviceCameraError}</p>
+                                  <p className="attendance-overlay-title">Camera Access Restricted</p>
+                                  <p className="attendance-overlay-text">{deviceCameraError}</p>
                                 </div>
                                 <button
                                   type="button"
                                   onClick={() => setCameraMode('BACKEND')}
-                                  className="btn btn-secondary btn-sm bg-slate-800 text-white border-slate-700 hover:bg-slate-700"
+                                  className="btn btn-secondary btn-sm"
                                 >
                                   Back to Server Stream
                                 </button>
@@ -847,14 +838,14 @@ export const AttendancePage: React.FC = () => {
                             <img
                               src={streamUrl || undefined}
                               alt="Live Attendance Camera Feed"
-                              className="w-full h-full object-cover"
+                              className="attendance-video"
                               onLoad={() => setStreamStatus('CONNECTED')}
                               onError={() => setStreamStatus('ERROR')}
                             />
                             {streamStatus === 'LOADING' && (
-                              <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center">
-                                <div className="flex items-center gap-2 text-white text-xs font-medium">
-                                  <RefreshCw size={16} className="animate-spin text-blue-400" />
+                              <div className="attendance-viewport-overlay">
+                                <div className="attendance-loading-text">
+                                  <RefreshCw size={16} className="attendance-loading-icon" aria-hidden="true" />
                                   <span>Connecting live feed...</span>
                                 </div>
                               </div>
@@ -862,25 +853,25 @@ export const AttendancePage: React.FC = () => {
                           </>
                         ) : (
                           /* Fallback Diagnostic Card (Stream offline or no camera assigned) */
-                          <div className="flex flex-col items-center justify-center p-8 text-center gap-3 text-slate-300">
-                            <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400">
+                          <div className="attendance-fallback">
+                            <div className="attendance-fallback-icon" aria-hidden="true">
                               <CameraIcon size={28} />
                             </div>
                             <div>
-                              <p className="text-base font-semibold text-white">Camera Stream Offline</p>
-                              <p className="text-xs text-slate-400 max-w-xs mt-1 leading-relaxed">
+                              <p className="attendance-overlay-title">Camera Stream Offline</p>
+                              <p className="attendance-overlay-text">
                                 {activeLiveCameraId
                                   ? 'The selected camera feed is unavailable. Check the camera connection or use the device camera.'
                                   : 'No active camera is assigned to this attendance session.'}
                               </p>
                             </div>
-                            <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                            <div className="attendance-fallback-actions">
                               <button
                                 type="button"
                                 onClick={() => setCameraMode('DEVICE')}
                                 className="btn btn-primary btn-sm"
                               >
-                                <Video size={14} />
+                                <Video size={14} aria-hidden="true" />
                                 <span>Turn On Direct Webcam</span>
                               </button>
                               {activeLiveCameraId && (
@@ -890,9 +881,9 @@ export const AttendancePage: React.FC = () => {
                                     setStreamStatus('LOADING');
                                     setStreamRetryKey((k) => k + 1);
                                   }}
-                                  className="btn btn-secondary btn-sm bg-slate-800 text-white border-slate-700 hover:bg-slate-700"
+                                  className="btn btn-secondary btn-sm"
                                 >
-                                  <RotateCcw size={14} />
+                                  <RotateCcw size={14} aria-hidden="true" />
                                   <span>Retry Stream</span>
                                 </button>
                               )}
@@ -901,8 +892,8 @@ export const AttendancePage: React.FC = () => {
                         )}
 
                         {/* Stream Watermark / Live Badge */}
-                        <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-md text-[11px] font-mono text-slate-200 border border-white/10 flex items-center gap-2 pointer-events-none">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        <div className="attendance-watermark">
+                          <span className="attendance-watermark-dot" aria-hidden="true" />
                           <span>{cameraMode === 'DEVICE' ? 'WEBCAM 720p' : activeSourceType || 'STREAM'}</span>
                           <span>•</span>
                           <span>{activeSessionData.title}</span>
@@ -911,62 +902,62 @@ export const AttendancePage: React.FC = () => {
                     </div>
 
                     {/* Current Resident Card */}
-                    <div className="attendance-resident-col bg-white border border-slate-200 rounded-xl p-6 shadow-sm flex flex-col justify-between min-h-[360px]">
+                    <div className="attendance-resident-col">
                       <div>
-                        <h3 className="text-sm font-semibold text-slate-500 mb-4">
+                        <h3 className="attendance-panel-label">
                           Current Resident
                         </h3>
 
                         {currentResident ? (
-                          <div className="flex flex-col gap-4">
-                            <div className="flex items-center gap-4">
-                              <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center shadow-sm">
+                          <div className="attendance-resident-body">
+                            <div className="attendance-resident-identity">
+                              <div className="attendance-resident-photo">
                                 <AuthenticatedImage
                                   src={residentsApi.getProfilePhotoUrl(currentResident.id)}
                                   alt={currentResident.fullName}
-                                  className="w-full h-full object-cover"
+                                  className="attendance-resident-photo-img"
                                   onError={(e) => {
                                     (e.target as HTMLElement).style.display = 'none';
                                   }}
                                 />
-                                <Users size={32} className="text-slate-400" />
+                                <Users size={32} className="attendance-resident-photo-placeholder" aria-hidden="true" />
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <h3 className="text-22px font-bold text-slate-900 truncate">
+                              <div className="attendance-resident-text">
+                                <h3 className="attendance-resident-name">
                                   {currentResident.fullName}
                                 </h3>
-                                <p className="text-15px text-slate-600 mt-1 font-medium">
+                                <p className="attendance-resident-meta">
                                   {currentResident.residentCode} • {currentResident.roomGroup}
                                 </p>
-                                <div className="mt-2.5">
-                                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                    <CheckCircle2 size={15} className="text-emerald-600" />
+                                <div className="attendance-resident-status">
+                                  <span className="badge badge-md badge-presence-in">
+                                    <CheckCircle2 size={15} aria-hidden="true" />
                                     PRESENT
                                   </span>
                                 </div>
                               </div>
                             </div>
-                            <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 mt-2">
+                            <div className="attendance-marked-note">
                               Marked Present at {currentResident.markedTime || 'Just now'}
                             </div>
                           </div>
                         ) : (
-                          <div className="my-auto py-12 flex flex-col items-center justify-center text-center gap-3 text-slate-400">
-                            <div className="w-14 h-14 rounded-full bg-slate-50 text-slate-400 flex items-center justify-center border border-slate-200">
+                          <div className="attendance-waiting">
+                            <div className="attendance-waiting-icon" aria-hidden="true">
                               <Users size={28} />
                             </div>
-                            <h4 className="text-base font-semibold text-slate-800">Waiting for resident</h4>
-                            <p className="text-sm text-slate-500 max-w-xs leading-relaxed">
+                            <h4 className="attendance-waiting-title">Waiting for resident</h4>
+                            <p className="attendance-waiting-text">
                               Residents will be recognized and marked Present automatically.
                             </p>
                           </div>
                         )}
                       </div>
 
-                      <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-sm text-slate-500">
+                      <div className="attendance-resident-footer">
                         <span>Roll call session active</span>
-                        <span className="font-semibold text-emerald-700 flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span className="attendance-live-status">
+                          <span className="attendance-live-dot" aria-hidden="true" />
                           Live Marking Active
                         </span>
                       </div>
@@ -975,9 +966,9 @@ export const AttendancePage: React.FC = () => {
                 )}
 
                 {/* Roster Controls */}
-                <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3.5 top-3 text-slate-400" size={18} />
+                <div className="attendance-roster-controls">
+                  <div className="attendance-roster-search">
+                    <Search className="attendance-search-icon" size={18} aria-hidden="true" />
                     <label htmlFor="attendance-roster-search" className="sr-only">Search attendance roster</label>
                     <input
                       id="attendance-roster-search"
@@ -986,19 +977,17 @@ export const AttendancePage: React.FC = () => {
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="form-input"
-                      style={{ paddingLeft: '2.5rem' }}
                     />
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <Filter size={16} className="text-slate-400" aria-hidden="true" />
+                  <div className="attendance-roster-filter">
+                    <Filter size={16} className="attendance-filter-icon" aria-hidden="true" />
                     <label htmlFor="attendance-status-filter" className="sr-only">Filter attendance by status</label>
                     <select
                       id="attendance-status-filter"
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
                       className="form-select"
-                      style={{ minWidth: '170px' }}
                     >
                       <option value="ALL">All Statuses</option>
                       <option value="PRESENT">Present</option>
@@ -1009,67 +998,71 @@ export const AttendancePage: React.FC = () => {
                 </div>
 
                 {/* Roster Table Card */}
-                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                  <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-slate-900">Residents</h3>
-                    <span className="text-sm text-slate-500 font-medium">{filteredRoster.length} resident records</span>
+                <div className="attendance-roster-card">
+                  <div className="attendance-roster-header">
+                    <h3 className="attendance-roster-title">Residents</h3>
+                    <span className="attendance-roster-count">{filteredRoster.length} resident records</span>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200 text-sm" aria-label="Attendance roster">
-                      <thead className="bg-slate-50/70 text-slate-600 font-semibold">
+                  <div className="table-container">
+                    <table className="data-table" aria-label="Attendance roster">
+                      <thead>
                         <tr>
-                          <th scope="col" className="px-6 py-3.5 text-left">
+                          <th scope="col">
                             Name
                           </th>
-                          <th scope="col" className="px-6 py-3.5 text-left">
+                          <th scope="col">
                             Room
                           </th>
-                          <th scope="col" className="px-6 py-3.5 text-left">
+                          <th scope="col">
                             Status
                           </th>
-                          <th scope="col" className="px-6 py-3.5 text-left">
+                          <th scope="col">
                             Time
                           </th>
                           {canManage && (
-                            <th scope="col" className="px-6 py-3.5 text-right">
+                            <th scope="col" className="cell-end">
                               Action
                             </th>
                           )}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 bg-white">
+                      <tbody>
                         {filteredRoster.length === 0 ? (
                           <tr>
-                            <td colSpan={canManage ? 5 : 4} className="px-6 py-12 text-center text-slate-500">
-                              No resident attendance records matching current criteria.
+                            <td colSpan={canManage ? 5 : 4}>
+                              <div className="state-panel state-panel-compact">
+                                <p className="state-panel-text">
+                                  No resident attendance records matching current criteria.
+                                </p>
+                              </div>
                             </td>
                           </tr>
                         ) : (
                           filteredRoster.map((item) => (
-                            <tr key={item.residentId} className="hover:bg-slate-50/70 transition h-16">
-                              <td className="px-6 py-3.5">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                            <tr key={item.residentId}>
+                              <td>
+                                <div className="attendance-person">
+                                  <div className="attendance-person-photo">
                                     <AuthenticatedImage
                                       src={residentsApi.getProfilePhotoUrl(item.residentId)}
                                       alt=""
-                                      className="w-full h-full object-cover"
+                                      className="attendance-person-photo-img"
                                       onError={(e) => {
                                         (e.currentTarget as HTMLElement).style.display = 'none';
                                       }}
                                     />
-                                    <Users size={18} className="text-slate-400" />
+                                    <Users size={18} className="attendance-person-placeholder" aria-hidden="true" />
                                   </div>
-                                  <div>
-                                    <div className="font-semibold text-slate-900 text-15px">{item.fullName}</div>
-                                    <div className="text-13px text-slate-500 font-mono">{item.residentCode}</div>
+                                  <div className="attendance-person-text">
+                                    <div className="cell-primary">{item.fullName}</div>
+                                    <div className="cell-meta">{item.residentCode}</div>
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-6 py-3.5 text-slate-700 font-medium text-15px">{item.roomGroup}</td>
-                              <td className="px-6 py-3.5">{renderStatusBadge(item.status)}</td>
-                              <td className="px-6 py-3.5 text-slate-600 font-mono text-14px">
+                              <td className="cell-secondary">{item.roomGroup}</td>
+                              <td>{renderStatusBadge(item.status)}</td>
+                              <td className="cell-secondary cell-nowrap">
                                 {item.markedAt
                                   ? new Date(item.markedAt).toLocaleTimeString([], {
                                       hour: '2-digit',
@@ -1078,7 +1071,7 @@ export const AttendancePage: React.FC = () => {
                                   : '—'}
                               </td>
                               {canManage && (
-                                <td className="px-6 py-3.5 text-right">
+                                <td className="cell-end">
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1092,7 +1085,7 @@ export const AttendancePage: React.FC = () => {
                                     }}
                                     className="btn btn-secondary btn-sm"
                                   >
-                                    <Edit2 size={13} />
+                                    <Edit2 size={13} aria-hidden="true" />
                                     <span>Correct</span>
                                   </button>
                                 </td>
@@ -1106,12 +1099,12 @@ export const AttendancePage: React.FC = () => {
                 </div>
               </>
             ) : (
-              <div className="attendance-empty-panel bg-white border border-slate-200 rounded-xl p-12 text-center max-w-xl mx-auto my-8 shadow-sm">
-                <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 border border-blue-100">
+              <div className="attendance-empty-panel">
+                <div className="attendance-empty-icon" aria-hidden="true">
                   <CheckSquare size={28} />
                 </div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">Hostel Attendance</h2>
-                <p className="text-base text-slate-600 mb-6 leading-relaxed">
+                <h2 className="attendance-empty-title">Hostel Attendance</h2>
+                <p className="attendance-empty-text">
                   No attendance session is active.
                   <br />
                   Start attendance when you are ready to conduct roll call.
@@ -1121,9 +1114,9 @@ export const AttendancePage: React.FC = () => {
                     type="button"
                     onClick={() => setIsCreateModalOpen(true)}
                     aria-label="Start Attendance"
-                    className="btn btn-primary btn-md inline-flex items-center gap-2"
+                    className="btn btn-primary btn-md"
                   >
-                    <Play size={18} />
+                    <Play size={18} aria-hidden="true" />
                     <span>Start Attendance</span>
                   </button>
                 )}
@@ -1141,7 +1134,7 @@ export const AttendancePage: React.FC = () => {
         subtitle="Schedule roll call or daily night attendance session"
         size="md"
       >
-        <form onSubmit={handleCreateSession} className="space-y-4">
+        <form onSubmit={handleCreateSession} className="modal-form-stack">
           <div className="form-group">
             <label htmlFor="new-session-title" className="form-label">
               Attendance Name <span className="required-mark">*</span>
@@ -1231,18 +1224,18 @@ export const AttendancePage: React.FC = () => {
             </select>
           </div>
 
-          <div className="modal-actions-bar pt-3 border-t border-slate-200">
+          <div className="modal-actions-bar">
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(false)}
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-md"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-md"
             >
               Create Attendance
             </button>
@@ -1257,29 +1250,29 @@ export const AttendancePage: React.FC = () => {
         title="Close Night Attendance?"
         size="sm"
       >
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 text-red-600">
-            <AlertCircle size={24} />
-            <span className="font-semibold text-slate-900">Are you sure you want to end this session?</span>
+        <div className="modal-form-stack">
+          <div className="alert-banner alert-banner-error">
+            <AlertCircle size={20} className="alert-icon" aria-hidden="true" />
+            <span>Are you sure you want to end this session?</span>
           </div>
 
-          <div className="text-sm text-slate-600 space-y-2">
+          <div className="attendance-close-summary">
             <p>
-              Present: <strong className="text-slate-900">{stats?.presentCount}</strong>
+              Present: <strong>{stats?.presentCount}</strong>
             </p>
             <p>
-              Not yet marked: <strong className="text-red-600">{stats?.remainingCount}</strong>
+              Not yet marked: <strong>{stats?.remainingCount}</strong>
             </p>
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-900 text-xs leading-relaxed">
+            <div className="alert-banner alert-banner-warning">
               Residents not marked will be recorded as absent upon closing this session.
             </div>
           </div>
 
-          <div className="modal-actions-bar pt-3 border-t border-slate-200">
+          <div className="modal-actions-bar">
             <button
               type="button"
               onClick={() => setIsCloseConfirmOpen(false)}
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-md"
             >
               Cancel
             </button>
@@ -1287,7 +1280,7 @@ export const AttendancePage: React.FC = () => {
               type="button"
               onClick={handleCloseSession}
               disabled={isSubmitting}
-              className="btn btn-danger btn-sm"
+              className="btn btn-danger btn-md"
             >
               Close Attendance
             </button>
@@ -1304,8 +1297,8 @@ export const AttendancePage: React.FC = () => {
         size="sm"
       >
         {correctingResident && (
-          <form onSubmit={handleSaveCorrection} className="space-y-4">
-            <div className="text-sm text-slate-700 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
+          <form onSubmit={handleSaveCorrection} className="modal-form-stack">
+            <div className="attendance-correction-summary">
               <div>
                 Resident: <strong>{correctingResident.fullName}</strong> ({correctingResident.residentCode})
               </div>
@@ -1339,24 +1332,23 @@ export const AttendancePage: React.FC = () => {
                 value={correctionReason}
                 onChange={(e) => setCorrectionReason(e.target.value)}
                 placeholder="Explain why this attendance record is being changed..."
-                className="form-input"
-                style={{ height: 'auto', paddingTop: '10px' }}
+                className="form-control form-textarea"
                 required
               />
             </div>
 
-            <div className="modal-actions-bar pt-3 border-t border-slate-200">
+            <div className="modal-actions-bar">
               <button
                 type="button"
                 onClick={() => setCorrectingResident(null)}
-                className="btn btn-secondary btn-sm"
+                className="btn btn-secondary btn-md"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary btn-md"
               >
                 Save correction
               </button>

@@ -159,14 +159,14 @@ describe('Cameras page product workflow', () => {
     expect(screen.queryByText(/embedding/i)).not.toBeInTheDocument();
   });
 
-  it('shows only the laptop-camera preview action for a webcam', async () => {
+  it('shows only the local browser-webcam action for a webcam', async () => {
     renderComponent();
 
     await waitFor(() => {
       expect(screen.getAllByText('Laptop Webcam').length).toBeGreaterThan(0);
     });
 
-    expect(screen.getAllByRole('button', { name: /use laptop camera/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: /start browser webcam/i }).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /^start live preview$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /test connection/i })).not.toBeInTheDocument();
   });
